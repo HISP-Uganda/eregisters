@@ -3,9 +3,9 @@
 const config = {
     type: "app",
     pwa: { enabled: true },
-		
+    name: "eregisters",
     entryPoints: {
-        app: "./src/App.tsx"
+        app: "./src/App.tsx",
     },
 };
 
