@@ -8,6 +8,7 @@ import {
     FlattenedEnrollment,
     FlattenedEvent,
     FlattenedTrackedEntity,
+    MeUser,
     Program,
     ProgramRule,
     ProgramRuleResult,
@@ -1360,7 +1361,7 @@ export async function cancelDataModal(
     }
 }
 
-export const queryInfo = async (user: string, id: string) => {
+export const queryInfo = async (userInfo: MeUser) => {
     const dataElements = await db.dataElements.toArray();
     const trackedEntityAttributes = await db.trackedEntityAttributes.toArray();
     const programRules = await db.programRules.toArray();
@@ -1368,7 +1369,7 @@ export const queryInfo = async (user: string, id: string) => {
     const optionGroups = await db.optionGroups.toArray();
     const optionSets = await db.optionSets.toArray();
     const [program] = await db.programs.toArray();
-    const [orgUnit] = await db.organisationUnits.where({ id, user }).toArray();
+    // const [orgUnit] = await db.organisationUnits.where({ id, user }).toArray();
     return {
         dataElements: new Map(dataElements.map((de) => [de.id, de])),
         trackedEntityAttributes: new Map(
@@ -1381,17 +1382,20 @@ export const queryInfo = async (user: string, id: string) => {
         ),
         optionSets: new Map(Object.entries(groupBy(optionSets, "optionSet"))),
         program,
-        programOrgUnits: new Set(
-            program?.organisationUnits.map(({ id }) => id),
-        ),
-        organisations: new Map(
-            program?.organisationUnits.map((ou) => [ou.id, ou.name]),
-        ),
-        orgUnit,
+        // programOrgUnits: new Set(
+        //     // program?.organisationUnits.map(({ id }) => id),
+        //     orgUnit.id,
+        // ),
+        // organisations: new Map(
+        //     // program?.organisationUnits.map((ou) => [ou.id, ou.name]),
+        //     [[orgUnit.id, orgUnit.name]],
+        // ),
+        orgUnit: userInfo.organisationUnits[0].id,
+        orgUnitName: userInfo.organisationUnits[0].name,
     };
 };
 
-export const checkInfo = async (user: string, id: string) => {
+export const checkInfo = async () => {
     try {
         const queries = await Promise.all([
             db.dataElements.count(),
@@ -1401,7 +1405,6 @@ export const checkInfo = async (user: string, id: string) => {
             db.optionGroups.count(),
             db.optionSets.count(),
             db.programs.count(),
-            db.organisationUnits.where({ user, id }).count(),
         ]);
 
         const hasEmptyTables = queries.some((a) => a === 0);
@@ -1415,15 +1418,14 @@ export const checkInfo = async (user: string, id: string) => {
         const wasIndexedDBDeleted = !metadataVersion?.lastSync;
         const [program] = await db.programs.toArray();
 
-        const syncedWithin24Hours = metadataVersion?.lastSync
-            ? dayjs().diff(dayjs(metadataVersion.lastSync), "hour") < 24
-            : false;
-
+        // const syncedWithin24Hours = metadataVersion?.lastSync
+        //     ? dayjs().diff(dayjs(metadataVersion.lastSync), "hour") < 24
+        //     : false
         return {
-            needsSyncing: hasEmptyTables || wasIndexedDBDeleted || !syncedWithin24Hours,
+            needsSyncing: hasEmptyTables || wasIndexedDBDeleted,
             hasEmptyTables,
             wasIndexedDBDeleted,
-            syncedWithin24Hours,
+            // syncedWithin24Hours,
             metadataVersion,
             syncStatus,
             program,
@@ -1435,29 +1437,25 @@ export const checkInfo = async (user: string, id: string) => {
             needsSyncing: true,
             hasEmptyTables: true,
             wasIndexedDBDeleted: true,
-            syncedWithin24Hours: false,
+            // syncedWithin24Hours: false,
             metadataVersion: undefined,
             program: undefined,
         };
     }
 };
 
-export function redirectByAuthorities(authorities: string[], baseUrl: string) {
+export function redirectByAuthorities(
+    authorities: string[],
+    programs: string[],
+    baseUrl: string,
+) {
     if (!authorities.includes("ALL") && !authorities.includes("M_eregisters")) {
         window.location.href = `${baseUrl}/apps/eRegisters-Monitoring-Dashboard`;
         return;
     }
-}
 
-export function redirectByUnit(
-    userUnits: string[],
-    programUnits: string[],
-    baseUrl: string,
-) {
-    const hasAny = intersection(userUnits, programUnits);
-    if (hasAny.length === 0) {
+    if (programs.length === 0) {
         window.location.href = `${baseUrl}/apps/eRegisters-Monitoring-Dashboard`;
         return;
     }
 }
-1

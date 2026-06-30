@@ -1,52 +1,98 @@
-import {
-    useConfig,
-    useCurrentUserInfo,
-    useDataEngine,
-} from "@dhis2/app-runtime";
+import { useConfig, useDataEngine, useDataQuery } from "@dhis2/app-runtime";
 import { RouterProvider } from "@tanstack/react-router";
 import { App, ConfigProvider, Typography } from "antd";
-import { isEmpty } from "lodash";
-import React, { FC } from "react";
+import React, { FC, useEffect } from "react";
+import { Spinner } from "./components/spinner";
 import { SyncContext } from "./machines/sync";
 import { router } from "./router";
 import { redirectByAuthorities } from "./utils/utils";
+import { MeData, MeUser } from "./schemas";
+
+const ME_QUERY = {
+    me: {
+        resource: "me",
+        params: {
+            fields: "id,displayName,username,firstName,surname,authorities,organisationUnits[id,name,programs[id,name]]",
+        },
+    },
+} as const;
+
 const Main = () => {
     const syncActor = SyncContext.useActorRef();
     return <RouterProvider router={router} context={{ syncActor }} />;
 };
 
 const FullApp: FC<{
-    user: string;
-    orgUnit: string;
-}> = ({ user, orgUnit }) => {
+    userInfo: MeUser;
+}> = ({ userInfo }) => {
     const engine = useDataEngine();
-    const userInfo = useCurrentUserInfo();
-    const { baseUrl } = useConfig();
     const { message } = App.useApp();
-
-    redirectByAuthorities(userInfo?.authorities ?? [], baseUrl);
-
     return (
         <SyncContext.Provider
             options={{
                 input: {
                     engine,
-                    orgUnit,
-                    user,
                     userInfo,
                     message,
                 },
             }}
-            key={`${user}${orgUnit}`}
+            key={`${userInfo.id}${userInfo.organisationUnits[0].id}`}
         >
             <Main />
         </SyncContext.Provider>
     );
 };
-const MyApp: FC = () => {
-    const userInfo = useCurrentUserInfo();
 
-    if (isEmpty(userInfo) || userInfo.organisationUnits.length > 1) {
+const MyApp: FC = () => {
+    const { baseUrl } = useConfig();
+
+    const { data, loading, error } = useDataQuery<MeData>(ME_QUERY);
+    useEffect(() => {
+        if (!("serviceWorker" in navigator)) return;
+
+        const applyWhenInstalled = (worker: ServiceWorker) => {
+            worker.addEventListener("statechange", function () {
+                if (
+                    this.state === "installed" &&
+                    navigator.serviceWorker.controller
+                ) {
+                    this.postMessage({ type: "SKIP_WAITING" });
+                }
+            });
+        };
+
+        navigator.serviceWorker.ready.then((registration) => {
+            if (registration.installing) {
+                applyWhenInstalled(registration.installing);
+            }
+
+            registration.update().catch(() => {});
+
+            registration.addEventListener("updatefound", () => {
+                if (registration.installing) {
+                    applyWhenInstalled(registration.installing);
+                }
+            });
+        });
+    }, []);
+
+    if (error) {
+        return (
+            <Typography.Text>
+                Something went wrong, failed to load user info
+            </Typography.Text>
+        );
+    }
+
+    if (loading) {
+        return (
+            <Spinner
+                component={<Typography.Text>Loading user</Typography.Text>}
+            />
+        );
+    }
+
+    if (!data || data.me.organisationUnits.length > 1) {
         return (
             <Typography.Text>
                 No user found or user assigned multiple organisations
@@ -56,8 +102,15 @@ const MyApp: FC = () => {
 
     const {
         id: user,
-        organisationUnits: [{ id: orgUnit }],
-    } = userInfo;
+        organisationUnits: [{ id: orgUnit, programs }],
+        authorities,
+    } = data.me;
+
+    redirectByAuthorities(
+        authorities,
+        programs.map(({ id }) => id),
+        baseUrl,
+    );
 
     return (
         <ConfigProvider
@@ -67,9 +120,7 @@ const MyApp: FC = () => {
                         rowHoverBg: "#F1EFFD",
                     },
                     Card: {},
-                    Tabs: {
-                        // cardGutter: 5,
-                    },
+                    Tabs: {},
                     Form: {
                         size: 43,
                     },
@@ -81,7 +132,7 @@ const MyApp: FC = () => {
             }}
         >
             <App>
-                <FullApp orgUnit={orgUnit} user={user} />
+                <FullApp userInfo={data.me} />
             </App>
         </ConfigProvider>
     );

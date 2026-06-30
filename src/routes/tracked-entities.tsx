@@ -32,12 +32,8 @@ export const TrackedEntitiesRoute = createRoute({
 });
 
 function TrackedEntities() {
-    const {
-        program,
-        trackedEntityAttributes,
-        optionSets,
-        orgUnit: { id },
-    } = useMetadata();
+    const { program, trackedEntityAttributes, optionSets, orgUnit } =
+        useMetadata();
 
     const [form] = Form.useForm();
 
@@ -48,10 +44,10 @@ function TrackedEntities() {
                 .where(({ trackedEntities }) =>
                     and(
                         not(eq(trackedEntities.syncStatus, "draft")),
-                        eq(trackedEntities.orgUnit, id),
+                        eq(trackedEntities.orgUnit, orgUnit),
                     ),
                 ),
-        [id],
+        [orgUnit],
     );
     const navigate = TrackedEntitiesRoute.useNavigate();
     const { search } = TrackedEntitiesRoute.useSearch();

@@ -8,7 +8,7 @@ import {
     FlattenedEvent,
     FlattenedTrackedEntity,
     Metadata,
-    OrgUnit,
+    MeUser,
     Program,
     ProgramIndicator,
     ProgramRule,
@@ -17,7 +17,7 @@ import {
     TrackedEntityAttribute,
 } from "../schemas";
 
-import type { useCurrentUserInfo, useDataEngine } from "@dhis2/app-runtime";
+import type { useDataEngine } from "@dhis2/app-runtime";
 import { createActorContext } from "@xstate/react";
 import { MessageInstance } from "antd/es/message/interface";
 import { Table } from "dexie";
@@ -175,13 +175,11 @@ export interface SyncContext {
     dataPullMode: DataPullMode;
     dataPushMode: DataPushMode;
     resources: Resource[];
-    user: string;
-    orgUnit: string;
     validAttributeIds: Set<string>;
     validDataElementsByStage: Map<string, Set<string>>;
     message: MessageInstance;
     metadata: Partial<Awaited<ReturnType<typeof queryInfo>>>;
-    userInfo: ReturnType<typeof useCurrentUserInfo>;
+    userInfo: MeUser;
     rawMetadata: Metadata;
 }
 
@@ -399,10 +397,8 @@ const syncMachine = setup({
             initialLastMetadataPull?: string;
             initialLastDataPull?: string;
             initialLastDataPush?: string;
-            user: string;
-            orgUnit: string;
             message: MessageInstance;
-            userInfo: ReturnType<typeof useCurrentUserInfo>;
+            userInfo: MeUser;
         },
     },
 
@@ -437,17 +433,16 @@ const syncMachine = setup({
         },
     },
     actors: {
-        checkIndexDB: fromPromise<
-            Awaited<ReturnType<typeof checkInfo>>,
-            { user: string; id: string }
-        >(async ({ input: { user, id } }) => {
-            return checkInfo(user, id);
-        }),
+        checkIndexDB: fromPromise<Awaited<ReturnType<typeof checkInfo>>>(
+            async () => {
+                return checkInfo();
+            },
+        ),
         queryIndexDB: fromPromise<
             Awaited<ReturnType<typeof queryInfo>>,
-            { user: string; id: string }
-        >(async ({ input: { id, user } }) => {
-            return queryInfo(user, id);
+            { userInfo: MeUser }
+        >(async ({ input: { userInfo } }) => {
+            return queryInfo(userInfo);
         }),
         pullData: fromPromise<
             void,
@@ -566,7 +561,7 @@ const syncMachine = setup({
             },
         ),
         saveMetadata: fromPromise<void, Metadata>(async ({ input }) => {
-            await db.organisationUnits.bulkPut(input.organisationUnits);
+            // await db.organisationUnits.bulkPut(input.organisationUnits);
             await db.programs.bulkPut(input.programs);
             await db.dataElements.bulkPut(input.dataElements);
             await db.programIndicators.bulkPut(input.programIndicators);
@@ -606,28 +601,27 @@ const syncMachine = setup({
             };
             for (const resource of resources) {
                 switch (resource) {
-                    case "me":
-                        const { me } = (await engine.query({
-                            me: {
-                                resource: "me",
-                                params: {
-                                    fields: "id,organisationUnits[id,name,level,parent,leaf]",
-                                },
-                            },
-                        })) as {
-                            me: {
-                                organisationUnits: OrgUnit[];
-                                id: string;
-                            };
-                        };
-
-                        results.organisationUnits = me.organisationUnits.map(
-                            (ou) => ({
-                                ...ou,
-                                user: me.id,
-                            }),
-                        );
-                        break;
+                    // case "me":
+                    //     const { me } = (await engine.query({
+                    //         me: {
+                    //             resource: "me",
+                    //             params: {
+                    //                 fields: "id,organisationUnits[id,name,level,parent,leaf,programs]",
+                    //             },
+                    //         },
+                    //     })) as {
+                    //         me: {
+                    //             organisationUnits: OrgUnit[];
+                    //             id: string;
+                    //         };
+                    //     };
+                    //     results.organisationUnits = me.organisationUnits.map(
+                    //         (ou) => ({
+                    //             ...ou,
+                    //             user: me.id,
+                    //         }),
+                    //     );
+                    //     break;
 
                     case "programs":
                         const { program } = (await engine.query({
@@ -635,7 +629,7 @@ const syncMachine = setup({
                                 resource: "programs",
                                 id: "ueBhWkWll5v",
                                 params: {
-                                    fields: "id,name,programSections[id,name,sortOrder,trackedEntityAttributes[id]],trackedEntityType[id,trackedEntityTypeAttributes[id]],programType,selectEnrollmentDatesInFuture,selectIncidentDatesInFuture,organisationUnits[id,name],programStages[id,repeatable,name,code,programStageDataElements[id,compulsory,renderOptionsAsRadio,dataElement[id],renderType,allowFutureDate],programStageSections[id,name,sortOrder,dataElements[id]]],programTrackedEntityAttributes[id,mandatory,searchable,renderOptionsAsRadio,renderType,sortOrder,allowFutureDate,displayInList,trackedEntityAttribute[id]]",
+                                    fields: "id,name,programSections[id,name,sortOrder,trackedEntityAttributes[id]],trackedEntityType[id,trackedEntityTypeAttributes[id]],programType,selectEnrollmentDatesInFuture,selectIncidentDatesInFuture,programStages[id,repeatable,name,code,programStageDataElements[id,compulsory,renderOptionsAsRadio,dataElement[id],renderType,allowFutureDate],programStageSections[id,name,sortOrder,dataElements[id]]],programTrackedEntityAttributes[id,mandatory,searchable,renderOptionsAsRadio,renderType,sortOrder,allowFutureDate,displayInList,trackedEntityAttribute[id]]",
                                 },
                             },
                         })) as { program: Program };
@@ -886,7 +880,6 @@ const syncMachine = setup({
                         results.optionGroups = flattenedOptionGroups;
                         break;
                 }
-
                 const currentTimestamp = new Date().toISOString();
                 let version = await db.metadataVersions.get("metadata-version");
                 if (version === undefined) {
@@ -1014,7 +1007,7 @@ const syncMachine = setup({
     /** @xstate-layout N4IgpgJg5mDOIC5SwJ4DsDGA6AtmALgIYSFEDK62AlhADZgDEEA9mmFlWgG7MDW7qTLgLFShCkJr0EnHhlJVWAbQAMAXVVrEoAA7NYVfIrTaQAD0QBmAEwBGLCoAsANgAcrlbduXbAVl+WjgA0ICiItiq+jg6WAJwqAOy2Cc6+7gC+6SGC2HhEJOSUHHSMLGwc3HwCRXmihZIlMpXyRsrqSrZaSCB6Bq0m3RYI1q6WWAmxqd7x1nYJrsGh4bau1uNuNrbxo76Z2TUiBeJFUoxgAE7nzOdYOrSkAGbXOFg5wvliEtSNsswtxppNKZeoZjKYhpsHC53J5vH4AoswghRq4sL55t44o50a5bHsQG9akcvsV6AwyAAVACCACUKQB9ACyAFFqQARKnU+lkACaADkAMJA7og-rgxAJMZRXxeFQqWKWZzWRzykJI2wq6LeVKOWIRWzOTz4wmHT4nEoMABiAFUADK2pmsqkcrm8wXC3T6UGscUISwJLDWVIqDwTZwJXWqpYIPwTcZ2Gx6lRK2LWY0HD71bCwQhcThQRmmohMVjsX78V4ZurHIQ5vNoAtFwhNOQKNoadTAr1iwbhVzOLUq5ypGWWVyxSZq8KOLZYVPjw16xz99NCIlmoQARwArhcUPmAJJoCBgMxsgBCJfK5eqa6bJJ3e8Px9PF5bfzbaEBnZF3bBvZjftB2TEdvHHSdo2SawxiSVwEgSaxYQWFZV1ye8ikfc59wbI8TzPS8LiuG47keZ5KzvTMa2wTDsKgXDX3Pd9-nbD0ej-H0ANmBJfDnZNrAnBUokcCMpxjGcA0cEZJnlDUVyyAkq2JIoT3oIwG0LSirzLSoKxNSiSRUgh8w06smM-b8uk9Pp-1AIYNRGLANWTfwXFiXFHERadLB4zxZliFx7N8FRLFQ95qwMsBVOMpsGEI65bnufAnnOF49PC5TIqM9SmzM-oLK7ayONs6cHKckdXPczzAPHKE3DcqZhLxeS0qU2tKHzLSKh4XTFI3bN2obXKAXaH8rO9AZioQeJYkDXFuPReZfGVBJRLhVFEI8nxJjmSZQvXLNyIwDqym07rbzQ-SihyfMhpYzoCvG313HsJx3GxJUuOE1aZRmraEIWBJImTELmt6g7robWLLnikikrIlq+sOm7fmYr8RsstjCom8xEFWX7HH9cNdQQiMVsgxCeIjYT0RnKIvDTUGKPSoQAHdCFBSHKVpBkWXZTkqW5fkhVGzHHoAgcVHGXFlSW5dlwHVaB2iRqQw8ILrHRXZGYu5nsDZjmoCtO0HV551+cF90RdFGycb9Pw5zSHxcU8Anh0VjysEajaB0CRw9vQ1n2bUw2zFgIh8HYQgHgj84AApDTlFQAEoGARg79eD1jraK23IScNwPC8Hx-ECVaCeiby-A8SwVGg8dQta74yTdAV6WZPkKQPTvmTILP2OxoZEMloLE4NHwh6W0SNcBrA4KCmvnECGW-e1rBG9JRgAAVrTIAAJekXSpPusd9Ie0UTzxF9sCfrCnhesH9dX4lp+CV-2IR19OBhQ-DyPo4uWONdE4pzeJ-Eox8xaTTPiPOUY9r5ykntGWYaRZ7cVrtLSYLgG6IwgFQc4YAMD4C+AwCBPZJrDmcLPfOAkAjcVcL4Ke6I1iP2CsmEm8Etbv2wOvbcdxmDEHzGyPBBD8CdRvIdNeiNeG0H4bghsQj8GENumjDsGNs4D2WIkRyctDQRH8kGMmSJlR2HPkGSwlcogTmwQdaRsjBHCMIVDIiCVSIpQkTwvhAj5EOPwMo-Kv4T7i38p7R+cJF6+FiOiKeKoeJpAicOZc1gOEgy4ZIg6AAjUgGAAAWxCTpdSqO4xGmT8A5K+H49GD0yG2woVQ1yE5aFxKnkGewLCRjX0wc4axVEsAlLKZQJxMNErJVSspYpWTcmUAqaoqpNtB5ynPqPK+N8p4Gh4vxZw8QIiBEiE1VJHiChgFtIQMObIxCb23LAbJJCrb919PAmadg4LcWgvZWIU9861XiJEeYIZfBdNXkcC5tBaAb3JNSOkB9zYt1IXM8IqY5yphWLEQG44FhBm+i9C+iF+KKhed04FoKv42ntFC10QtYU5zsgiicTyUUhjcpJZw0SxgfTiBMOw6sIwEu3CCsFP9SB-xjvHC+ICxlEEJRvSlGiYw0qReOVFjKMVIOCdfaCbkky6lGDyvlDxeW0BpGAB4+CrliJ0udNJhBJV6pBYa41cBsnTOlb6JU0RgrxAjIqccQUGHRi2oGGBgRvJhhSQpD+5z9VYBtQao1JrrlxWIsM+G4qrWRujXauNTrbmBPIcqGIHrXbesiFPJI4wYEazrqkUNoCI18ohobfJ4ia0SsjfWrNai7kAQiEGB+Mo0hJPgp4fsoklqomHBqReE4fCpABfs2toL62DMTa40Z4aW11oGlAdtsyqXhFrpQixqx4KAxWMy6My57AGgnTXaWgRZ1hu4fOrAvDDnHNOfOm5Hac22z0WsGcKoFjCU1L6pEw4eI2FxMXRCY43A6tBRnDqXNIWHwtsLL9kCf1yrpYq9FZ6kRRDGIkSD8o4LeVg4Cp9CHIYkodChmF2aMPUrWLS5FOGmWiUCPYNlE5VjGIVHBrAVGQ5h0FVgKOwqE5yjFWu1NfKhPOq7Vh1jDLcOiV1LEjEQDuKSU1pkeSaBmAnngN0HIO6ZUAFoUGSl1FsaDGsZKiXM3mi+tmBJjn7NWsGVEzO+nMxEcYgQ9SpmCvZvUoluIvU01iHEeyH1hTAfQHzAEEKrRrr9a+Mplz0OSf7S6tZczRUoklyaBphKOXs95bE-FoJVWmDxSSC5a4IRHLl3WWAaLPjwheYrtsKaogCEmSUOpatxGY1JQ0SSgwl1a+vQywcTJHB63ZU9jk57LTcHXQxJVogpD8gTMc3aZuI3rUtxAM4xiKm8v6DVF6FaQUkjtpUyRX42f8kd9OQd8ynYQIvAMgN1PevcGkPD4QUhSjxv8lE813s9IeOzWg258HfeWjNaEHgmX+A1GXa+Dh5jSWPQ1t+cXG7I9q5E-r9S0gzkmMkbpJJTjfZS0gyIqICYorSMFf50E6fKR8V8b7BMeL0KiHQyMkpXCMLK3PVhrD0SeZkySWxXioAKJEd99wqJxzJh02slU7ykGSUlk4A0kTJgymnjzoQfTJmYAFyYtBcphwISCqmKqsxFSoK5cuKmsXm09JfYKt9+Azktqud97wtcQkvM2Sid6zSe1tKSAify96-eEtJ6JRensBKhkTs4LwRO0+RoZwExjiBgm6ieaGeCowRIG61O7lFSKvcCfTbGh1AuvAOCI1sGcIWaYceCmiOIzkfqKh9gJk7pfqlDEA45TwOJFwRGHeemqeoJ38QWPEOIAmA8RyDyH2TtBw8rB4ovEYipZgDiVJnrRMWgHDg877lNkqhOM9vtGKIax-oR419iJIre8OiOYAJ+9CWA5+owH01+H+SIwkzGBeSozy-YkwCQem6QQAA */
     id: "sync",
     type: "parallel",
-    context: ({ input: { engine, user, orgUnit, message, userInfo } }) => {
+    context: ({ input: { engine, message, userInfo } }) => {
         return {
             engine,
             error: null,
@@ -1039,8 +1032,6 @@ const syncMachine = setup({
             metadataSyncMode: "full",
             dataPullMode: "incremental",
             dataPushMode: "batch",
-            user,
-            orgUnit,
             validAttributeIds: new Set<string>(),
             validDataElementsByStage: new Map<string, Set<string>>(),
             message,
@@ -1069,12 +1060,6 @@ const syncMachine = setup({
                 idle: {
                     invoke: {
                         src: "checkIndexDB",
-                        input: ({ context }) => {
-                            return {
-                                user: context.user,
-                                id: context.orgUnit,
-                            };
-                        },
                         onDone: [
                             {
                                 target: "queryingIndexDB",
@@ -1117,7 +1102,12 @@ const syncMachine = setup({
                             },
                         ],
 
-                        onError: "failure",
+                        onError: {
+                            target: "failure",
+                            actions: ({ event }) => {
+                                console.log(event.error);
+                            },
+                        },
                     },
                     on: {
                         START_METADATA_SYNC: {
@@ -1148,12 +1138,9 @@ const syncMachine = setup({
                 queryingIndexDB: {
                     invoke: {
                         src: "queryIndexDB",
-                        input: ({ context }) => {
-                            return {
-                                user: context.user,
-                                id: context.orgUnit,
-                            };
-                        },
+                        input: ({ context }) => ({
+                            userInfo: context.userInfo,
+                        }),
                         onDone: {
                             target: "waiting",
                             actions: assign(({ event }) => {
@@ -1163,7 +1150,12 @@ const syncMachine = setup({
                                 };
                             }),
                         },
-                        onError: "failure",
+                        onError: {
+                            target: "failure",
+                            actions: ({ event }) => {
+                                console.log(event.error);
+                            },
+                        },
                     },
                 },
                 deletingMetadata: {
@@ -1323,7 +1315,7 @@ const syncMachine = setup({
                         dataPullInterval: "syncing",
                     },
                     on: {
-                        START_DATA_SYNC: {
+                        queryingIndexDB: {
                             target: "syncing",
                             actions: assign({
                                 dataPullMode: () => "incremental",
@@ -1362,7 +1354,7 @@ const syncMachine = setup({
                             context: {
                                 engine,
                                 lastDataPull,
-                                orgUnit,
+                                userInfo,
                                 dataPullMode,
                             },
                         }) => ({
@@ -1370,7 +1362,7 @@ const syncMachine = setup({
                             lastDataPull,
                             enrollmentsCollection,
                             eventsCollection,
-                            orgUnit,
+                            orgUnit: userInfo.organisationUnits[0].id,
                             program: "ueBhWkWll5v",
                             trackedEntitiesCollection,
                             dataPullMode,

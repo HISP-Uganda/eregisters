@@ -33,7 +33,7 @@ const NoPatientsCard: React.FC<NoPatientsCardProps> = ({
     const screens = Grid.useBreakpoint();
     const isMobile = !screens.lg;
     const {
-        orgUnit: { id },
+        orgUnit,
         programRuleVariables,
         program,
         programRules,
@@ -57,11 +57,11 @@ const NoPatientsCard: React.FC<NoPatientsCardProps> = ({
     } = useModalState<FlattenedTrackedEntity>();
     const handleCreate = async () => {
         const newPatient: FlattenedTrackedEntity = createEmptyTrackedEntity({
-            orgUnit: id,
+            orgUnit,
             attributes: initialAttributes,
         });
         const newEnrollment = createEmptyEnrollment({
-            orgUnit: id,
+            orgUnit,
             trackedEntity: newPatient.trackedEntity,
             attributes: initialAttributes,
         });
@@ -154,10 +154,10 @@ const NoPatientsCard: React.FC<NoPatientsCardProps> = ({
                         if (addAnother) {
                             closeModal();
                             const newPatient = createEmptyTrackedEntity({
-                                orgUnit: id,
+                                orgUnit,
                             });
                             const newEnrollment = createEmptyEnrollment({
-                                orgUnit: id,
+                                orgUnit,
                                 trackedEntity: newPatient.trackedEntity,
                             });
                             await trackedEntitiesCollection.utils.insertLocally(
@@ -171,7 +171,7 @@ const NoPatientsCard: React.FC<NoPatientsCardProps> = ({
                             navigate({
                                 to: `/tracked-entity/$trackedEntity`,
                                 search: {
-                                    orgUnits: id,
+                                    orgUnits:orgUnit,
                                 },
                                 params: {
                                     trackedEntity: trackedEntity.trackedEntity,

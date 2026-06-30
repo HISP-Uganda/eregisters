@@ -1,29 +1,12 @@
-import React, { FC } from "react";
 import { Loading3QuartersOutlined } from "@ant-design/icons";
 import { Flex, Spin } from "antd";
-import { SyncContext } from "../machines";
+import React, { FC } from "react";
 
 export const Spinner: FC<{ height?: string; component?: React.ReactNode }> = ({
     height,
     component,
 }) => {
-    const status = SyncContext.useSelector(
-        ({
-            context: {
-                lastDataPull,
-                lastMetadataPull,
-                metadataSyncMode,
-                dataPullMode,
-                dataPushMode,
-            },
-        }) => ({
-            lastDataPull,
-            lastMetadataPull,
-            metadataSyncMode,
-            dataPullMode,
-            dataPushMode,
-        }),
-    );
+    
     return (
         <Flex
             justify="center"

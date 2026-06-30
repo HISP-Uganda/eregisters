@@ -45,11 +45,11 @@ export const TrackedEntitiesIndexRoute = createRoute({
 function TrackedEntitiesSearch() {
     const {
         trackedEntityAttributes,
-        organisations,
         programRules,
         programRuleVariables,
         program,
-        orgUnit: { id },
+        orgUnit,
+        orgUnitName,
     } = useMetadata();
     const navigate = TrackedEntitiesIndexRoute.useNavigate();
     const mainStageDataElements = useMemo(
@@ -102,7 +102,7 @@ function TrackedEntitiesSearch() {
 
             return query.where(({ trackedEntity }) =>
                 and(
-                    eq(trackedEntity.orgUnit, id),
+                    eq(trackedEntity.orgUnit, orgUnit),
                     not(eq(trackedEntity.syncStatus, "draft")),
                 ),
             );
@@ -110,9 +110,9 @@ function TrackedEntitiesSearch() {
         [search],
     );
     const createAndOpenNewPatient = async () => {
-        const newPatient = createEmptyTrackedEntity({ orgUnit: id });
+        const newPatient = createEmptyTrackedEntity({ orgUnit });
         const newEnrollment = createEmptyEnrollment({
-            orgUnit: id,
+            orgUnit,
             trackedEntity: newPatient.trackedEntity,
         });
         await trackedEntitiesCollection.utils.insertLocally(newPatient);
@@ -164,7 +164,7 @@ function TrackedEntitiesSearch() {
                     trackedEntityAttribute.name,
                 key: trackedEntityAttribute.id,
                 render: (record) => {
-                    return organisations.get(record.orgUnit) || "N/A";
+                    return record.orgUnit === orgUnit ? orgUnitName : "N/A";
                 },
             };
         }
@@ -308,7 +308,7 @@ function TrackedEntitiesSearch() {
                             navigate({
                                 to: `/tracked-entity/$trackedEntity`,
                                 search: {
-                                    orgUnits: id,
+                                    orgUnits: orgUnit,
                                 },
                                 params: {
                                     trackedEntity: trackedEntity.trackedEntity,

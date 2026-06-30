@@ -130,7 +130,7 @@ function TrackedEntityComponent() {
                     and(
                         eq(events.trackedEntity, tei),
                         eq(events.programStage, "K2nxbE9ubSs"),
-                        eq(events.orgUnit, orgUnit?.id),
+                        eq(events.orgUnit, orgUnit),
                         not(eq(events.syncStatus, "deleted")),
                     ),
                 )
@@ -146,7 +146,7 @@ function TrackedEntityComponent() {
                 .where(({ events }) =>
                     and(
                         eq(events.event, data?.event),
-                        eq(events.orgUnit, orgUnit?.id),
+                        eq(events.orgUnit, orgUnit),
                         not(eq(events.syncStatus, "deleted")),
                     ),
                 )
@@ -162,7 +162,7 @@ function TrackedEntityComponent() {
                 .where(({ enrollments }) =>
                     and(
                         eq(enrollments.trackedEntity, tei),
-                        eq(enrollments.orgUnit, orgUnit?.id),
+                        eq(enrollments.orgUnit, orgUnit),
                     ),
                 )
                 .findOne(),
@@ -176,7 +176,7 @@ function TrackedEntityComponent() {
                 .where(({ trackedEntity }) =>
                     and(
                         eq(trackedEntity.trackedEntity, tei),
-                        eq(trackedEntity.orgUnit, orgUnit?.id),
+                        eq(trackedEntity.orgUnit, orgUnit),
                     ),
                 )
                 .findOne(),

@@ -3,17 +3,16 @@ import { DataElement, TrackedEntityAttribute } from "../schemas";
 import { queryInfo } from "../utils/utils";
 
 export const useMetadata = (): Awaited<ReturnType<typeof queryInfo>> => {
-
-	const metadata = SyncContext.useSelector((a) => a.context.metadata);
+    const metadata = SyncContext.useSelector((a) => a.context.metadata);
+    const { organisationUnits } = SyncContext.useSelector(
+        (a) => a.context.userInfo,
+    );
     const {
         program,
         trackedEntityAttributes = new Map<string, TrackedEntityAttribute>(),
-        organisations = new Map<string, string>(),
         programRuleVariables = [],
         programRules = [],
-        orgUnit,
         dataElements = new Map<string, DataElement>(),
-        programOrgUnits = new Set<string>(),
         optionGroups = new Map<
             string,
             Array<{
@@ -36,9 +35,7 @@ export const useMetadata = (): Awaited<ReturnType<typeof queryInfo>> => {
         >(),
     } = metadata;
 
-
-
-    if (program === undefined || orgUnit === undefined) {
+    if (program === undefined) {
         throw new Error("OrgUnit or program undefined");
     }
 
@@ -46,12 +43,11 @@ export const useMetadata = (): Awaited<ReturnType<typeof queryInfo>> => {
         trackedEntityAttributes,
         programRules,
         programRuleVariables,
-        organisations,
-        orgUnit,
         program,
         dataElements,
-        programOrgUnits,
-				optionGroups,
-				optionSets
+        optionGroups,
+        optionSets,
+        orgUnitName: organisationUnits[0].name,
+        orgUnit: organisationUnits[0].id,
     };
 };

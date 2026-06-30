@@ -27,8 +27,14 @@ import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
 import React, { useEffect, useState } from "react";
 
+import { useConfig } from "@dhis2/app-runtime";
 import { eq, useLiveSuspenseQuery } from "@tanstack/react-db";
 import { waitFor } from "xstate";
+import {
+    enrollmentsCollection,
+    eventsCollection,
+    trackedEntitiesCollection,
+} from "../collections";
 import { Spinner } from "../components/spinner";
 import { useMetadata } from "../hooks/useMetadata";
 import { SyncContext } from "../machines/sync";
@@ -37,13 +43,6 @@ import {
     isDataPushLoading,
     isMetadataSyncLoading,
 } from "../machines/sync-metadata-mode";
-import {
-    trackedEntitiesCollection,
-    enrollmentsCollection,
-    eventsCollection,
-} from "../collections";
-import { useConfig } from "@dhis2/app-runtime";
-import { redirectByUnit } from "../utils/utils";
 
 dayjs.extend(relativeTime);
 
@@ -182,14 +181,7 @@ function SplitSyncButton({
 
 function LayoutWithDrafts() {
     const syncActor = SyncContext.useActorRef();
-
-    const { baseUrl } = useConfig();
-    const program = SyncContext.useSelector((a) => a.context.metadata.program);
-    const userOrgUnits = SyncContext.useSelector(
-        (a) => a.context.userInfo?.organisationUnits.map((a) => a.id) ?? [],
-    );
-
-    const { orgUnit } = useMetadata();
+		const {orgUnitName} = useMetadata()
     const syncingMetadata = SyncContext.useSelector((snapshot) => {
         return isMetadataSyncLoading(
             snapshot.matches({ metadataSync: "syncing" }) ||
@@ -254,7 +246,7 @@ function LayoutWithDrafts() {
             <Link to="/" onClick={() => setDrawerOpen(false)}>
                 <Flex align="center" justify="center" gap={5}>
                     <HomeOutlined style={{ fontSize: 20, color: "#1890ff" }} />
-                    <Text strong>{orgUnit?.name ?? "Loading..."}</Text>
+                    <Text strong>{orgUnitName ?? "Loading..."}</Text>
                 </Flex>
             </Link>
             <SplitSyncButton
@@ -335,11 +327,11 @@ function LayoutWithDrafts() {
         </Flex>
     );
 
-    redirectByUnit(
-        userOrgUnits,
-        program?.organisationUnits.map(({ id }) => id) ?? [],
-        baseUrl,
-    );
+    // redirectByUnit(
+    //     userOrgUnits,
+    //     program?.organisationUnits.map(({ id }) => id) ?? [],
+    //     baseUrl,
+    // );
 
     return (
         <Layout

@@ -654,3 +654,19 @@ export type Metadata = {
     }>;
     metadataVersion: MetadataVersion[];
 };
+
+export type MeUser = {
+    id: string;
+    displayName: string;
+    username: string;
+    firstName: string;
+    surname: string;
+    authorities: string[];
+    organisationUnits: Array<{
+        id: string;
+        name: string;
+        programs: Array<{ id: string; name: string }>;
+    }>;
+};
+
+export type MeData = { me: MeUser };
