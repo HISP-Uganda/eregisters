@@ -28,7 +28,7 @@ import relativeTime from "dayjs/plugin/relativeTime";
 import React, { useEffect, useState } from "react";
 
 import { useConfig } from "@dhis2/app-runtime";
-import { eq, useLiveSuspenseQuery } from "@tanstack/react-db";
+import { eq, or, useLiveSuspenseQuery } from "@tanstack/react-db";
 import { waitFor } from "xstate";
 import {
     enrollmentsCollection,
@@ -210,19 +210,32 @@ function LayoutWithDrafts() {
         q
             .from({ trackedEntities: trackedEntitiesCollection })
             .where(({ trackedEntities }) =>
-                eq(trackedEntities.syncStatus, "pending"),
+                or(
+                    eq(trackedEntities.syncStatus, "pending"),
+                    eq(trackedEntities.syncStatus, "deleted"),
+                ),
             ),
     );
 
     const { data: pendingEnrollments } = useLiveSuspenseQuery((q) =>
         q
             .from({ enrollments: enrollmentsCollection })
-            .where(({ enrollments }) => eq(enrollments.syncStatus, "pending")),
+            .where(({ enrollments }) =>
+                or(
+                    eq(enrollments.syncStatus, "pending"),
+                    eq(enrollments.syncStatus, "deleted"),
+                ),
+            ),
     );
     const { data: pendingEvents } = useLiveSuspenseQuery((q) =>
         q
             .from({ events: eventsCollection })
-            .where(({ events }) => eq(events.syncStatus, "pending")),
+            .where(({ events }) =>
+                or(
+                    eq(events.syncStatus, "pending"),
+                    eq(events.syncStatus, "deleted"),
+                ),
+            ),
     );
     useEffect(() => {
         const handleOnline = () =>

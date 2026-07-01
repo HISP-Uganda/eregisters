@@ -1313,6 +1313,71 @@ export async function deleteEventWithChildren(
     return { markedDeleted };
 }
 
+export async function deleteTrackedEntityWithChildren(
+    trackedEntityId: string,
+): Promise<{ needsSync: boolean }> {
+    const eventsTable: DexieTable<FlattenedEvent, string> =
+        eventsCollection.utils.getTable();
+    const enrollmentsTable: DexieTable<FlattenedEnrollment, string> =
+        enrollmentsCollection.utils.getTable();
+    const teTable: DexieTable<FlattenedTrackedEntity, string> =
+        trackedEntitiesCollection.utils.getTable();
+
+    const rootTE = await teTable.get(trackedEntityId);
+    if (!rootTE) return { needsSync: false };
+
+    let needsSync = false;
+
+    const allEvents = await eventsTable
+        .filter((e) => e.trackedEntity === trackedEntityId)
+        .toArray();
+
+    for (const event of allEvents) {
+        if (event.syncStatus === "draft" || event.syncStatus === "pending") {
+            await eventsCollection.delete(event.event).isPersisted.promise;
+            await db.indicatorEvaluations
+                .filter((e) => e.eventId === event.event)
+                .delete();
+        } else {
+            await eventsCollection.update(event.event, (d) => {
+                d.syncStatus = "deleted";
+            }).isPersisted.promise;
+            needsSync = true;
+        }
+    }
+
+    const enrollments = await enrollmentsTable
+        .filter((e) => e.trackedEntity === trackedEntityId)
+        .toArray();
+
+    for (const enrollment of enrollments) {
+        if (
+            enrollment.syncStatus === "draft" ||
+            enrollment.syncStatus === "pending"
+        ) {
+            await enrollmentsCollection.delete(enrollment.enrollment)
+                .isPersisted.promise;
+        } else {
+            await enrollmentsCollection.update(enrollment.enrollment, (d) => {
+                d.syncStatus = "deleted";
+            }).isPersisted.promise;
+            needsSync = true;
+        }
+    }
+
+    if (rootTE.syncStatus === "draft" || rootTE.syncStatus === "pending") {
+        await trackedEntitiesCollection.delete(trackedEntityId).isPersisted
+            .promise;
+    } else {
+        await trackedEntitiesCollection.update(trackedEntityId, (d) => {
+            d.syncStatus = "deleted";
+        }).isPersisted.promise;
+        needsSync = true;
+    }
+
+    return { needsSync };
+}
+
 /**
  * Handles cancel for a DataModal.
  *

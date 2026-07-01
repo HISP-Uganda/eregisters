@@ -44,6 +44,7 @@ function TrackedEntities() {
                 .where(({ trackedEntities }) =>
                     and(
                         not(eq(trackedEntities.syncStatus, "draft")),
+												not(eq(trackedEntities.syncStatus, "deleted")),
                         eq(trackedEntities.orgUnit, orgUnit),
                     ),
                 ),

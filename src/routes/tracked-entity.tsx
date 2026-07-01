@@ -54,6 +54,7 @@ import {
     cancelDataModal,
     createEmptyEvent,
     deleteEventWithChildren,
+    deleteTrackedEntityWithChildren,
 } from "../utils/utils";
 import { RootRoute } from "./__root";
 
@@ -421,6 +422,37 @@ function TrackedEntityComponent() {
                     <Tag color="purple">{sex}</Tag>
 
                     <SyncStatusComp syncStatus={trackedEntity.syncStatus} />
+                    <Popconfirm
+                        title="Delete Client"
+                        description="Are you sure you want to delete this client and all their visits? This cannot be undone."
+                        okText="Delete"
+                        okType="danger"
+                        onConfirm={async () => {
+                            try {
+                                const { needsSync } =
+                                    await deleteTrackedEntityWithChildren(
+                                        trackedEntity.trackedEntity,
+                                    );
+                                if (needsSync) {
+                                    syncActor.send({ type: "PUSH_DATA" });
+                                }
+                                navigate({ to: "/tracked-entities" });
+                            } catch (error) {
+                                console.error(
+                                    "Failed to delete client:",
+                                    error,
+                                );
+                            }
+                        }}
+                    >
+                        <Button
+                            danger
+                            icon={<DeleteOutlined />}
+                            size="small"
+                        >
+                            Delete Client
+                        </Button>
+                    </Popconfirm>
                 </Flex>
             </Flex>
 

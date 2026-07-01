@@ -1,5 +1,6 @@
 import {
     DashboardOutlined,
+    DeleteOutlined,
     MoreOutlined,
     UserOutlined,
 } from "@ant-design/icons";
@@ -12,6 +13,7 @@ import {
     Flex,
     Form,
     MenuProps,
+    Popconfirm,
     Table,
     Typography,
 } from "antd";
@@ -25,10 +27,12 @@ import { FlattenedTrackedEntity } from "../schemas";
 import {
     createEmptyEnrollment,
     createEmptyTrackedEntity,
+    deleteTrackedEntityWithChildren,
 } from "../utils/utils";
 import { TrackedEntitiesRoute } from "./tracked-entities";
 import { DataModal } from "../components/data-modal";
 import { TrackedEntityContext } from "../machines";
+import { SyncContext } from "../machines/sync";
 import { useMetadata } from "../hooks/useMetadata";
 import {
     enrollmentsCollection,
@@ -43,6 +47,7 @@ export const TrackedEntitiesIndexRoute = createRoute({
 });
 
 function TrackedEntitiesSearch() {
+    const syncActor = SyncContext.useActorRef();
     const {
         trackedEntityAttributes,
         programRules,
@@ -104,6 +109,7 @@ function TrackedEntitiesSearch() {
                 and(
                     eq(trackedEntity.orgUnit, orgUnit),
                     not(eq(trackedEntity.syncStatus, "draft")),
+                    not(eq(trackedEntity.syncStatus, "deleted")),
                 ),
             );
         },
@@ -210,6 +216,36 @@ function TrackedEntitiesSearch() {
             key: trackedEntityAttribute.id,
         };
     });
+
+    // columns.push({
+    //     title: "Action",
+    //     key: "delete",
+    //     fixed: "right" as const,
+    //     width: 80,
+    //     render: (_: unknown, record: FlattenedTrackedEntity) => (
+    //         <Popconfirm
+    //             title="Delete Client"
+    //             description="Are you sure you want to delete this client and all their visits?"
+    //             okText="Delete"
+    //             okType="danger"
+    //             onConfirm={async () => {
+    //                 try {
+    //                     const { needsSync } =
+    //                         await deleteTrackedEntityWithChildren(
+    //                             record.trackedEntity,
+    //                         );
+    //                     if (needsSync) {
+    //                         syncActor.send({ type: "PUSH_DATA" });
+    //                     }
+    //                 } catch (error) {
+    //                     console.error("Failed to delete client:", error);
+    //                 }
+    //             }}
+    //         >
+    //             <Button danger icon={<DeleteOutlined />} size="small" />
+    //         </Popconfirm>
+    //     ),
+    // });
 
     if (
         currentTrackedEntities.length === 0 &&

@@ -334,38 +334,140 @@ const syncReportToLocal = async ({
 
 const syncDeleteToLocal = async ({
     deletedEvents,
+    deletedTrackedEntities,
+    deletedEnrollments,
     engine,
 }: {
     deletedEvents: FlattenedEvent[];
+    deletedTrackedEntities: FlattenedTrackedEntity[];
+    deletedEnrollments: FlattenedEnrollment[];
     engine: ReturnType<typeof useDataEngine>;
 }): Promise<{ succeeded: number; failed: number }> => {
-    if (deletedEvents.length === 0) return { succeeded: 0, failed: 0 };
+    const hasAnything =
+        deletedEvents.length > 0 ||
+        deletedTrackedEntities.length > 0 ||
+        deletedEnrollments.length > 0;
+    if (!hasAnything) return { succeeded: 0, failed: 0 };
 
     const reachable = await isDhis2Reachable(engine);
     if (!reachable) {
         return { succeeded: 0, failed: 0 };
     }
 
+    const deletedTeIds = new Set(
+        deletedTrackedEntities.map((te) => te.trackedEntity),
+    );
+
+    const payload: Record<string, unknown> = {};
+    if (deletedTrackedEntities.length > 0) {
+        payload.trackedEntities = deletedTrackedEntities.map((te) => ({
+            trackedEntity: te.trackedEntity,
+        }));
+    }
+    if (deletedEnrollments.length > 0) {
+        payload.enrollments = deletedEnrollments
+            .filter((e) => !deletedTeIds.has(e.trackedEntity))
+            .map((e) => ({ enrollment: e.enrollment }));
+    }
+    if (deletedEvents.length > 0) {
+        payload.events = deletedEvents
+            .filter((e) => !deletedTeIds.has(e.trackedEntity))
+            .map((e) => ({ event: e.event }));
+    }
+
     const response = await submitTrackerImportAndWaitForReport({
         engine,
-        data: { events: deletedEvents.map((e) => ({ event: e.event })) },
+        data: payload,
         params: {
             importStrategy: "DELETE",
             atomicMode: "OBJECT",
         },
     });
 
-    const succeededUids = new Set(
+    // E1114 = TE already deleted, E1082 = Event already deleted, E1113 = Enrollment already deleted
+    const ALREADY_DELETED_CODES = new Set(["E1082", "E1113", "E1114"]);
+
+    const cleanupTeUids = new Set(
+        response.bundleReport.typeReportMap.TRACKED_ENTITY.objectReports.map(
+            (r) => r.uid,
+        ),
+    );
+    const cleanupEnrollmentUids = new Set(
+        response.bundleReport.typeReportMap.ENROLLMENT.objectReports.map(
+            (r) => r.uid,
+        ),
+    );
+    const cleanupEventUids = new Set(
         response.bundleReport.typeReportMap.EVENT.objectReports.map(
             (r) => r.uid,
         ),
     );
-    const failedUids = new Map(
-        response.validationReport.errorReports.map((r) => [r.uid, r.message]),
-    );
+
+    let realFailures = 0;
+    for (const err of response.validationReport.errorReports) {
+        if (ALREADY_DELETED_CODES.has(err.errorCode)) {
+            if (err.trackerType === "TRACKED_ENTITY")
+                cleanupTeUids.add(err.uid);
+            else if (err.trackerType === "ENROLLMENT")
+                cleanupEnrollmentUids.add(err.uid);
+            else if (err.trackerType === "EVENT") cleanupEventUids.add(err.uid);
+        } else {
+            realFailures++;
+        }
+    }
+
+    const teTable: Table<FlattenedTrackedEntity, string> =
+        trackedEntitiesCollection.utils.getTable();
+    const enrollTable: Table<FlattenedEnrollment, string> =
+        enrollmentsCollection.utils.getTable();
+    const eventTable: Table<FlattenedEvent, string> =
+        eventsCollection.utils.getTable();
+
+    for (const te of deletedTrackedEntities) {
+        if (cleanupTeUids.has(te.trackedEntity)) {
+            const childEnrollments = await enrollTable
+                .filter((e) => e.trackedEntity === te.trackedEntity)
+                .toArray();
+            for (const enr of childEnrollments) {
+                const childEvents = await eventTable
+                    .filter((e) => e.enrollment === enr.enrollment)
+                    .toArray();
+                for (const ev of childEvents) {
+                    await eventsCollection.delete(ev.event).isPersisted.promise;
+                }
+                await enrollmentsCollection.delete(enr.enrollment).isPersisted
+                    .promise;
+            }
+            await trackedEntitiesCollection.delete(te.trackedEntity).isPersisted
+                .promise;
+        }
+    }
+
+    for (const enrollment of deletedEnrollments) {
+        if (
+            cleanupEnrollmentUids.has(enrollment.enrollment) &&
+            !deletedTeIds.has(enrollment.trackedEntity)
+        ) {
+            await enrollmentsCollection.delete(enrollment.enrollment)
+                .isPersisted.promise;
+        }
+    }
+
+    for (const event of deletedEvents) {
+        if (
+            cleanupEventUids.has(event.event) &&
+            !deletedTeIds.has(event.trackedEntity)
+        ) {
+            await eventsCollection.delete(event.event).isPersisted.promise;
+        }
+    }
+
     return {
-        succeeded: succeededUids.size,
-        failed: failedUids.size,
+        succeeded:
+            cleanupTeUids.size +
+            cleanupEnrollmentUids.size +
+            cleanupEventUids.size,
+        failed: realFailures,
     };
 };
 
@@ -944,11 +1046,21 @@ const syncMachine = setup({
                     .filter((e) => e.syncStatus === "deleted")
                     .toArray();
 
+                const deletedTEs = await teTable
+                    .filter((e) => e.syncStatus === "deleted")
+                    .toArray();
+
+                const deletedEnrollments = await enrollTable
+                    .filter((e) => e.syncStatus === "deleted")
+                    .toArray();
+
                 if (
                     pendingTEs.length === 0 &&
                     pendingEnrollments.length === 0 &&
                     pendingEvents.length === 0 &&
-                    deletedEvents.length === 0
+                    deletedEvents.length === 0 &&
+                    deletedTEs.length === 0 &&
+                    deletedEnrollments.length === 0
                 ) {
                     return { processed: 0, succeeded: 0, failed: 0 };
                 }
@@ -972,9 +1084,15 @@ const syncMachine = setup({
                 }
 
                 let deleteResult = { succeeded: 0, failed: 0 };
-                if (deletedEvents.length > 0) {
+                if (
+                    deletedEvents.length > 0 ||
+                    deletedTEs.length > 0 ||
+                    deletedEnrollments.length > 0
+                ) {
                     deleteResult = await syncDeleteToLocal({
                         deletedEvents,
+                        deletedTrackedEntities: deletedTEs,
+                        deletedEnrollments,
                         engine,
                     });
                 }
