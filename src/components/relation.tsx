@@ -59,6 +59,20 @@ export default function Relation({
         [trackedEntity.trackedEntity],
     );
 
+    const { data: allEnrollmentEventsRaw } = useLiveSuspenseQuery(
+        (q) =>
+            q
+                .from({ events: eventsCollection })
+                .where(({ events }) =>
+                    and(
+                        eq(events.trackedEntity, trackedEntity.trackedEntity),
+                        not(eq(events.syncStatus, "deleted")),
+                    ),
+                )
+                .orderBy(({ events }) => events.occurredAt, "asc"),
+        [trackedEntity.trackedEntity],
+    );
+
     if (!childEvent || !enrollment) return null;
     return (
         <EventContext.Provider
@@ -73,6 +87,12 @@ export default function Relation({
                     trackedEntity,
                     validDataElements: mainStageDataElements,
                     form,
+                    allEnrollmentEvents: allEnrollmentEventsRaw.map((e) => ({
+                        event: e.event,
+                        programStage: e.programStage,
+                        occurredAt: e.occurredAt,
+                        dataValues: e.dataValues,
+                    })),
                 },
             }}
         >

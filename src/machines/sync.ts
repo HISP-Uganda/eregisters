@@ -1433,7 +1433,7 @@ const syncMachine = setup({
                         dataPullInterval: "syncing",
                     },
                     on: {
-                        queryingIndexDB: {
+                        START_DATA_SYNC: {
                             target: "syncing",
                             actions: assign({
                                 dataPullMode: () => "incremental",

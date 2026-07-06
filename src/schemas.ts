@@ -206,6 +206,7 @@ const ProgramRuleActionSchema = z.object({
         "HIDEOPTIONGROUP",
         "SHOWOPTIONGROUP",
         "SHOWERROR",
+        "SETMANDATORYFIELD",
     ]),
     dataElement: z.object({ displayName: z.string(), id: UID }).optional(),
     id: UID,
@@ -541,6 +542,7 @@ export type ProgramRuleResult = {
     shownFields: string[];
     hiddenSections: string[];
     shownSections: string[];
+    mandatoryFields: string[];
     messages: Array<Message>;
     warnings: Array<Message>;
     errors: Array<Message>;
@@ -565,6 +567,7 @@ export const RuleResultSchema = z.object({
     shownFields: z.array(z.string()),
     hiddenSections: z.array(z.string()),
     shownSections: z.array(z.string()),
+    mandatoryFields: z.array(z.string()).default([]),
     hiddenOptions: z.record(z.string(), z.array(z.string())),
     shownOptions: z.record(z.string(), z.array(z.string())),
     hiddenOptionGroups: z.record(z.string(), z.array(z.string())),

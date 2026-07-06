@@ -21,6 +21,13 @@ import {
 import { generateUid } from "./id";
 import { zScoreBMIFA, zScoreHFA, zScoreWFA, zScoreWFH } from "./who-zscore";
 
+export type EventForRules = {
+    event: string;
+    programStage: string;
+    occurredAt: string;
+    dataValues: Record<string, any>;
+};
+
 import {
     trackedEntitiesCollection,
     enrollmentsCollection,
@@ -131,7 +138,8 @@ export function executeProgramRules({
     attributeValues = {},
     program,
     programStage,
-    previousEvents = [],
+    allEnrollmentEvents = [],
+    currentEventId,
 }: {
     programRules: ProgramRule[];
     programRuleVariables: ProgramRuleVariable[];
@@ -139,7 +147,8 @@ export function executeProgramRules({
     attributeValues?: Record<string, any>;
     programStage?: string;
     program: string;
-    previousEvents?: Array<{ dataValues: Record<string, any> }>;
+    allEnrollmentEvents?: EventForRules[];
+    currentEventId?: string;
 }): ProgramRuleResult {
     const variableValues: Record<string, any> = {};
     variableValues["current_date"] = dayjs().format("YYYY-MM-DD");
@@ -152,9 +161,39 @@ export function executeProgramRules({
             variable.programRuleVariableSourceType ===
             "DATAELEMENT_PREVIOUS_EVENT"
         ) {
-            if (variable.dataElement && previousEvents.length > 0) {
-                const prevEvent = previousEvents[previousEvents.length - 1];
-                value = prevEvent.dataValues[variable.dataElement.id] ?? null;
+            if (variable.dataElement) {
+                const deId = variable.dataElement.id;
+                const currentOccurredAt = dataValues?.occurredAt ?? "";
+                const sameStage = allEnrollmentEvents
+                    .filter(
+                        (e) =>
+                            e.programStage === programStage &&
+                            e.event !== currentEventId &&
+                            e.occurredAt <= currentOccurredAt,
+                    )
+                    .sort((a, b) =>
+                        a.occurredAt.localeCompare(b.occurredAt),
+                    );
+                const prev = sameStage[sameStage.length - 1];
+                value = prev?.dataValues[deId] ?? null;
+            }
+        } else if (
+            variable.programRuleVariableSourceType ===
+            "DATAELEMENT_NEWEST_EVENT_PROGRAM"
+        ) {
+            if (variable.dataElement) {
+                const deId = variable.dataElement.id;
+                const sorted = [...allEnrollmentEvents]
+                    .filter((e) => e.event !== currentEventId)
+                    .sort((a, b) =>
+                        b.occurredAt.localeCompare(a.occurredAt),
+                    );
+                const found = sorted.find(
+                    (e) =>
+                        e.dataValues[deId] !== null &&
+                        e.dataValues[deId] !== undefined,
+                );
+                value = found?.dataValues[deId] ?? null;
             }
         } else if (
             variable.dataElement &&
@@ -649,6 +688,7 @@ export function executeProgramRules({
         assignments: {},
         hiddenFields: [],
         shownFields: [],
+        mandatoryFields: [],
         errors: [],
         hiddenSections: [],
         shownSections: [],
@@ -721,6 +761,14 @@ export function executeProgramRules({
                     if (targetId) {
                         if (!result.shownFields.includes(targetId)) {
                             result.shownFields.push(targetId);
+                        }
+                    }
+                    break;
+
+                case "SETMANDATORYFIELD":
+                    if (targetId) {
+                        if (!result.mandatoryFields.includes(targetId)) {
+                            result.mandatoryFields.push(targetId);
                         }
                     }
                     break;
@@ -1062,6 +1110,7 @@ export function programRuleResultsEqual(
         strArrEq(a.shownFields, b.shownFields) &&
         strArrEq(a.hiddenSections, b.hiddenSections) &&
         strArrEq(a.shownSections, b.shownSections) &&
+        strArrEq(a.mandatoryFields, b.mandatoryFields) &&
         msgArrEq(a.messages, b.messages) &&
         msgArrEq(a.warnings, b.warnings) &&
         msgArrEq(a.errors, b.errors) &&
@@ -1080,6 +1129,7 @@ export const createEmptyProgramRuleResult = (): ProgramRuleResult => {
         shownFields: [],
         hiddenSections: [],
         shownSections: [],
+        mandatoryFields: [],
         messages: [],
         warnings: [],
         errors: [],

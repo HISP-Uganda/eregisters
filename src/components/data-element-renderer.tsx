@@ -117,7 +117,7 @@ export const DataElementRenderer = React.memo(
                 messages={messages}
                 warnings={warnings}
                 errors={errors}
-                required={compulsory}
+                required={compulsory || ruleResult.mandatoryFields.includes(dataElementId)}
                 disabled={isDisabled}
                 key={dataElementId}
                 form={form}
@@ -150,6 +150,8 @@ export const DataElementRenderer = React.memo(
         if (p.hiddenFields.includes(id) !== n.hiddenFields.includes(id))
             return false;
         if (p.hiddenSections.includes(id) !== n.hiddenSections.includes(id))
+            return false;
+        if (p.mandatoryFields.includes(id) !== n.mandatoryFields.includes(id))
             return false;
         if (id in p.assignments !== id in n.assignments) return false;
         if (String(p.assignments[id]) !== String(n.assignments[id]))

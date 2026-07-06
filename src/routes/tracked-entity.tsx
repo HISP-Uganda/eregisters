@@ -140,6 +140,20 @@ function TrackedEntityComponent() {
         [tei],
     );
 
+    const { data: allEnrollmentEventsRaw } = useLiveSuspenseQuery(
+        (q) =>
+            q
+                .from({ events: eventsCollection })
+                .where(({ events }) =>
+                    and(
+                        eq(events.trackedEntity, tei),
+                        not(eq(events.syncStatus, "deleted")),
+                    ),
+                )
+                .orderBy(({ events }) => events.occurredAt, "asc"),
+        [tei],
+    );
+
     const { data: currentEvent } = useLiveSuspenseQuery(
         (q) => {
             return q
@@ -357,25 +371,61 @@ function TrackedEntityComponent() {
                         <Descriptions bordered column={1} items={items} />
                     ),
                     extra: (
-                        <Button
-                            icon={<EditOutlined />}
-                            size="small"
-                            onClick={() =>
-                                openTrackedEntityModal(
-                                    {
-                                        ...trackedEntity,
-                                        attributes: {
-                                            ...trackedEntity.attributes,
-                                            enrolledAt: enrollment.enrolledAt,
-                                            ...enrollment.attributes,
+                        <Flex gap="small" align="center">
+                            <Button
+                                icon={<EditOutlined />}
+                                size="small"
+                                onClick={() =>
+                                    openTrackedEntityModal(
+                                        {
+                                            ...trackedEntity,
+                                            attributes: {
+                                                ...trackedEntity.attributes,
+                                                enrolledAt:
+                                                    enrollment.enrolledAt,
+                                                ...enrollment.attributes,
+                                            },
                                         },
-                                    },
-                                    enrollment,
-                                )
-                            }
-                        >
-                            Edit
-                        </Button>
+                                        enrollment,
+                                    )
+                                }
+                            >
+                                Edit
+                            </Button>
+                            <Popconfirm
+                                title="Delete Client"
+                                description="Are you sure you want to delete this client and all their visits? This cannot be undone."
+                                okText="Delete"
+                                okType="danger"
+                                onConfirm={async () => {
+                                    try {
+                                        const { needsSync } =
+                                            await deleteTrackedEntityWithChildren(
+                                                trackedEntity.trackedEntity,
+                                            );
+                                        if (needsSync) {
+                                            syncActor.send({
+                                                type: "PUSH_DATA",
+                                            });
+                                        }
+                                        navigate({ to: "/tracked-entities" });
+                                    } catch (error) {
+                                        console.error(
+                                            "Failed to delete client:",
+                                            error,
+                                        );
+                                    }
+                                }}
+                            >
+                                <Button
+                                    danger
+                                    icon={<DeleteOutlined />}
+                                    size="small"
+                                >
+                                    Delete Client
+                                </Button>
+                            </Popconfirm>
+                        </Flex>
                     ),
                 },
             ]}
@@ -408,51 +458,28 @@ function TrackedEntityComponent() {
                 >
                     Back
                 </Button>
-                <Flex align="center" gap={8} wrap>
-                    <UserOutlined
-                        style={{
-                            fontSize: isMobile ? 16 : 18,
-                            color: "#1f4788",
-                        }}
-                    />
-                    <Title level={isMobile ? 5 : 4} style={{ margin: 0 }}>
-                        {firstName} {surname}
-                    </Title>
-                    {age !== null && <Tag color="blue">{age} yrs</Tag>}
-                    <Tag color="purple">{sex}</Tag>
+                <Flex
+                    align="center"
+                    gap={8}
+                    wrap
+                    justify="space-between"
+                    style={{ width: "100%" }}
+                >
+                    <Flex align="center" gap={8}>
+                        <UserOutlined
+                            style={{
+                                fontSize: isMobile ? 16 : 18,
+                                color: "#1f4788",
+                            }}
+                        />
+                        <Title level={isMobile ? 5 : 4} style={{ margin: 0 }}>
+                            {firstName} {surname}
+                        </Title>
+                        {age !== null && <Tag color="blue">{age} yrs</Tag>}
+                        <Tag color="purple">{sex}</Tag>
 
-                    <SyncStatusComp syncStatus={trackedEntity.syncStatus} />
-                    <Popconfirm
-                        title="Delete Client"
-                        description="Are you sure you want to delete this client and all their visits? This cannot be undone."
-                        okText="Delete"
-                        okType="danger"
-                        onConfirm={async () => {
-                            try {
-                                const { needsSync } =
-                                    await deleteTrackedEntityWithChildren(
-                                        trackedEntity.trackedEntity,
-                                    );
-                                if (needsSync) {
-                                    syncActor.send({ type: "PUSH_DATA" });
-                                }
-                                navigate({ to: "/tracked-entities" });
-                            } catch (error) {
-                                console.error(
-                                    "Failed to delete client:",
-                                    error,
-                                );
-                            }
-                        }}
-                    >
-                        <Button
-                            danger
-                            icon={<DeleteOutlined />}
-                            size="small"
-                        >
-                            Delete Client
-                        </Button>
-                    </Popconfirm>
+                        <SyncStatusComp syncStatus={trackedEntity.syncStatus} />
+                    </Flex>
                 </Flex>
             </Flex>
 
@@ -638,6 +665,16 @@ function TrackedEntityComponent() {
                                         validDataElements:
                                             mainStageDataElements,
                                         form,
+                                        allEnrollmentEvents:
+                                            allEnrollmentEventsRaw.map(
+                                                (e) => ({
+                                                    event: e.event,
+                                                    programStage:
+                                                        e.programStage,
+                                                    occurredAt: e.occurredAt,
+                                                    dataValues: e.dataValues,
+                                                }),
+                                            ),
                                     },
                                 }}
                             >
@@ -693,7 +730,6 @@ function TrackedEntityComponent() {
                             );
                             await tx2.isPersisted.promise;
                         }
-
                     }
                 }}
                 title="Edit Client"

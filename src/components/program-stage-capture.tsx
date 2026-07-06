@@ -105,6 +105,23 @@ export const ProgramStageCapture: React.FC<{
         }),
     );
 
+    const { data: allEnrollmentEventsRaw } = useLiveSuspenseQuery(
+        (q) =>
+            q
+                .from({ events: eventsCollection })
+                .where(({ events }) =>
+                    and(
+                        eq(
+                            events.trackedEntity,
+                            trackedEntity.trackedEntity,
+                        ),
+                        not(eq(events.syncStatus, "deleted")),
+                    ),
+                )
+                .orderBy(({ events }) => events.occurredAt, "asc"),
+        [trackedEntity.trackedEntity],
+    );
+
     const medicines = new Map(
         optionSets.get("Fm205YyFeRg")?.map(({ code, name }) => [code, name]),
     );
@@ -289,6 +306,16 @@ export const ProgramStageCapture: React.FC<{
                                         validDataElements:
                                             mainStageDataElements,
                                         form,
+                                        allEnrollmentEvents:
+                                            allEnrollmentEventsRaw.map(
+                                                (e) => ({
+                                                    event: e.event,
+                                                    programStage:
+                                                        e.programStage,
+                                                    occurredAt: e.occurredAt,
+                                                    dataValues: e.dataValues,
+                                                }),
+                                            ),
                                     },
                                 }}
                             >

@@ -12,6 +12,7 @@ import {
 } from "../schemas";
 import {
     createEmptyProgramRuleResult,
+    EventForRules,
     executeProgramRules,
     programRuleResultsEqual,
 } from "../utils/utils";
@@ -35,6 +36,7 @@ const eventFormMachine = setup({
             form: FormInstance;
             persistenceError: string | null;
             previousAssignments: Record<string, any>;
+            allEnrollmentEvents: EventForRules[];
         },
         input: {} as {
             programRules: ProgramRule[];
@@ -46,6 +48,7 @@ const eventFormMachine = setup({
             validDataElements: Set<string>;
             program: string;
             form: FormInstance;
+            allEnrollmentEvents: EventForRules[];
         },
     },
     actions: {
@@ -91,6 +94,8 @@ const eventFormMachine = setup({
                 program,
                 attributeValues: context.trackedEntity?.attributes || {},
                 programStage: context.programStage,
+                allEnrollmentEvents: context.allEnrollmentEvents,
+                currentEventId: context.event.event,
             });
 
             return {
@@ -134,6 +139,7 @@ const eventFormMachine = setup({
             programStage,
             program,
             form,
+            allEnrollmentEvents,
         },
     }) => {
         return {
@@ -148,6 +154,7 @@ const eventFormMachine = setup({
             trackedEntity,
             validDataElements,
             form,
+            allEnrollmentEvents,
             ruleResult: createEmptyProgramRuleResult(),
             persistenceError: null,
             previousAssignments: {},

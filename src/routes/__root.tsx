@@ -266,7 +266,7 @@ function LayoutWithDrafts() {
                 tooltip="Pull data changes since last sync"
                 icon={<CloudDownloadOutlined />}
                 isLoading={syncingData}
-                idleLabel="Pull Changes"
+                idleLabel="Pull Data"
                 loadingLabel="Pulling..."
                 lastTime={
                     lastDataPull ? dayjs(lastDataPull).fromNow() : undefined
