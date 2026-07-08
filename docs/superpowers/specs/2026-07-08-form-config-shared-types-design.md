@@ -7,7 +7,7 @@
 
 Eight of the nine files in `src/form-configs/` each re-declare the same ~50-line block of TypeScript types verbatim. Any change to the shape of a cell, row, or section must be made in 8 places. The types are named `Hmis105*` but are used in `Hmis106A*` forms too, making the names misleading.
 
-Additionally, there are minor inconsistencies across the copies: some files omit `disabled`, `total`, and `style.width` on `Hmis105CellConfig` while others include them.
+Additionally, there are minor inconsistencies across the copies: some files omit `disabled` and `total` on `Hmis105CellConfig`, and only `Hmis10510.config.ts` defines and uses `style.width`.
 
 ## Goal
 
@@ -82,7 +82,7 @@ export interface HmisFormConfig {
 ### Rename mapping
 
 | Old name (per-file) | New shared name |
-|---|---|
+| --- | --- |
 | `Hmis105CellKind` | `HmisCellKind` |
 | `Hmis105RowType` | `HmisRowType` |
 | `Hmis105CellConfig` | `HmisCellConfig` |
@@ -97,15 +97,20 @@ export interface HmisFormConfig {
 Files: `Hmis10501.config.ts`, `Hmis1050203.config.ts`, `Hmis1050405.config.ts`, `Hmis1050609.config.ts`, `Hmis10510.config.ts`, `Hmis106A0102.config.ts`, `Hmis106A03.config.ts`, `Hmis106A04.config.ts`
 
 Each file:
+
 1. Removes the local type block (~50 lines at the top of each file).
-2. Adds an import from the shared types file:
-   ```typescript
-   import type { HmisCellConfig, HmisRowConfig, HmisColumnConfig, HmisSectionConfig, HmisTabConfig, HmisFormConfig } from './types';
-   ```
-3. Adds an explicit type annotation to the exported config constant:
-   ```typescript
-   export const HMIS_XXX_CONFIG: HmisFormConfig = { ... }
-   ```
+
+1. Adds an import from the shared types file:
+
+```typescript
+import type { HmisCellConfig, HmisRowConfig, HmisColumnConfig, HmisSectionConfig, HmisTabConfig, HmisFormConfig } from './types';
+```
+
+1. Adds an explicit type annotation to the exported config constant (all 8 constants are currently untyped plain objects):
+
+```typescript
+export const HMIS_XXX_CONFIG: HmisFormConfig = { ... }
+```
 
 ### Changes to `src/components/Hmis10501.tsx`
 
@@ -134,7 +139,7 @@ All usages of the old type names inside the component are renamed to match.
 ## Files Changed
 
 | File | Change |
-|---|---|
+| --- | --- |
 | `src/form-configs/types.ts` | Created |
 | `src/form-configs/Hmis10501.config.ts` | Remove local types, import from `./types`, type the constant |
 | `src/form-configs/Hmis1050203.config.ts` | Same |
@@ -148,7 +153,7 @@ All usages of the old type names inside the component are renamed to match.
 
 ## Success Criteria
 
-- `src/form-configs/types.ts` exists and exports all 8 shared types.
-- No config file in `src/form-configs/` declares its own `Hmis105*` types.
-- TypeScript compilation passes with no errors.
-- `src/components/Hmis10501.tsx` uses the renamed types and compiles cleanly.
+- `src/form-configs/types.ts` exists and exports all 8 shared types under their generic names.
+- Each of the 8 config files imports from `./types` and contains no local `interface Hmis105*` or `type Hmis105*` declarations.
+- `src/components/Hmis10501.tsx` imports from `../form-configs/types` (not from a config file) and uses the renamed types.
+- TypeScript compilation passes with no errors (`tsc --noEmit`).
