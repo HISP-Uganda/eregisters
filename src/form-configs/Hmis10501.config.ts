@@ -18,13 +18,6 @@ import type {
   HmisFormConfig,
 } from './types';
 
-// Re-export with legacy names for backward compatibility
-export type Hmis105CellConfig = HmisCellConfig;
-export type Hmis105RowConfig = HmisRowConfig;
-export type Hmis105ColumnConfig = HmisColumnConfig;
-export type Hmis105SectionConfig = HmisSectionConfig;
-export type Hmis105TabConfig = HmisTabConfig;
-export type Hmis105FormConfig = HmisFormConfig;
 
 export const HMIS_105_01_SECTION_1_CONFIG: HmisFormConfig = {
   "id": "hmis-105-01-section-1",
@@ -34676,4 +34669,4 @@ export const HMIS_105_01_SECTION_1_CONFIG: HmisFormConfig = {
       "sections": []
     }
   ]
-} as const satisfies Hmis105FormConfig;
+} as const satisfies HmisFormConfig;
