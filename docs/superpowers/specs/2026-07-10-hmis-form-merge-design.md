@@ -118,6 +118,8 @@ disabled={readOnly || !!cell.disabled}
 
 ### 4. Update `getCellStyle`
 
+**Depends on Section 1** — `verticalAlign` must be added to `HmisCellConfig.style` before this compiles. Apply Section 1 first.
+
 Add the two style properties now present in `HmisCellConfig.style`:
 
 ```ts
@@ -211,12 +213,13 @@ When `background` and `verticalAlign` (and/or `width`) appear on the same cell, 
 - `import HmisNativeForm` → `import HmisForm`
 - `import type { HmisNativeFormDefinition }` → `import type { HmisFormConfig }`
 - `import type { HmisNativeFormProps }` → `import type { HmisFormProps }`
-- Update prop type in `Hmis033bFormProps` to use `HmisFormConfig` and `HmisFormProps`
+- Update the local type alias explicitly: replace `Omit<HmisNativeFormProps, "config"> & { config?: HmisNativeFormDefinition }` with `Omit<HmisFormProps, "config"> & { config?: HmisFormConfig }`
+- Update the JSX render line: `<HmisNativeForm ...>` → `<HmisForm ...>`
 - Update config import: `HMIS_033B_NATIVE_CONFIG` → `HMIS_033B_CONFIG`
 
 ### Breaking change: `onSave` payload
 
-`HmisNativeFormProps.onSave` defined `dataValues` items **without** `attributeOptionCombo`. `HmisFormProps.onSave` includes `attributeOptionCombo` in each item. After migration, any caller that passes an `onSave` callback to `Hmis033bForm` and reads `dataValues` items will receive an additional `attributeOptionCombo` field. Audit all call sites of `Hmis033bForm` to confirm this is safe before merging.
+`HmisNativeFormProps.onSave` omitted `attributeOptionCombo` from `dataValues` items. `HmisFormProps.onSave` includes it. The only current call site (`src/routes/reports.tsx`) does not pass `onSave`, so this is low-risk. Audit any new call sites before merging.
 
 ---
 
