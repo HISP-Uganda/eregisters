@@ -1,17 +1,22 @@
 import Dexie, { Table } from "dexie";
 import {
+    CategoryOptionCombo,
     DataElement,
+    DataSet,
     FlattenedEnrollment,
     FlattenedEvent,
+    FlattenedOptionGroup,
+    FlattenedOptionSet,
     FlattenedTrackedEntity,
     MetadataVersion,
-    Node,
+    OU,
     Program,
     ProgramIndicator,
     ProgramRule,
     ProgramRuleResult,
     ProgramRuleVariable,
     TrackedEntityAttribute,
+    UIConfig,
 } from "../schemas";
 
 export interface SyncOperation {
@@ -90,35 +95,20 @@ export interface IndicatorEvaluation {
 class RegisterDatabase extends Dexie {
     programRules!: Table<ProgramRule, string>;
     programRuleVariables!: Table<ProgramRuleVariable, string>;
-    optionGroups!: Table<
-        {
-            id: string;
-            name: string;
-            code: string;
-            optionGroup: string;
-            sortOrder: number;
-        },
-        string
-    >;
-    optionSets!: Table<
-        {
-            id: string;
-            name: string;
-            code: string;
-            optionSet: string;
-            sortOrder: number;
-        },
-        string
-    >;
+    optionGroups!: Table<FlattenedOptionGroup, string>;
+    optionSets!: Table<FlattenedOptionSet, string>;
     dataElements!: Table<DataElement, string>;
     trackedEntityAttributes!: Table<TrackedEntityAttribute, string>;
-    organisationUnits!: Table<Node, string>;
+    organisationUnits!: Table<OU, string>;
     programs!: Table<Program, string>;
     metadataVersions!: Table<MetadataVersion, string>;
     metadataSyncProgress!: Table<MetadataSyncProgress, string>;
     syncState!: Table<SyncState, string>;
     programIndicators!: Table<ProgramIndicator, string>;
     indicatorEvaluations!: Table<IndicatorEvaluation, string>;
+    uiConfig!: Table<{ id: string; config: UIConfig }, string>;
+    dataSets!: Table<DataSet, string>;
+    categoryOptionCombos!: Table<CategoryOptionCombo, string>;
 
     constructor() {
         super("MOHRegisterDB");
@@ -128,7 +118,7 @@ class RegisterDatabase extends Dexie {
             dataElements: "id,name",
             programIndicators: "id,name",
             trackedEntityAttributes: "id,name",
-            organisationUnits: "[id+user],id,user",
+            organisationUnits: "id,name,path",
             optionSets: "[id+optionSet],id,optionSet,name,code",
             optionGroups: "[id+optionGroup],id,optionGroup,name,code",
             programs: "id,name,programType",
@@ -136,6 +126,11 @@ class RegisterDatabase extends Dexie {
             metadataSyncProgress: "id,status,updatedAt",
             syncState: "id,status,updatedAt",
             indicatorEvaluations: "id,eventId,updatedAt,version",
+            categoryOptionCombos: "id,name",
+            dataSets: "id,name",
+        });
+        this.version(2).stores({
+            uiConfig: "id",
         });
     }
 }

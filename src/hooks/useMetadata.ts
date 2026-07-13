@@ -4,9 +4,9 @@ import { queryInfo } from "../utils/utils";
 
 export const useMetadata = (): Awaited<ReturnType<typeof queryInfo>> => {
     const metadata = SyncContext.useSelector((a) => a.context.metadata);
-    const { organisationUnits } = SyncContext.useSelector(
-        (a) => a.context.userInfo,
-    );
+    const {
+        organisationUnits: [{ id, name }],
+    } = SyncContext.useSelector((a) => a.context.userInfo);
     const {
         program,
         trackedEntityAttributes = new Map<string, TrackedEntityAttribute>(),
@@ -33,6 +33,9 @@ export const useMetadata = (): Awaited<ReturnType<typeof queryInfo>> => {
                 sortOrder: number;
             }>
         >(),
+        dataSets = [],
+        organisationUnits = [],
+        categoryOptionCombos = [],
     } = metadata;
 
     if (program === undefined) {
@@ -47,7 +50,10 @@ export const useMetadata = (): Awaited<ReturnType<typeof queryInfo>> => {
         dataElements,
         optionGroups,
         optionSets,
-        orgUnitName: organisationUnits[0].name,
-        orgUnit: organisationUnits[0].id,
+        orgUnitName: name,
+        orgUnit: id,
+        dataSets,
+        organisationUnits,
+        categoryOptionCombos,
     };
 };

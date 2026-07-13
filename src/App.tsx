@@ -1,18 +1,17 @@
-import { useConfig, useDataEngine, useDataQuery } from "@dhis2/app-runtime";
+import { useDataEngine, useDataQuery } from "@dhis2/app-runtime";
 import { RouterProvider } from "@tanstack/react-router";
 import { App, ConfigProvider, Typography } from "antd";
 import React, { FC, useEffect } from "react";
 import { Spinner } from "./components/spinner";
 import { SyncContext } from "./machines/sync";
 import { router } from "./router";
-import { redirectByAuthorities } from "./utils/utils";
 import { MeData, MeUser } from "./schemas";
 
 const ME_QUERY = {
     me: {
         resource: "me",
         params: {
-            fields: "id,displayName,username,firstName,surname,authorities,organisationUnits[id,name,programs[id,name]]",
+            fields: "id,displayName,username,firstName,surname,authorities,organisationUnits[id,name,path,programs[id,name]],dataSets[id,name,code]",
         },
     },
 } as const;
@@ -44,8 +43,6 @@ const FullApp: FC<{
 };
 
 const MyApp: FC = () => {
-    const { baseUrl } = useConfig();
-
     const { data, loading, error } = useDataQuery<MeData>(ME_QUERY);
     useEffect(() => {
         if (!("serviceWorker" in navigator)) return;
@@ -100,17 +97,11 @@ const MyApp: FC = () => {
         );
     }
 
-    const {
-        id: user,
-        organisationUnits: [{ id: orgUnit, programs }],
-        authorities,
-    } = data.me;
-
-    redirectByAuthorities(
-        authorities,
-        programs.map(({ id }) => id),
-        baseUrl,
-    );
+    // const {
+    //     id: user,
+    //     organisationUnits: [{ id: orgUnit, programs }],
+    //     authorities,
+    // } = data.me;
 
     return (
         <ConfigProvider

@@ -6,3 +6,4 @@
 {"source":"user-event","type":"click","text":"C\n    \n      Subsection-first list with checkboxes\n      Admin names each subsection and checks which data elements belong to it. One subsection expanded at a time.\n      \n        Section: \"Drug Administration\"\n        \n          + Add Subsection\n          \n            \n              Dosage Details\n              ▾ expand\n            \n            \n               Drug Name\n               Dose (mg)\n               Frequency\n            \n          \n          \n            \n              Side Effects\n              ▸ expand","choice":"c","id":null,"timestamp":1783331594169}
 {"type":"screen-added","file":"/Users/carapai/projects/eregisters/.superpowers/brainstorm/54952-1783330755/app-settings.html"}
 {"type":"screen-added","file":"/Users/carapai/projects/eregisters/.superpowers/brainstorm/54952-1783330755/waiting.html"}
+{"type":"server-stopped","reason":"idle timeout"}

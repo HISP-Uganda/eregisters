@@ -1,7 +1,7 @@
 import { FormItemProps, TableProps } from "antd";
-import { Table as DexieTable } from "dexie";
 import dayjs from "dayjs";
-import { groupBy, intersection, isEmpty } from "lodash";
+import { Table as DexieTable } from "dexie";
+import { groupBy, isEmpty } from "lodash";
 import {
     Enrollment,
     Event,
@@ -29,9 +29,9 @@ export type EventForRules = {
 };
 
 import {
-    trackedEntitiesCollection,
     enrollmentsCollection,
     eventsCollection,
+    trackedEntitiesCollection,
 } from "../collections";
 import { db } from "../db";
 
@@ -171,9 +171,7 @@ export function executeProgramRules({
                             e.event !== currentEventId &&
                             e.occurredAt <= currentOccurredAt,
                     )
-                    .sort((a, b) =>
-                        a.occurredAt.localeCompare(b.occurredAt),
-                    );
+                    .sort((a, b) => a.occurredAt.localeCompare(b.occurredAt));
                 const prev = sameStage[sameStage.length - 1];
                 value = prev?.dataValues[deId] ?? null;
             }
@@ -185,9 +183,7 @@ export function executeProgramRules({
                 const deId = variable.dataElement.id;
                 const sorted = [...allEnrollmentEvents]
                     .filter((e) => e.event !== currentEventId)
-                    .sort((a, b) =>
-                        b.occurredAt.localeCompare(a.occurredAt),
-                    );
+                    .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt));
                 const found = sorted.find(
                     (e) =>
                         e.dataValues[deId] !== null &&
@@ -1484,7 +1480,13 @@ export const queryInfo = async (userInfo: MeUser) => {
     const optionGroups = await db.optionGroups.toArray();
     const optionSets = await db.optionSets.toArray();
     const [program] = await db.programs.toArray();
-    // const [orgUnit] = await db.organisationUnits.where({ id, user }).toArray();
+    const dataSets = await db.dataSets.toArray();
+    const categoryOptionCombos = await db.categoryOptionCombos.toArray();
+    const organisationUnits = await db.organisationUnits
+        .where("path")
+        .startsWith(userInfo.organisationUnits[0].path)
+        .toArray();
+
     return {
         dataElements: new Map(dataElements.map((de) => [de.id, de])),
         trackedEntityAttributes: new Map(
@@ -1497,16 +1499,11 @@ export const queryInfo = async (userInfo: MeUser) => {
         ),
         optionSets: new Map(Object.entries(groupBy(optionSets, "optionSet"))),
         program,
-        // programOrgUnits: new Set(
-        //     // program?.organisationUnits.map(({ id }) => id),
-        //     orgUnit.id,
-        // ),
-        // organisations: new Map(
-        //     // program?.organisationUnits.map((ou) => [ou.id, ou.name]),
-        //     [[orgUnit.id, orgUnit.name]],
-        // ),
         orgUnit: userInfo.organisationUnits[0].id,
         orgUnitName: userInfo.organisationUnits[0].name,
+        dataSets,
+        organisationUnits,
+        categoryOptionCombos,
     };
 };
 
@@ -1520,6 +1517,9 @@ export const checkInfo = async () => {
             db.optionGroups.count(),
             db.optionSets.count(),
             db.programs.count(),
+            db.dataSets.count(),
+            db.organisationUnits.count(),
+            db.categoryOptionCombos.count(),
         ]);
 
         const hasEmptyTables = queries.some((a) => a === 0);
@@ -1559,18 +1559,18 @@ export const checkInfo = async () => {
     }
 };
 
-export function redirectByAuthorities(
-    authorities: string[],
-    programs: string[],
-    baseUrl: string,
-) {
-    if (!authorities.includes("ALL") && !authorities.includes("M_eregisters")) {
-        window.location.href = `${baseUrl}/apps/eRegisters-Monitoring-Dashboard`;
-        return;
-    }
+// export function redirectByAuthorities(
+//     authorities: string[],
+//     programs: string[],
+//     baseUrl: string,
+// ) {
+//     if (!authorities.includes("ALL") && !authorities.includes("M_eregisters")) {
+//         window.location.href = `${baseUrl}/apps/eRegisters-Monitoring-Dashboard`;
+//         return;
+//     }
 
-    if (programs.length === 0) {
-        window.location.href = `${baseUrl}/apps/eRegisters-Monitoring-Dashboard`;
-        return;
-    }
-}
+//     if (programs.length === 0) {
+//         window.location.href = `${baseUrl}/apps/eRegisters-Monitoring-Dashboard`;
+//         return;
+//     }
+// }

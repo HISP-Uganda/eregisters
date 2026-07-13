@@ -2,6 +2,22 @@ import { GetProp, TablePaginationConfig, TreeSelectProps } from "antd";
 import { FilterValue } from "antd/es/table/interface";
 import z from "zod";
 
+export type Resource =
+    | "programs"
+    | "organisationUnits"
+    | "dataSets"
+    | "programStages"
+    | "dataElements"
+    | "trackedEntityTypes"
+    | "optionSets"
+    | "programIndicators"
+    | "categoryOptionCombos"
+    | "me"
+    | "optionGroups"
+    | "attributes"
+    | "programRuleVariables"
+    | "programRules";
+
 export interface MetadataVersion {
     id: string;
     lastSync: string;
@@ -17,6 +33,9 @@ export interface MetadataVersion {
         optionGroups?: string;
         programRuleVariables?: string;
         programRules?: string;
+        dataSets?: string;
+        organisationUnits?: string;
+        categoryOptionCombos?: string;
     };
 }
 
@@ -62,6 +81,14 @@ const UserSchema = z.object({
 
 export const ClientSchema = z.object({
     search: z.record(z.string(), z.string()).optional(),
+});
+export const ReportSchema = z.object({
+    period: z.string().optional(),
+    dataSet: z.string().optional(),
+    orgUnit: z.string().optional(),
+    attribution: z.string().optional(),
+    periodType: z.string().optional(),
+    expanded: z.array(z.string()).optional(),
 });
 
 const OptionSetSchema = z.object({
@@ -634,13 +661,25 @@ export interface Village {
 }
 
 export type Metadata = {
-    organisationUnits: Node[];
+    organisationUnits: Array<{
+        id: string;
+        name: string;
+        code?: string;
+        path: string;
+    }>;
     programs: Program[];
     dataElements: DataElement[];
     programIndicators: ProgramIndicator[];
     trackedEntityAttributes: TrackedEntityAttribute[];
     programRules: ProgramRule[];
     programRuleVariables: ProgramRuleVariable[];
+    categoryOptionCombos: CategoryOptionCombo[];
+    dataSets: Array<{
+        id: string;
+        name: string;
+        code?: string;
+        periodType: string;
+    }>;
     optionSets: Array<{
         optionSet: string;
         id: string;
@@ -668,8 +707,122 @@ export type MeUser = {
     organisationUnits: Array<{
         id: string;
         name: string;
+        path: string;
         programs: Array<{ id: string; name: string }>;
     }>;
 };
 
-export type MeData = { me: MeUser };
+export type MeData = {
+    me: MeUser;
+    dataSets: { dataSets: Array<{ id: string; code?: string; name: string }> };
+};
+
+export type SubsectionConfig = {
+    id: string;
+    name: string;
+    dataElementIds: string[];
+};
+
+export type UIConfig = {
+    subsections: Record<string, SubsectionConfig[]>;
+    reloadSignal: {
+        app: { timestamp: string } | null;
+        metadata: { timestamp: string } | null;
+    };
+};
+
+export const emptyUIConfig: UIConfig = {
+    subsections: {},
+    reloadSignal: { app: null, metadata: null },
+};
+export type DataSet = {
+    id: string;
+    code?: string;
+    name: string;
+    periodType: string;
+};
+
+export type OU = {
+    id: string;
+    name: string;
+    code?: string;
+    path: string;
+    parent?: { id: string };
+};
+
+export type FlattenedOptionSet = {
+    id: string;
+    name: string;
+    code: string;
+    optionSet: string;
+    sortOrder: number;
+};
+
+export type FlattenedOptionGroup = {
+    id: string;
+    name: string;
+    code: string;
+    optionGroup: string;
+    sortOrder: number;
+};
+
+export interface AggregateData {
+    count: number;
+    rows_fetched: number;
+    rows_invalid: number;
+    rows_duplicate: number;
+    pager: Pager;
+    dataValues: AggregateDataValue[];
+}
+
+export interface Pager {
+    page: number;
+    pageSize: number;
+    pageCount: number;
+    total: number;
+}
+
+export interface AggregateDataValue {
+    dataElement: string;
+    period: string;
+    orgUnit: string;
+    categoryOptionCombo: string;
+    attributeOptionCombo: string;
+    value: string;
+}
+
+export interface CategoryOptionCombo {
+  name: string
+  categoryOptions: CategoryOption[]
+  access: Access2
+  id: string
+}
+
+export interface CategoryOption {
+  name: string
+  access: Access
+  id: string
+}
+
+export interface Access {
+  manage: boolean
+  externalize: boolean
+  write: boolean
+  read: boolean
+  update: boolean
+  delete: boolean
+  data: Data
+}
+
+export interface Data {
+  write: boolean
+  read: boolean
+}
+
+export interface Access2 {
+  manage: boolean
+  externalize: boolean
+  write: boolean
+  read: boolean
+  update: boolean
+}

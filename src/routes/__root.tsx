@@ -12,6 +12,7 @@ import {
     Outlet,
 } from "@tanstack/react-router";
 import {
+    Alert,
     Badge,
     Button,
     Drawer,
@@ -37,6 +38,7 @@ import {
 } from "../collections";
 import { Spinner } from "../components/spinner";
 import { useMetadata } from "../hooks/useMetadata";
+import { useUIConfig } from "../hooks/useUIConfig";
 import { SyncContext } from "../machines/sync";
 import {
     isDataPullLoading,
@@ -181,7 +183,7 @@ function SplitSyncButton({
 
 function LayoutWithDrafts() {
     const syncActor = SyncContext.useActorRef();
-		const {orgUnitName} = useMetadata()
+    const { orgUnitName } = useMetadata();
     const syncingMetadata = SyncContext.useSelector((snapshot) => {
         return isMetadataSyncLoading(
             snapshot.matches({ metadataSync: "syncing" }) ||
@@ -206,6 +208,34 @@ function LayoutWithDrafts() {
     const lastMetadataPull = SyncContext.useSelector(
         (a) => a.context.lastMetadataPull,
     );
+    const isAdmin = SyncContext.useSelector((a) =>
+        a.context.userInfo?.authorities?.includes("ALL"),
+    );
+    const uiConfig = useUIConfig();
+    const [showAppReload, setShowAppReload] = useState(false);
+    const [showMetadataReload, setShowMetadataReload] = useState(false);
+
+    useEffect(() => {
+        function checkSignals() {
+            const appTs = uiConfig.reloadSignal.app?.timestamp;
+            const metaTs = uiConfig.reloadSignal.metadata?.timestamp;
+            const lastApp = localStorage.getItem(
+                "eregisters.lastSeenAppSignal",
+            );
+            const lastMeta = localStorage.getItem(
+                "eregisters.lastSeenMetadataSignal",
+            );
+            if (appTs && (!lastApp || appTs > lastApp)) {
+                setShowAppReload(true);
+            }
+            if (metaTs && (!lastMeta || metaTs > lastMeta)) {
+                setShowMetadataReload(true);
+            }
+        }
+        checkSignals();
+        const interval = setInterval(checkSignals, 60_000);
+        return () => clearInterval(interval);
+    }, [uiConfig.reloadSignal]);
     const { data: pendingTrackedEntities } = useLiveSuspenseQuery((q) =>
         q
             .from({ trackedEntities: trackedEntitiesCollection })
@@ -253,7 +283,7 @@ function LayoutWithDrafts() {
         <Flex
             align={vertical ? "flex-start" : "center"}
             justify="center"
-            gap={vertical ? 16 : 10}
+            gap={vertical ? 16 : 15}
             vertical={vertical}
         >
             <Link to="/" onClick={() => setDrawerOpen(false)}>
@@ -334,17 +364,35 @@ function LayoutWithDrafts() {
                     />
                 </Badge>
             </Tooltip>
-            {/* <Link to="/reports" onClick={() => setDrawerOpen(false)}>
-                Reports
-            </Link> */}
+            <Link to="/reports">
+                <SyncButton
+                    tooltip="Reports"
+                    icon={<CloudUploadOutlined />}
+                    isLoading={pushingData}
+                    idleLabel="Reports"
+                    loadingLabel="Pushing..."
+                    lastTime={"View reports"}
+                    onClick={() => {}}
+                />
+            </Link>
+            {isAdmin && (
+                <Link
+                    to="/admin/section-layout"
+                    onClick={() => setDrawerOpen(false)}
+                >
+                    <SyncButton
+                        tooltip="Administration"
+                        icon={<CloudUploadOutlined />}
+                        isLoading={pushingData}
+                        idleLabel="Administration"
+                        loadingLabel="Pushing..."
+                        lastTime={"Admin"}
+                        onClick={() => {}}
+                    />
+                </Link>
+            )}
         </Flex>
     );
-
-    // redirectByUnit(
-    //     userOrgUnits,
-    //     program?.organisationUnits.map(({ id }) => id) ?? [],
-    //     baseUrl,
-    // );
 
     return (
         <Layout
@@ -399,6 +447,75 @@ function LayoutWithDrafts() {
             >
                 {navItems(true)}
             </Drawer>
+            {showAppReload && (
+                <Alert
+                    type="warning"
+                    title="Update available — your administrator has pushed a new version."
+                    action={
+                        <Button
+                            size="small"
+                            type="primary"
+                            style={{
+                                background: "#d97706",
+                                borderColor: "#d97706",
+                            }}
+                            onClick={() => window.location.reload()}
+                        >
+                            Reload now
+                        </Button>
+                    }
+                    closable={{
+                        onClose: () => {
+                            const ts = uiConfig.reloadSignal.app?.timestamp;
+                            if (ts)
+                                localStorage.setItem(
+                                    "eregisters.lastSeenAppSignal",
+                                    ts,
+                                );
+                            setShowAppReload(false);
+                        },
+                    }}
+                    style={{ borderRadius: 0 }}
+                />
+            )}
+            {showMetadataReload && (
+                <Alert
+                    type="info"
+                    title="Metadata update available — program rules or forms may have changed."
+                    action={
+                        <Button
+                            size="small"
+                            type="primary"
+                            onClick={() => {
+                                syncActor.send({ type: "FULL_METADATA_SYNC" });
+                                const ts =
+                                    uiConfig.reloadSignal.metadata?.timestamp;
+                                if (ts)
+                                    localStorage.setItem(
+                                        "eregisters.lastSeenMetadataSignal",
+                                        ts,
+                                    );
+                                setShowMetadataReload(false);
+                            }}
+                        >
+                            Sync now
+                        </Button>
+                    }
+                    closable={{
+                        onClose: () => {
+                            const ts =
+                                uiConfig.reloadSignal.metadata?.timestamp;
+                            if (ts)
+                                localStorage.setItem(
+                                    "eregisters.lastSeenMetadataSignal",
+                                    ts,
+                                );
+                            setShowMetadataReload(false);
+                        },
+                    }}
+                    style={{ borderRadius: 0 }}
+                />
+            )}
             <Outlet />
         </Layout>
     );

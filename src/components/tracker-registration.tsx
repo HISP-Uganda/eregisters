@@ -1,7 +1,8 @@
-import { Card, Flex, Form, FormInstance, Row } from "antd";
+import { Card, Flex, Form, FormInstance, Row, Typography } from "antd";
 import dayjs from "dayjs";
 import React, { useEffect } from "react";
 import { useMetadata } from "../hooks/useMetadata";
+import { useUIConfig } from "../hooks/useUIConfig";
 import { TrackedEntityContext } from "../machines";
 import { FlattenedTrackedEntity } from "../schemas";
 import { buildCurrentAttributes, spans } from "../utils/utils";
@@ -18,6 +19,7 @@ export const TrackerRegistration: React.FC<TrackerRegistrationProps> = ({
 }) => {
     const { program } = useMetadata();
     const allAttributes = buildCurrentAttributes(program);
+    const uiConfig = useUIConfig();
     const ruleResult = TrackedEntityContext.useSelector(
         (a) => a.context.ruleResult,
     );
@@ -104,6 +106,7 @@ export const TrackerRegistration: React.FC<TrackerRegistrationProps> = ({
                         ruleResult.hiddenFields.includes(id),
                     );
                     if (allAreHidden) return null;
+                    const sectionSubsections = uiConfig.subsections[id];
                     return (
                         <Card
                             title={name}
@@ -111,21 +114,106 @@ export const TrackerRegistration: React.FC<TrackerRegistrationProps> = ({
                             style={{ borderRadius: 0 }}
                             size="small"
                         >
-                            <Row gutter={[16, 16]}>
-                                {tei.map(({ id }) => (
-                                    <DataElementRenderer
-                                        key={id}
-                                        dataElementId={id}
-                                        currentDataElements={allAttributes}
-                                        ruleResult={ruleResult}
-                                        sectionLength={tei.length}
-                                        form={form}
-                                        mode="attribute"
-                                        xl={spans.get(id) ?? undefined}
-                                        onFieldChange={onFieldChange}
-                                    />
-                                ))}
-                            </Row>
+                            {sectionSubsections && sectionSubsections.length > 0 ? (
+                                (() => {
+                                    const assignedIds = new Set(
+                                        sectionSubsections.flatMap(
+                                            (s) => s.dataElementIds,
+                                        ),
+                                    );
+                                    const groups: Array<{
+                                        label: string | null;
+                                        ids: string[];
+                                    }> = sectionSubsections.map((sub) => ({
+                                        label: sub.name,
+                                        ids: tei
+                                            .filter(({ id }) =>
+                                                sub.dataElementIds.includes(id),
+                                            )
+                                            .map(({ id }) => id),
+                                    }));
+                                    const unassigned = tei
+                                        .filter(
+                                            ({ id }) => !assignedIds.has(id),
+                                        )
+                                        .map(({ id }) => id);
+                                    if (unassigned.length > 0) {
+                                        groups.push({
+                                            label: null,
+                                            ids: unassigned,
+                                        });
+                                    }
+                                    return groups.map(({ label, ids }) =>
+                                        ids.length === 0 ? null : (
+                                            <React.Fragment
+                                                key={label ?? "__unassigned"}
+                                            >
+                                                {label && (
+                                                    <Typography.Text
+                                                        type="secondary"
+                                                        style={{
+                                                            display: "block",
+                                                            marginTop: 12,
+                                                            marginBottom: 4,
+                                                            fontSize: 12,
+                                                            textTransform:
+                                                                "uppercase",
+                                                            letterSpacing: 0.5,
+                                                        }}
+                                                    >
+                                                        {label}
+                                                    </Typography.Text>
+                                                )}
+                                                <Row gutter={[16, 16]}>
+                                                    {ids.map((attrId) => (
+                                                        <DataElementRenderer
+                                                            key={attrId}
+                                                            dataElementId={
+                                                                attrId
+                                                            }
+                                                            currentDataElements={
+                                                                allAttributes
+                                                            }
+                                                            ruleResult={
+                                                                ruleResult
+                                                            }
+                                                            sectionLength={
+                                                                ids.length
+                                                            }
+                                                            form={form}
+                                                            mode="attribute"
+                                                            xl={
+                                                                spans.get(
+                                                                    attrId,
+                                                                ) ?? undefined
+                                                            }
+                                                            onFieldChange={
+                                                                onFieldChange
+                                                            }
+                                                        />
+                                                    ))}
+                                                </Row>
+                                            </React.Fragment>
+                                        ),
+                                    );
+                                })()
+                            ) : (
+                                <Row gutter={[16, 16]}>
+                                    {tei.map(({ id }) => (
+                                        <DataElementRenderer
+                                            key={id}
+                                            dataElementId={id}
+                                            currentDataElements={allAttributes}
+                                            ruleResult={ruleResult}
+                                            sectionLength={tei.length}
+                                            form={form}
+                                            mode="attribute"
+                                            xl={spans.get(id) ?? undefined}
+                                            onFieldChange={onFieldChange}
+                                        />
+                                    ))}
+                                </Row>
+                            )}
                         </Card>
                     );
                 },

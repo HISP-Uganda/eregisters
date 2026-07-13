@@ -1,4 +1,4 @@
-import { assign, fromPromise, setup } from "xstate";
+import { assertEvent, assign, fromPromise, not, setup } from "xstate";
 import {
     DataElement,
     Dhis2Report,
@@ -15,6 +15,13 @@ import {
     ProgramRuleVariable,
     TrackedEntity,
     TrackedEntityAttribute,
+    UIConfig,
+    emptyUIConfig,
+    Resource,
+    OU,
+    DataSet,
+    AggregateData,
+    CategoryOptionCombo,
 } from "../schemas";
 
 import type { useDataEngine } from "@dhis2/app-runtime";
@@ -53,6 +60,7 @@ import {
     shouldUseLastDataPull,
     shouldUseLastUpdatedFilter,
 } from "./sync-metadata-mode";
+import { isEmpty } from "lodash";
 
 function deriveValidIds(program: Program | undefined): {
     validAttributeIds: Set<string>;
@@ -151,19 +159,6 @@ async function submitTrackerImportAndWaitForReport({
     // throw new Error(`Timed out waiting for DHIS2 tracker job ${jobId}`);
 }
 
-type Resource =
-    | "programs"
-    | "programStages"
-    | "dataElements"
-    | "trackedEntityTypes"
-    | "optionSets"
-    | "programIndicators"
-    | "me"
-    | "optionGroups"
-    | "attributes"
-    | "programRuleVariables"
-    | "programRules";
-
 export interface SyncContext {
     error: Error | null;
     info: string | undefined;
@@ -181,6 +176,12 @@ export interface SyncContext {
     metadata: Partial<Awaited<ReturnType<typeof queryInfo>>>;
     userInfo: MeUser;
     rawMetadata: Metadata;
+    uiConfig: UIConfig;
+    period?: string;
+    dataSet?: string;
+    orgUnit?: string;
+    aggregateData?: Map<string, string>;
+    periodType?: string;
 }
 
 const syncReportToLocal = async ({
@@ -489,6 +490,16 @@ type SyncEvent =
     | { type: "CANCEL" }
     | { type: "NETWORK_RECONNECT" }
     | { type: "PARENT_READY" }
+    | { type: "SET_PERIOD"; period?: string }
+    | { type: "SET_DATASET"; dataSet?: string; periodType?: string }
+    | { type: "SET_ORG_UNIT"; orgUnit?: string }
+    | {
+          type: "FETCH_AGGREGATE_DATA";
+          orgUnit: string;
+          period: string;
+          dataSet?: string;
+          periodType?: string;
+      }
     | { type: "PARENT_NOT_READY" };
 const syncMachine = setup({
     types: {
@@ -535,6 +546,37 @@ const syncMachine = setup({
         },
     },
     actors: {
+        pullAggregateData: fromPromise<
+            AggregateData,
+            { dataSet?: string; period?: string; orgUnit?: string }
+        >(async ({ input: { period, dataSet, orgUnit } }) => {
+            if (
+                orgUnit === undefined ||
+                period === undefined ||
+                dataSet === undefined
+            ) {
+                throw new Error("OrgUnit,Data set or period not specified");
+            }
+            const params = new URLSearchParams({
+                source: "hmis_dvs",
+                period,
+                dataset: dataSet,
+                orgunit: orgUnit,
+            });
+            const response = await fetch(
+                `https://eregisters.health.go.ug/ereports/query?${params.toString()}`,
+                {
+                    headers: {
+                        "x-api-key": "LnwYPc0EnRKIqjKaQabQWGIN31ranjYt",
+                    },
+                },
+            );
+            if (!response.ok) {
+                throw new Error("Something went wrong");
+            }
+            const data = await response.json();
+            return data as AggregateData;
+        }),
         checkIndexDB: fromPromise<Awaited<ReturnType<typeof checkInfo>>>(
             async () => {
                 return checkInfo();
@@ -663,7 +705,7 @@ const syncMachine = setup({
             },
         ),
         saveMetadata: fromPromise<void, Metadata>(async ({ input }) => {
-            // await db.organisationUnits.bulkPut(input.organisationUnits);
+            await db.organisationUnits.bulkPut(input.organisationUnits);
             await db.programs.bulkPut(input.programs);
             await db.dataElements.bulkPut(input.dataElements);
             await db.programIndicators.bulkPut(input.programIndicators);
@@ -674,8 +716,30 @@ const syncMachine = setup({
             await db.programRuleVariables.bulkPut(input.programRuleVariables);
             await db.optionSets.bulkPut(input.optionSets);
             await db.optionGroups.bulkPut(input.optionGroups);
-
             await db.metadataVersions.bulkPut(input.metadataVersion);
+            await db.dataSets.bulkPut(input.dataSets);
+            await db.categoryOptionCombos.bulkPut(input.categoryOptionCombos);
+        }),
+        pullUIConfig: fromPromise<
+            UIConfig,
+            { engine: ReturnType<typeof useDataEngine> }
+        >(async ({ input: { engine } }) => {
+            try {
+                const result = (await engine.query({
+                    uiConfig: {
+                        resource: "dataStore/eregisters/ui-config",
+                    },
+                })) as { uiConfig: UIConfig };
+                await db.uiConfig.bulkPut([
+                    { id: "main", config: result.uiConfig },
+                ]);
+                return result.uiConfig;
+            } catch {
+                await db.uiConfig.bulkPut([
+                    { id: "main", config: emptyUIConfig },
+                ]);
+                return emptyUIConfig;
+            }
         }),
         pullResource: fromPromise<
             Metadata,
@@ -684,10 +748,16 @@ const syncMachine = setup({
                 engine: ReturnType<typeof useDataEngine>;
                 lastMetadataPull: string | undefined;
                 metadataSyncMode: MetadataSyncMode;
+                userOrgUnit: string;
             }
         >(async ({ input }) => {
-            const { resources, engine, lastMetadataPull, metadataSyncMode } =
-                input;
+            const {
+                resources,
+                engine,
+                lastMetadataPull,
+                metadataSyncMode,
+                userOrgUnit,
+            } = input;
 
             const results: Metadata = {
                 dataElements: [],
@@ -700,30 +770,65 @@ const syncMachine = setup({
                 programRuleVariables: [],
                 trackedEntityAttributes: [],
                 metadataVersion: [],
+                dataSets: [],
+                categoryOptionCombos: [],
             };
             for (const resource of resources) {
                 switch (resource) {
-                    // case "me":
-                    //     const { me } = (await engine.query({
-                    //         me: {
-                    //             resource: "me",
-                    //             params: {
-                    //                 fields: "id,organisationUnits[id,name,level,parent,leaf,programs]",
-                    //             },
-                    //         },
-                    //     })) as {
-                    //         me: {
-                    //             organisationUnits: OrgUnit[];
-                    //             id: string;
-                    //         };
-                    //     };
-                    //     results.organisationUnits = me.organisationUnits.map(
-                    //         (ou) => ({
-                    //             ...ou,
-                    //             user: me.id,
-                    //         }),
-                    //     );
-                    //     break;
+                    case "categoryOptionCombos":
+                        const {
+                            categoryOptionCombos: { categoryOptionCombos },
+                        } = (await engine.query({
+                            categoryOptionCombos: {
+                                resource: `categoryCombos/UjXPudXlraY/categoryOptionCombos.json`,
+                                params: {
+                                    fields: "id,name,access,categoryOptions[id,name,access]",
+                                },
+                            },
+                        })) as {
+                            categoryOptionCombos: {
+                                categoryOptionCombos: CategoryOptionCombo[];
+                            };
+                        };
+												console.log(categoryOptionCombos)
+                        results.categoryOptionCombos = categoryOptionCombos;
+                        break;
+                    case "organisationUnits":
+                        const {
+                            organisationUnits: { organisationUnits },
+                        } = (await engine.query({
+                            organisationUnits: {
+                                resource: `organisationUnits/${userOrgUnit}.json`,
+                                params: {
+                                    fields: "id,name,code,path,parent",
+                                    paging: false,
+                                    includeDescendants: true,
+                                },
+                            },
+                        })) as {
+                            organisationUnits: {
+                                organisationUnits: OU[];
+                            };
+                        };
+                        results.organisationUnits = organisationUnits;
+                        break;
+                    case "dataSets":
+                        const {
+                            dataSets: { dataSets },
+                        } = (await engine.query({
+                            dataSets: {
+                                resource: "dataSets.json",
+                                params: {
+                                    fields: "id,name,code,periodType",
+                                },
+                            },
+                        })) as {
+                            dataSets: {
+                                dataSets: DataSet[];
+                            };
+                        };
+                        results.dataSets = dataSets;
+                        break;
 
                     case "programs":
                         const { program } = (await engine.query({
@@ -1008,6 +1113,12 @@ const syncMachine = setup({
             await db.optionSets.clear();
             await db.optionGroups.clear();
             await db.metadataVersions.clear();
+            await db.dataSets.clear();
+            await db.categoryOptionCombos.clear();
+        }),
+        resetDatabase: fromPromise(async () => {
+            await db.delete();
+            await db.open();
         }),
         deleteAllData: fromPromise<void>(async () => {}),
         processBatchSync: fromPromise(
@@ -1121,6 +1232,10 @@ const syncMachine = setup({
             return Math.floor(Math.random() * (max - min + 1)) + min;
         },
     },
+    guards: {
+        hasValidParams: ({ context: { dataSet, period, orgUnit } }) =>
+            !isEmpty(dataSet) && !isEmpty(period) && !isEmpty(orgUnit),
+    },
 }).createMachine({
     /** @xstate-layout N4IgpgJg5mDOIC5SwJ4DsDGA6AtmALgIYSFEDK62AlhADZgDEEA9mmFlWgG7MDW7qTLgLFShCkJr0EnHhlJVWAbQAMAXVVrEoAA7NYVfIrTaQAD0QBmAEwBGLCoAsANgAcrlbduXbAVl+WjgA0ICiItiq+jg6WAJwqAOy2Cc6+7gC+6SGC2HhEJOSUHHSMLGwc3HwCRXmihZIlMpXyRsrqSrZaSCB6Bq0m3RYI1q6WWAmxqd7x1nYJrsGh4bau1uNuNrbxo76Z2TUiBeJFUoxgAE7nzOdYOrSkAGbXOFg5wvliEtSNsswtxppNKZeoZjKYhpsHC53J5vH4AoswghRq4sL55t44o50a5bHsQG9akcvsV6AwyAAVACCACUKQB9ACyAFFqQARKnU+lkACaADkAMJA7og-rgxAJMZRXxeFQqWKWZzWRzykJI2wq6LeVKOWIRWzOTz4wmHT4nEoMABiAFUADK2pmsqkcrm8wXC3T6UGscUISwJLDWVIqDwTZwJXWqpYIPwTcZ2Gx6lRK2LWY0HD71bCwQhcThQRmmohMVjsX78V4ZurHIQ5vNoAtFwhNOQKNoadTAr1iwbhVzOLUq5ypGWWVyxSZq8KOLZYVPjw16xz99NCIlmoQARwArhcUPmAJJoCBgMxsgBCJfK5eqa6bJJ3e8Px9PF5bfzbaEBnZF3bBvZjftB2TEdvHHSdo2SawxiSVwEgSaxYQWFZV1ye8ikfc59wbI8TzPS8LiuG47keZ5KzvTMa2wTDsKgXDX3Pd9-nbD0ej-H0ANmBJfDnZNrAnBUokcCMpxjGcA0cEZJnlDUVyyAkq2JIoT3oIwG0LSirzLSoKxNSiSRUgh8w06smM-b8uk9Pp-1AIYNRGLANWTfwXFiXFHERadLB4zxZliFx7N8FRLFQ95qwMsBVOMpsGEI65bnufAnnOF49PC5TIqM9SmzM-oLK7ayONs6cHKckdXPczzAPHKE3DcqZhLxeS0qU2tKHzLSKh4XTFI3bN2obXKAXaH8rO9AZioQeJYkDXFuPReZfGVBJRLhVFEI8nxJjmSZQvXLNyIwDqym07rbzQ-SihyfMhpYzoCvG313HsJx3GxJUuOE1aZRmraEIWBJImTELmt6g7robWLLnikikrIlq+sOm7fmYr8RsstjCom8xEFWX7HH9cNdQQiMVsgxCeIjYT0RnKIvDTUGKPSoQAHdCFBSHKVpBkWXZTkqW5fkhVGzHHoAgcVHGXFlSW5dlwHVaB2iRqQw8ILrHRXZGYu5nsDZjmoCtO0HV551+cF90RdFGycb9Pw5zSHxcU8Anh0VjysEajaB0CRw9vQ1n2bUw2zFgIh8HYQgHgj84AApDTlFQAEoGARg79eD1jraK23IScNwPC8Hx-ECVaCeiby-A8SwVGg8dQta74yTdAV6WZPkKQPTvmTILP2OxoZEMloLE4NHwh6W0SNcBrA4KCmvnECGW-e1rBG9JRgAAVrTIAAJekXSpPusd9Ie0UTzxF9sCfrCnhesH9dX4lp+CV-2IR19OBhQ-DyPo4uWONdE4pzeJ-Eox8xaTTPiPOUY9r5ykntGWYaRZ7cVrtLSYLgG6IwgFQc4YAMD4C+AwCBPZJrDmcLPfOAkAjcVcL4Ke6I1iP2CsmEm8Etbv2wOvbcdxmDEHzGyPBBD8CdRvIdNeiNeG0H4bghsQj8GENumjDsGNs4D2WIkRyctDQRH8kGMmSJlR2HPkGSwlcogTmwQdaRsjBHCMIVDIiCVSIpQkTwvhAj5EOPwMo-Kv4T7i38p7R+cJF6+FiOiKeKoeJpAicOZc1gOEgy4ZIg6AAjUgGAAAWxCTpdSqO4xGmT8A5K+H49GD0yG2woVQ1yE5aFxKnkGewLCRjX0wc4axVEsAlLKZQJxMNErJVSspYpWTcmUAqaoqpNtB5ynPqPK+N8p4Gh4vxZw8QIiBEiE1VJHiChgFtIQMObIxCb23LAbJJCrb919PAmadg4LcWgvZWIU9861XiJEeYIZfBdNXkcC5tBaAb3JNSOkB9zYt1IXM8IqY5yphWLEQG44FhBm+i9C+iF+KKhed04FoKv42ntFC10QtYU5zsgiicTyUUhjcpJZw0SxgfTiBMOw6sIwEu3CCsFP9SB-xjvHC+ICxlEEJRvSlGiYw0qReOVFjKMVIOCdfaCbkky6lGDyvlDxeW0BpGAB4+CrliJ0udNJhBJV6pBYa41cBsnTOlb6JU0RgrxAjIqccQUGHRi2oGGBgRvJhhSQpD+5z9VYBtQao1JrrlxWIsM+G4qrWRujXauNTrbmBPIcqGIHrXbesiFPJI4wYEazrqkUNoCI18ohobfJ4ia0SsjfWrNai7kAQiEGB+Mo0hJPgp4fsoklqomHBqReE4fCpABfs2toL62DMTa40Z4aW11oGlAdtsyqXhFrpQixqx4KAxWMy6My57AGgnTXaWgRZ1hu4fOrAvDDnHNOfOm5Hac22z0WsGcKoFjCU1L6pEw4eI2FxMXRCY43A6tBRnDqXNIWHwtsLL9kCf1yrpYq9FZ6kRRDGIkSD8o4LeVg4Cp9CHIYkodChmF2aMPUrWLS5FOGmWiUCPYNlE5VjGIVHBrAVGQ5h0FVgKOwqE5yjFWu1NfKhPOq7Vh1jDLcOiV1LEjEQDuKSU1pkeSaBmAnngN0HIO6ZUAFoUGSl1FsaDGsZKiXM3mi+tmBJjn7NWsGVEzO+nMxEcYgQ9SpmCvZvUoluIvU01iHEeyH1hTAfQHzAEEKrRrr9a+Mplz0OSf7S6tZczRUoklyaBphKOXs95bE-FoJVWmDxSSC5a4IRHLl3WWAaLPjwheYrtsKaogCEmSUOpatxGY1JQ0SSgwl1a+vQywcTJHB63ZU9jk57LTcHXQxJVogpD8gTMc3aZuI3rUtxAM4xiKm8v6DVF6FaQUkjtpUyRX42f8kd9OQd8ynYQIvAMgN1PevcGkPD4QUhSjxv8lE813s9IeOzWg258HfeWjNaEHgmX+A1GXa+Dh5jSWPQ1t+cXG7I9q5E-r9S0gzkmMkbpJJTjfZS0gyIqICYorSMFf50E6fKR8V8b7BMeL0KiHQyMkpXCMLK3PVhrD0SeZkySWxXioAKJEd99wqJxzJh02slU7ykGSUlk4A0kTJgymnjzoQfTJmYAFyYtBcphwISCqmKqsxFSoK5cuKmsXm09JfYKt9+Azktqud97wtcQkvM2Sid6zSe1tKSAify96-eEtJ6JRensBKhkTs4LwRO0+RoZwExjiBgm6ieaGeCowRIG61O7lFSKvcCfTbGh1AuvAOCI1sGcIWaYceCmiOIzkfqKh9gJk7pfqlDEA45TwOJFwRGHeemqeoJ38QWPEOIAmA8RyDyH2TtBw8rB4ovEYipZgDiVJnrRMWgHDg877lNkqhOM9vtGKIax-oR419iJIre8OiOYAJ+9CWA5+owH01+H+SIwkzGBeSozy-YkwCQem6QQAA */
     id: "sync",
@@ -1130,7 +1245,6 @@ const syncMachine = setup({
             engine,
             error: null,
             resources: [
-                "me",
                 "programs",
                 "programStages",
                 "dataElements",
@@ -1138,7 +1252,10 @@ const syncMachine = setup({
                 "optionGroups",
                 "attributes",
                 "programRuleVariables",
+                "categoryOptionCombos",
                 "programRules",
+                "dataSets",
+                "organisationUnits",
             ],
 
             enrollmentsCollection,
@@ -1156,6 +1273,7 @@ const syncMachine = setup({
             info: undefined,
             metadata: {},
             userInfo,
+            uiConfig: emptyUIConfig,
             rawMetadata: {
                 dataElements: [],
                 optionGroups: [],
@@ -1167,10 +1285,92 @@ const syncMachine = setup({
                 programRuleVariables: [],
                 trackedEntityAttributes: [],
                 metadataVersion: [],
+                dataSets: [],
+                categoryOptionCombos: [],
             },
         };
     },
     states: {
+        aggregateData: {
+            initial: "idle",
+            states: {
+                idle: {
+                    on: {
+                        SET_PERIOD: {
+                            actions: assign(({ event }) => {
+                                return {
+                                    period: event.period,
+                                };
+                            }),
+                            target: "canPullAggregateData",
+                        },
+                        SET_DATASET: {
+                            actions: assign(({ event }) => {
+                                return {
+                                    dataSet: event.dataSet,
+                                    periodType: event.periodType,
+                                };
+                            }),
+                            target: "canPullAggregateData",
+                        },
+                        SET_ORG_UNIT: {
+                            actions: assign({
+                                orgUnit: ({ event }) => event.orgUnit,
+                            }),
+                            target: "canPullAggregateData",
+                        },
+                    },
+                },
+                canPullAggregateData: {
+                    always: [
+                        {
+                            target: "pullAggregateData",
+                            guard: "hasValidParams",
+                        },
+                        {
+                            target: "idle",
+                            guard: not("hasValidParams"),
+                        },
+                    ],
+                },
+                pullAggregateData: {
+                    invoke: {
+                        src: "pullAggregateData",
+                        input: ({ context: { dataSet, period, orgUnit } }) => {
+                            return {
+                                dataSet,
+                                period,
+                                orgUnit,
+                            };
+                        },
+                        onDone: {
+                            actions: assign(({ event }) => {
+                                return {
+                                    aggregateData: new Map(
+                                        event.output.dataValues.map(
+                                            ({
+                                                dataElement,
+                                                attributeOptionCombo,
+                                                categoryOptionCombo,
+                                                value,
+                                            }) => [
+                                                `${dataElement}_${categoryOptionCombo}_${attributeOptionCombo}`,
+                                                value,
+                                            ],
+                                        ),
+                                    ),
+                                };
+                            }),
+                            target: "idle",
+                        },
+                        onError: {
+                            actions: ({ event }) => {},
+                            target: "idle",
+                        },
+                    },
+                },
+            },
+        },
         metadataSync: {
             initial: "idle",
             id: "metadataSync",
@@ -1222,9 +1422,7 @@ const syncMachine = setup({
 
                         onError: {
                             target: "failure",
-                            actions: ({ event }) => {
-                                console.log(event.error);
-                            },
+                            actions: ({ event }) => {},
                         },
                     },
                     on: {
@@ -1249,8 +1447,32 @@ const syncMachine = setup({
                             return rawMetadata;
                         },
                         onDone: {
-                            target: "queryingIndexDB",
+                            target: "pullingUIConfig",
                         },
+                        onError: {
+                            target: "resetIndexDB",
+                        },
+                    },
+                },
+                resetIndexDB: {
+                    invoke: {
+                        src: "resetDatabase",
+                        onDone: {
+                            target: "idle",
+                        },
+                    },
+                },
+                pullingUIConfig: {
+                    invoke: {
+                        src: "pullUIConfig",
+                        input: ({ context: { engine } }) => ({ engine }),
+                        onDone: {
+                            target: "queryingIndexDB",
+                            actions: assign(({ event }) => ({
+                                uiConfig: event.output,
+                            })),
+                        },
+                        onError: "queryingIndexDB",
                     },
                 },
                 queryingIndexDB: {
@@ -1270,9 +1492,7 @@ const syncMachine = setup({
                         },
                         onError: {
                             target: "failure",
-                            actions: ({ event }) => {
-                                console.log(event.error);
-                            },
+                            actions: ({ event }) => {},
                         },
                     },
                 },
@@ -1293,6 +1513,7 @@ const syncMachine = setup({
                                 resources,
                                 lastMetadataPull,
                                 metadataSyncMode,
+                                userInfo,
                             },
                         }) => {
                             return {
@@ -1300,6 +1521,7 @@ const syncMachine = setup({
                                 engine,
                                 lastMetadataPull,
                                 metadataSyncMode,
+                                userOrgUnit: userInfo.organisationUnits[0].id,
                             };
                         },
 
