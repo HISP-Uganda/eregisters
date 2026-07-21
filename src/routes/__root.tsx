@@ -366,10 +366,10 @@ function LayoutWithDrafts() {
             </Tooltip>
             <Link to="/reports">
                 <SyncButton
-                    tooltip="Reports"
+                    tooltip="Verify Reports"
                     icon={<CloudUploadOutlined />}
                     isLoading={pushingData}
-                    idleLabel="Reports"
+                    idleLabel="Verify Reports"
                     loadingLabel="Pushing..."
                     lastTime={"View reports"}
                     onClick={() => {}}

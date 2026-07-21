@@ -1,24 +1,25 @@
 import {
-	App,
-	Button,
-	Card,
-	ConfigProvider,
-	Input,
-	Space,
-	Tabs,
-	Typography,
+    App,
+    Button,
+    Card,
+    ConfigProvider,
+    InputNumber,
+    Tabs,
+    Typography,
 } from "antd";
-import React from "react";
+import React, { useState } from "react";
 import type {
-	HmisCellConfig,
-	HmisFormConfig,
-	HmisFormValues,
-	HmisRowConfig,
-	HmisSectionConfig,
-	setValue,
+    HmisCellConfig,
+    HmisFormConfig,
+    HmisFormValues,
+    HmisRowConfig,
+    HmisSectionConfig,
+    setValue,
 } from "../form-configs/types";
 
-const { Title, Text } = Typography;
+export type { HmisFormValues } from "../form-configs/types";
+
+const { Title } = Typography;
 
 const TEAL = "#66a5ad";
 const LIGHT_BLUE = "#c4dfe6";
@@ -40,7 +41,7 @@ export interface HmisFormProps {
             attributeOptionCombo: string;
         }>;
     }) => void | Promise<void>;
-    attributeOptionCombo:string;
+    attributeOptionCombo: string;
 }
 
 function dataValueKey(
@@ -51,8 +52,9 @@ function dataValueKey(
     return `${dataElement}${COC_SEPARATOR}${categoryOptionCombo}${COC_SEPARATOR}${attributeOptionCombo}`;
 }
 
-function cleanNumericValue(raw: string) {
-    return raw.replace(/[^\d]/g, "");
+function cleanNumericValue(raw: unknown) {
+    if (raw === null || raw === undefined) return "";
+    return String(raw).replace(/[^\d]/g, "");
 }
 
 function getRowClassName(row: HmisRowConfig) {
@@ -72,6 +74,8 @@ function getCellStyle(cell: HmisCellConfig): React.CSSProperties {
     return {
         textAlign: cell.style?.align as React.CSSProperties["textAlign"],
         background: cell.style?.background,
+        width: cell.style?.width,
+        verticalAlign: cell.style?.verticalAlign,
     };
 }
 
@@ -79,16 +83,38 @@ const HmisFormStyles = () => (
     <style>
         {`
       .hmis105-form-table {
-        width: 100%;
-        border-collapse: collapse;
+        width: auto;
+        border-collapse: separate;
+        border-spacing: 0;
         margin-bottom: 16px;
+        border-left: 1px solid ${TEAL};
+        border-top: 1px solid ${TEAL};
       }
 
       .hmis105-form-table th,
       .hmis105-form-table td {
-        border: 1px solid ${TEAL};
-        padding: 4px 6px;
+        border-right: 1px solid ${TEAL};
+        border-bottom: 1px solid ${TEAL};
+        padding: 4px;
         vertical-align: middle;
+        min-width: 80px;
+      }
+
+      .hmis105-form-table thead th,
+      .hmis105-form-table thead td {
+        position: sticky;
+        top: 0;
+        z-index: 3;
+      }
+
+      .hmis105-form-table .hmis105-sticky-col {
+        position: sticky;
+        z-index: 2;
+        background: #ffffff;
+      }
+
+      .hmis105-form-table thead .hmis105-sticky-col {
+        z-index: 4;
       }
 
       .hmis105-section-title-row td,
@@ -110,9 +136,15 @@ const HmisFormStyles = () => (
         background: ${LIGHT_BLUE} !important;
       }
 
+      .hmis105-data-row:hover .hmis105-sticky-col,
+      .hmis105-label-row:hover .hmis105-sticky-col {
+        background: ${LIGHT_BLUE} !important;
+      }
+
       .hmis105-field {
-        width: 5em;
-        max-width: 90px;
+        min-width: 80px;
+        width: 80px;
+        text-align: center;
       }
 
       .hmis105-field.ant-input-disabled {
@@ -135,7 +167,7 @@ const HmisFormStyles = () => (
       .hmis105-tabs .ant-tabs-nav {
         background: #f7fafb;
         border-right: 1px solid #d5e3e6;
-        padding: 8px 6px;
+        // padding: 8px 6px;
         flex: 0 0 auto !important;
         align-self: stretch !important;
       }
@@ -145,7 +177,7 @@ const HmisFormStyles = () => (
         min-width: 0 !important;
         min-height: 0 !important;
         overflow: hidden !important;
-        padding: 0 0 0 12px;
+        // padding: 0 0 0 12px;
       }
 
       .hmis105-tab-scroll::-webkit-scrollbar {
@@ -168,8 +200,7 @@ const HmisFormStyles = () => (
       }
 
       .hmis105-tabs .ant-tabs-nav .ant-tabs-nav-wrap {
-        overflow-y: auto !important;
-        overflow-x: hidden !important;
+        overflow: auto !important;
         height: 100%;
       }
 
@@ -193,8 +224,8 @@ const HmisFormStyles = () => (
 
       .hmis105-tabs .ant-tabs-tab {
         height: auto !important;
-        padding: 10px 12px !important;
-        margin: 4px 2px !important;
+        // padding: 10px 12px !important;
+        // margin: 4px 2px !important;
         border-radius: 6px;
         transition: background-color 0.15s ease;
       }
@@ -237,7 +268,13 @@ const FieldCell: React.FC<{
     attributeOptionCombo: string;
 }> = ({ cell, values, readOnly, setValue, attributeOptionCombo }) => {
     if (!cell.dataElement || !cell.categoryOptionCombo) {
-        return <Input size="small" className="hmis105-field" disabled />;
+        return (
+            <InputNumber
+                className="hmis105-field"
+                disabled
+                style={{ width: "100%", textAlign: "center" }}
+            />
+        );
     }
 
     const key = dataValueKey(
@@ -247,24 +284,26 @@ const FieldCell: React.FC<{
     );
 
     return (
-        <Input
-            size="small"
+        <InputNumber
             className="hmis105-field"
             inputMode="numeric"
             title={cell.title ?? key}
             value={values.getOrInsert(key, "")}
-            disabled={readOnly}
-            onChange={(event) => {
+            disabled={readOnly || !!cell.disabled}
+            style={{ width: "100%" }}
+            onChange={(value) => {
                 setValue({
                     attributeOptionCombo: cell.attributeOptionCombo!,
                     dataElement: cell.dataElement!,
                     categoryOptionCombo: cell.categoryOptionCombo!,
-                    value: cleanNumericValue(event.target.value),
+                    value: cleanNumericValue(value),
                 });
             }}
         />
     );
 };
+
+const STICKY_COL_WIDTH = 80;
 
 const RenderCell: React.FC<{
     cell: HmisCellConfig;
@@ -272,29 +311,113 @@ const RenderCell: React.FC<{
     readOnly: boolean;
     setValue: setValue;
     attributeOptionCombo: string;
-}> = ({ cell, values, readOnly, setValue, attributeOptionCombo }) => {
-    const content =
-        cell.kind === "field" ? (
-            <FieldCell
-                cell={cell}
-                values={values}
-                readOnly={readOnly}
-                setValue={setValue}
-                attributeOptionCombo={attributeOptionCombo}
-            />
-        ) : (
-            cell.text
+    stickyLeft?: number;
+}> = ({
+    cell,
+    values,
+    readOnly,
+    setValue,
+    attributeOptionCombo,
+    stickyLeft,
+}) => {
+    const stickyStyle: React.CSSProperties =
+        stickyLeft !== undefined ? { left: stickyLeft } : {};
+    const stickyClass =
+        stickyLeft !== undefined ? "hmis105-sticky-col" : undefined;
+
+    if (cell.kind === "field") {
+        return (
+            <td
+                colSpan={cell.colSpan}
+                rowSpan={cell.rowSpan}
+                title={cell.title}
+                className={stickyClass}
+                style={{
+                    ...getCellStyle(cell),
+                    textAlign: "center",
+                    ...stickyStyle,
+                }}
+            >
+                <FieldCell
+                    cell={cell}
+                    values={values}
+                    readOnly={readOnly}
+                    setValue={setValue}
+                    attributeOptionCombo={attributeOptionCombo}
+                />
+            </td>
         );
+    }
 
     return (
         <td
             colSpan={cell.colSpan}
             rowSpan={cell.rowSpan}
             title={cell.title}
-            style={getCellStyle(cell)}
+            className={stickyClass}
+            style={{ ...getCellStyle(cell), ...stickyStyle }}
         >
-            {content}
+            {cell.text}
         </td>
+    );
+};
+
+// Tracks columns occupied by a rowSpan from a previous row.
+// Values are the remaining rows (>=1 means "still occupied for this row").
+type RowSpanCarry = Map<number, number>;
+
+const renderRow = (
+    row: HmisRowConfig,
+    frozenColumns: number,
+    values: HmisFormValues,
+    readOnly: boolean,
+    setValue: setValue,
+    attributeOptionCombo: string,
+    carry: RowSpanCarry,
+) => {
+    let cursor = 0;
+    const advancePastCarry = () => {
+        while (carry.has(cursor)) cursor++;
+    };
+    advancePastCarry();
+
+    const cellNodes = row.cells.map((cell, index) => {
+        const startCol = cursor;
+        const span = cell.colSpan ?? 1;
+        const rSpan = cell.rowSpan ?? 1;
+        for (let i = 0; i < span; i++) {
+            if (rSpan > 1) carry.set(startCol + i, rSpan - 1);
+        }
+        cursor += span;
+        advancePastCarry();
+
+        const stickyLeft =
+            frozenColumns > 0 && startCol < frozenColumns
+                ? startCol * STICKY_COL_WIDTH
+                : undefined;
+        return (
+            <RenderCell
+                key={`${row.key}-${cell.key}-${index}`}
+                cell={cell}
+                values={values}
+                readOnly={readOnly}
+                setValue={setValue}
+                attributeOptionCombo={attributeOptionCombo}
+                stickyLeft={stickyLeft}
+            />
+        );
+    });
+
+    // Decrement carry counts for next row; drop entries that have expired.
+    for (const [col, remaining] of Array.from(carry.entries())) {
+        if (remaining <= 1) carry.delete(col);
+        else carry.set(col, remaining - 1);
+    }
+
+    return (
+        <tr key={row.key} className={getRowClassName(row)}>
+            {cellNodes}
+        </tr>
     );
 };
 
@@ -305,27 +428,55 @@ const SectionTable: React.FC<{
     setValue: setValue;
     attributeOptionCombo: string;
 }> = ({ section, values, readOnly, setValue, attributeOptionCombo }) => {
+    const frozenColumns = section.frozenColumns ?? 1;
+    const carry: RowSpanCarry = new Map();
+
+    const firstNonHead = section.rows.findIndex((r) => r.type !== "subhead");
+    const headRows =
+        firstNonHead === -1
+            ? section.rows
+            : section.rows.slice(0, firstNonHead);
+    const bodyRows =
+        firstNonHead === -1 ? [] : section.rows.slice(firstNonHead);
+
     return (
         <table className="hmis105-form-table">
-            <tbody>
+            <thead>
                 <tr className="hmis105-section-title-row">
-                    <td colSpan={section.columnCount}>{section.title}</td>
+                    <td
+                        colSpan={section.columnCount}
+                        className={
+                            frozenColumns > 0 ? "hmis105-sticky-col" : undefined
+                        }
+                        style={frozenColumns > 0 ? { left: 0 } : undefined}
+                    >
+                        {section.title}
+                    </td>
                 </tr>
-
-                {section.rows.map((row) => (
-                    <tr key={row.key} className={getRowClassName(row)}>
-                        {row.cells.map((cell, index) => (
-                            <RenderCell
-                                key={`${row.key}-${cell.key}-${index}`}
-                                cell={cell}
-                                values={values}
-                                readOnly={readOnly}
-                                setValue={setValue}
-                                attributeOptionCombo={attributeOptionCombo}
-                            />
-                        ))}
-                    </tr>
-                ))}
+                {headRows.map((row) =>
+                    renderRow(
+                        row,
+                        frozenColumns,
+                        values,
+                        readOnly,
+                        setValue,
+                        attributeOptionCombo,
+                        carry,
+                    ),
+                )}
+            </thead>
+            <tbody>
+                {bodyRows.map((row) =>
+                    renderRow(
+                        row,
+                        frozenColumns,
+                        values,
+                        readOnly,
+                        setValue,
+                        attributeOptionCombo,
+                        carry,
+                    ),
+                )}
             </tbody>
         </table>
     );
@@ -340,6 +491,7 @@ const InnerHmisForm: React.FC<HmisFormProps> = ({
     onSave,
     attributeOptionCombo,
 }) => {
+    const [loading, setLoading] = useState<boolean>(false);
     const { message } = App.useApp();
     const [values, setValues] = React.useState<HmisFormValues>(
         initialValues ?? new Map(),
@@ -359,20 +511,23 @@ const InnerHmisForm: React.FC<HmisFormProps> = ({
             categoryOptionCombo: string;
             value: string;
         }) => {
-            setValues((previous) => ({
-                ...previous,
-                [dataValueKey(
-                    dataElement,
-                    categoryOptionCombo,
-                    attributeOptionCombo,
-                )]: value,
-            }));
+            setValues((previous) =>
+                new Map(previous).set(
+                    dataValueKey(
+                        dataElement,
+                        categoryOptionCombo,
+                        attributeOptionCombo,
+                    ),
+                    value,
+                ),
+            );
         },
-        [],
+        [attributeOptionCombo],
     );
 
     const handleSave = async () => {
-        const dataValues = Object.entries(values)
+        setLoading(() => true);
+        const dataValues = Array.from(values.entries())
             .filter(([, value]) => value !== "" && value != null)
             .map(([key, value]) => {
                 const [dataElement, categoryOptionCombo, attributeOptionCombo] =
@@ -386,7 +541,7 @@ const InnerHmisForm: React.FC<HmisFormProps> = ({
                 };
             });
 
-        const payload = { period, orgUnit, dataValues };
+        const payload = { period, orgUnit, dataValues, attributeOptionCombo };
 
         if (onSave) {
             await onSave(payload);
@@ -395,6 +550,7 @@ const InnerHmisForm: React.FC<HmisFormProps> = ({
                 `Prepared ${dataValues.length} data value(s) for submission.`,
             );
         }
+        setLoading(() => false);
     };
 
     const items = config.tabs.map((tab) => ({
@@ -407,14 +563,15 @@ const InnerHmisForm: React.FC<HmisFormProps> = ({
                 onWheel={(e) => {
                     e.preventDefault();
                     e.currentTarget.scrollTop += e.deltaY;
+                    e.currentTarget.scrollLeft += e.deltaX;
                     e.stopPropagation();
                 }}
                 style={{
                     maxHeight: "calc(100vh - 260px)",
-                    overflowY: "auto",
-                    overflowX: "hidden",
+                    overflow: "auto",
+                    // overflowX: "hidden",
                     overscrollBehavior: "contain",
-                    paddingRight: 6,
+                    padding: "0 10px",
                     outline: "none",
                 }}
             >
@@ -441,12 +598,8 @@ const InnerHmisForm: React.FC<HmisFormProps> = ({
             }}
             styles={{
                 body: {
-                    paddingTop: 12,
-                    flex: 1,
-                    minHeight: 0,
-                    display: "flex",
-                    flexDirection: "column",
-                    overflow: "hidden",
+                    margin: 0,
+                    padding: "10px 0",
                 },
                 header: { background: TEAL, flexShrink: 0 },
             }}
@@ -456,43 +609,27 @@ const InnerHmisForm: React.FC<HmisFormProps> = ({
                 </Title>
             }
             extra={
-                <Button type="primary" onClick={handleSave} disabled={readOnly}>
-                    Save
+                <Button
+                    type="default"
+                    onClick={handleSave}
+                    disabled={readOnly}
+                    loading={loading}
+                >
+                    Mark Report as Verified
                 </Button>
             }
         >
             <HmisFormStyles />
-
-            <Space
-                size="middle"
-                style={{ marginBottom: 12, flexShrink: 0 }}
-                wrap
-            >
-                {period && (
-                    <Text type="secondary">
-                        Period: <strong>{period}</strong>
-                    </Text>
-                )}
-
-                {orgUnit && (
-                    <Text type="secondary">
-                        Org unit: <strong>{orgUnit}</strong>
-                    </Text>
-                )}
-            </Space>
-
-            <div
+            <Tabs
                 className="hmis105-tabs"
-                style={{ flex: 1, minHeight: 0, overflow: "hidden" }}
-            >
-                <Tabs
-                    style={{ height: "100%" }}
-                    tabPlacement="start"
-                    defaultActiveKey="tab1"
-                    items={items}
-                    tabBarStyle={{ width: 220, minWidth: 220 }}
-                />
-            </div>
+                style={{ height: "100%" }}
+                tabPlacement="start"
+                defaultActiveKey="tab1"
+                type="card"
+                items={items}
+                tabBarStyle={{ width: 220, minWidth: 220 }}
+                styles={{ content: { margin: 0, padding: 0 } }}
+            />
         </Card>
     );
 };
@@ -517,15 +654,7 @@ const HmisForm: React.FC<HmisFormProps> = (props) => (
             },
         }}
     >
-        <App
-            style={{
-                height: "100%",
-                display: "flex",
-                flexDirection: "column",
-            }}
-        >
-            <InnerHmisForm {...props} />
-        </App>
+        <InnerHmisForm {...props} />
     </ConfigProvider>
 );
 

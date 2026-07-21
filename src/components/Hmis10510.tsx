@@ -3,8 +3,7 @@ import HmisForm, { type HmisFormProps } from "./HmisForm";
 import { HMIS_105_10_CONFIG } from "../form-configs/Hmis10510.config";
 import type { HmisFormConfig, HmisFormValues } from "../form-configs/types";
 
-export type Hmis10510Values = HmisFormValues;
-export type Hmis10510FormProps = Omit<HmisFormProps, "config"> & {
+type Hmis10510FormProps = Omit<HmisFormProps, "config"> & {
     config?: HmisFormConfig;
 };
 

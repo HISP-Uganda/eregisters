@@ -63,21 +63,6 @@ export const HMIS_105_06_09_CONFIG: HmisFormConfig = {
           ],
           "rows": [
             {
-              "key": "tab1-section-1-row-1",
-              "type": "section",
-              "cells": [
-                {
-                  "key": "tab1-section-1-row-1-cell-1",
-                  "kind": "label",
-                  "text": "6 ESSENTIAL MEDICINES AND HEALTH SUPPLIES",
-                  "colSpan": 7,
-                  "style": {
-                    "background": "#DDD"
-                  }
-                }
-              ]
-            },
-            {
               "key": "tab1-section-1-row-2",
               "type": "subhead",
               "cells": [

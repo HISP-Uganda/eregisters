@@ -1,39 +1,42 @@
 import { createRoute } from "@tanstack/react-router";
 
+import { useDataEngine } from "@dhis2/app-runtime";
+import { App } from "antd";
 import dayjs from "dayjs";
 import advancedFormat from "dayjs/plugin/advancedFormat";
 import isoWeek from "dayjs/plugin/isoWeek";
-import React from "react";
-import Hmis033bForm from "../components/Hmis033bForm";
-import { Spinner } from "../components/spinner";
-import { SyncContext } from "../machines";
-import { ReportsRoute } from "./reports";
-import { AggregateData } from "../schemas";
-import Hmis106A03Form from "../components/Hmis106A03";
-import Hmis105Section1Form from "../components/Hmis10501";
+import React, { ReactNode } from "react";
+import Hmis033bForm from "../components/Hmis033b";
+import Hmis10501Form from "../components/Hmis10501";
 import Hmis1050203Form from "../components/Hmis1050203";
 import Hmis1050405Form from "../components/Hmis1050405";
+import Hmis1050609Form from "../components/Hmis1050609";
+import Hmis10510Form from "../components/Hmis10510";
+import Hmis106A0102Form from "../components/Hmis106A0102";
+import Hmis106A03Form from "../components/Hmis106A03";
+import Hmis106A04Form from "../components/Hmis106A04";
+import Hmis108Form from "../components/Hmis108";
+import { Spinner } from "../components/spinner";
+import { ReportsRoute } from "./reports";
 
 dayjs.extend(advancedFormat);
 dayjs.extend(isoWeek);
 
 export const DataSetReportRoute = createRoute({
     getParentRoute: () => ReportsRoute,
-    path: "/$dataSet",
+    path: "/hmis",
     component: Reports,
     pendingComponent: Spinner,
     loaderDeps: ({
         search: { attribution, dataSet, orgUnit, period, periodType },
     }) => ({ attribution, dataSet, orgUnit, period, periodType }),
-    loader: async ({
-        deps: { attribution, dataSet, orgUnit, period, periodType },
-    }) => {
+    loader: async ({ deps: { dataSet, orgUnit, period } }) => {
         if (
             orgUnit === undefined ||
             period === undefined ||
             dataSet === undefined
         ) {
-            throw new Error("OrgUnit,Data set or period not specified");
+            return new Map<string, string>();
         }
         const params = new URLSearchParams({
             source: "hmis_dvs",
@@ -50,11 +53,9 @@ export const DataSetReportRoute = createRoute({
             },
         );
         if (!response.ok) {
-            throw new Error("Something went wrong");
+            return new Map<string, string>();
         }
         const data = await response.json();
-				console.log(data)
-
         return new Map<string, string>(
             data.dataValues.map(
                 ({
@@ -72,51 +73,134 @@ export const DataSetReportRoute = createRoute({
 });
 
 function Reports() {
-    const { dataSet, attribution, orgUnit,period } = DataSetReportRoute.useSearch();
+    const { message } = App.useApp();
+    const engine = useDataEngine();
+    const { dataSet, attribution, orgUnit, period } =
+        DataSetReportRoute.useSearch();
     const data = DataSetReportRoute.useLoaderData();
 
-    if (dataSet === "C4oUitImBPK") {
-        return (
+
+    const onSave = async (values: {
+        period?: string | undefined;
+        orgUnit?: string | undefined;
+        dataValues: {
+            dataElement: string;
+            categoryOptionCombo: string;
+            value: string;
+            attributeOptionCombo: string;
+        }[];
+    }) => {
+        await engine.mutate({
+            resource: "dataValueSets",
+            data: {
+                ...values,
+                dataSet,
+                completionDate: new Date().toISOString(),
+                period,
+                orgUnit,
+                attributeOptionCombo: attribution,
+            },
+            type: "create",
+            params: {
+                async: true,
+            },
+        });
+
+        message.success("Report Verified Successfully");
+    };
+
+    const dataSets: Record<string, ReactNode> = {
+        C4oUitImBPK: (
             <Hmis033bForm
                 attributeOptionCombo={"HllvX50cXC0"}
                 orgUnit={orgUnit}
                 initialValues={data}
                 period={period}
+                onSave={onSave}
             />
-        );
-    }
-
-    if (dataSet === "DFMoIONIalm") {
-        return (
-            <Hmis106A03Form
-                attributeOptionCombo={"HllvX50cXC0"}
-								initialValues={data}
-            />
-        );
-    }
-    if (dataSet === "RtEYsASU7PG") {
-        return (
-            <Hmis105Section1Form
-                attributeOptionCombo={attribution ?? "HllvX50cXC0"}
+        ),
+        RtEYsASU7PG: (
+            <Hmis10501Form
+                attributeOptionCombo={attribution ?? ""}
+                orgUnit={orgUnit}
                 initialValues={data}
+                period={period}
+                onSave={onSave}
             />
-        );
-    }
-    if (dataSet === "ic1BSWhGOso") {
-        return (
+        ),
+        ic1BSWhGOso: (
             <Hmis1050203Form
-                attributeOptionCombo={attribution ?? "HllvX50cXC0"}
+                attributeOptionCombo={attribution ?? ""}
+                orgUnit={orgUnit}
                 initialValues={data}
+                period={period}
+                onSave={onSave}
             />
-        );
-    }
-    if (dataSet === "nGkMm2VBT4G") {
-        return (
+        ),
+        nGkMm2VBT4G: (
             <Hmis1050405Form
-                attributeOptionCombo={attribution ?? "HllvX50cXC0"}
+                attributeOptionCombo={attribution ?? ""}
+                orgUnit={orgUnit}
                 initialValues={data}
+                period={period}
+                onSave={onSave}
             />
-        );
-    }
-    return <pre>{JSON.stringify(data, null, 2)}</pre>;
+        ),
+        VDhwrW9DiC1: (
+            <Hmis1050609Form
+                attributeOptionCombo={attribution ?? ""}
+                orgUnit={orgUnit}
+                initialValues={data}
+                period={period}
+                onSave={onSave}
+            />
+        ),
+        quMWqLxzcfO: (
+            <Hmis10510Form
+                attributeOptionCombo={attribution ?? ""}
+                orgUnit={orgUnit}
+                initialValues={data}
+                period={period}
+                onSave={onSave}
+            />
+        ),
+        dFRD2A5fdvn: (
+            <Hmis106A0102Form
+                attributeOptionCombo={attribution ?? ""}
+                orgUnit={orgUnit}
+                initialValues={data}
+                period={period}
+                onSave={onSave}
+            />
+        ),
+        DFMoIONIalm: (
+            <Hmis106A03Form
+                attributeOptionCombo={attribution ?? ""}
+                orgUnit={orgUnit}
+                initialValues={data}
+                period={period}
+                onSave={onSave}
+            />
+        ),
+        GwSIuQVi8b2: (
+            <Hmis106A04Form
+                attributeOptionCombo={attribution ?? ""}
+                orgUnit={orgUnit}
+                initialValues={data}
+                period={period}
+                onSave={onSave}
+            />
+        ),
+        EBqVAQRmiPm: (
+            <Hmis108Form
+                attributeOptionCombo={attribution ?? ""}
+                orgUnit={orgUnit}
+                initialValues={data}
+                period={period}
+                onSave={onSave}
+            />
+        ),
+    };
+
+    return dataSets[dataSet ?? ""];
 }

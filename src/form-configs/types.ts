@@ -10,50 +10,6 @@ export type setValue = (values: {
 }) => void;
 
 export type HmisFormValues = Map<string, string>;
-export interface HmisNativeFormCell {
-    label?: string;
-    dataElement?: string;
-    categoryOptionCombo?: string;
-    attributeOptionCombo?: string;
-    title?: string;
-    inputId?: string;
-    inputName?: string;
-    isTotal?: boolean;
-    disabled?: boolean;
-    colSpan?: number;
-    rowSpan?: number;
-    align?: "left" | "center" | "right";
-    verticalAlign?: "top" | "middle" | "bottom";
-    background?: string;
-    width?: string;
-    className?: string;
-}
-
-export interface HmisNativeFormRow {
-    key: string;
-    className?: string;
-    cells: HmisNativeFormCell[];
-}
-
-export interface HmisNativeFormSection {
-    key: string;
-    title: string;
-    colSpan?: number;
-    width?: string;
-    rows: HmisNativeFormRow[];
-}
-
-export interface HmisNativeFormTab {
-    key: string;
-    label: string;
-    sections: HmisNativeFormSection[];
-}
-
-export interface HmisNativeFormDefinition {
-    id: string;
-    title: string;
-    tabs: HmisNativeFormTab[];
-}
 
 export type HmisRowType = "section" | "subhead" | "data" | "label";
 
@@ -74,12 +30,13 @@ export interface HmisCellConfig {
         align?: string;
         background?: string;
         width?: string;
+        verticalAlign?: "top" | "middle" | "bottom";
     };
 }
 
 export interface HmisRowConfig {
     key: string;
-    type: HmisRowType;
+    type?: HmisRowType;
     cells: HmisCellConfig[];
 }
 
@@ -93,7 +50,9 @@ export interface HmisSectionConfig {
     key: string;
     title: string;
     columnCount: number;
-    columns: HmisColumnConfig[];
+    columns?: HmisColumnConfig[];
+    /** Freeze the first N underlying columns during horizontal scroll. Defaults to 1. */
+    frozenColumns?: number;
     rows: HmisRowConfig[];
 }
 

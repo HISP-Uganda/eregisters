@@ -73,20 +73,7 @@ export const HMIS_106A_03_CONFIG: HmisFormConfig = {
               "index": 9
             }
           ],
-          "rows": [
-            {
-              "key": "tab1-section-1-row-1",
-              "type": "section",
-              "cells": [
-                {
-                  "key": "tab1-section-1-row-1-cell-1",
-                  "kind": "label",
-                  "text": "2. TUBERCULOSIS/LEPROSY SERVICES (Exclude Transfer In Cases) 2.1. NUMBER OF TUBERCULOSIS CASES REGISTERED AND STARTED ON TREATMENT DURING THE REPORTING PERIOD a1). All TB patients (New, Relapses, Lost to Follow-up and Failures) by age Group",
-                  "colSpan": 10
-                }
-              ]
-            }
-          ]
+          "rows": []
         },
         {
           "key": "tab1-section-2",
@@ -5509,20 +5496,7 @@ export const HMIS_106A_03_CONFIG: HmisFormConfig = {
               "index": 9
             }
           ],
-          "rows": [
-            {
-              "key": "tab1-section-3-row-1",
-              "type": "section",
-              "cells": [
-                {
-                  "key": "tab1-section-3-row-1-cell-1",
-                  "kind": "label",
-                  "text": "b). TB/HIV data for new and relapse TB Patients registered",
-                  "colSpan": 10
-                }
-              ]
-            }
-          ]
+          "rows": []
         },
         {
           "key": "tab1-section-4",
@@ -7795,19 +7769,7 @@ export const HMIS_106A_03_CONFIG: HmisFormConfig = {
               "index": 0
             }
           ],
-          "rows": [
-            {
-              "key": "tab1-section-5-row-1",
-              "type": "section",
-              "cells": [
-                {
-                  "key": "tab1-section-5-row-1-cell-1",
-                  "kind": "label",
-                  "text": "c). TB13. DOT Status of New and Relapse Patients started on treatment during the Quarter d) TB14. Number of New & Relapse Patients by risk groups registered during the quarter"
-                }
-              ]
-            }
-          ]
+          "rows": []
         },
         {
           "key": "tab1-section-6",
@@ -8576,32 +8538,6 @@ export const HMIS_106A_03_CONFIG: HmisFormConfig = {
             }
           ],
           "rows": [
-            {
-              "key": "tab1-section-7-row-1",
-              "type": "section",
-              "cells": [
-                {
-                  "key": "tab1-section-7-row-1-cell-1",
-                  "kind": "label",
-                  "text": "f) TB16. Contact tracing or index PBC TB patients during the reporting quarter",
-                  "colSpan": 17
-                },
-                {
-                  "key": "tab1-section-7-row-1-cell-2",
-                  "kind": "label",
-                  "colSpan": 2,
-                  "rowSpan": 13,
-                  "style": {
-                    "background": "rgb(251, 252, 251)"
-                  }
-                },
-                {
-                  "key": "tab1-section-7-row-1-cell-3",
-                  "kind": "label",
-                  "colSpan": 2
-                }
-              ]
-            },
             {
               "key": "tab1-section-7-row-2",
               "type": "subhead",
@@ -10041,22 +9977,6 @@ export const HMIS_106A_03_CONFIG: HmisFormConfig = {
           ],
           "rows": [
             {
-              "key": "tab1-section-8-row-1",
-              "type": "section",
-              "cells": [
-                {
-                  "key": "tab1-section-8-row-1-cell-1",
-                  "kind": "label",
-                  "text": "g) Tb17. Sputum Conversion rate at End Of Intensive Phase Among Bacteriologically Confirmed Patients Notified the Previous Quarter",
-                  "colSpan": 11
-                },
-                {
-                  "key": "tab1-section-8-row-1-cell-2",
-                  "kind": "label"
-                }
-              ]
-            },
-            {
               "key": "tab1-section-8-row-2",
               "type": "subhead",
               "cells": [
@@ -10279,18 +10199,6 @@ export const HMIS_106A_03_CONFIG: HmisFormConfig = {
           ],
           "rows": [
             {
-              "key": "tab2-section-1-row-1",
-              "type": "section",
-              "cells": [
-                {
-                  "key": "tab2-section-1-row-1-cell-1",
-                  "kind": "label",
-                  "text": "h) Patient Access to laboratory examinations",
-                  "colSpan": 3
-                }
-              ]
-            },
-            {
               "key": "tab2-section-1-row-2",
               "type": "subhead",
               "cells": [
@@ -10430,18 +10338,6 @@ export const HMIS_106A_03_CONFIG: HmisFormConfig = {
             }
           ],
           "rows": [
-            {
-              "key": "tab2-section-2-row-1",
-              "type": "section",
-              "cells": [
-                {
-                  "key": "tab2-section-2-row-1-cell-1",
-                  "kind": "label",
-                  "text": "h2) TB19. Examination for case finding during the quarter",
-                  "colSpan": 9
-                }
-              ]
-            },
             {
               "key": "tab2-section-2-row-2",
               "type": "subhead",
@@ -10809,18 +10705,6 @@ export const HMIS_106A_03_CONFIG: HmisFormConfig = {
             }
           ],
           "rows": [
-            {
-              "key": "tab2-section-3-row-1",
-              "type": "section",
-              "cells": [
-                {
-                  "key": "tab2-section-3-row-1-cell-1",
-                  "kind": "label",
-                  "text": "h3) TB20. TB patients registered during the quarter who accessed NAAT (GeneXpert, Truenat)",
-                  "colSpan": 10
-                }
-              ]
-            },
             {
               "key": "tab2-section-3-row-2",
               "type": "subhead",
@@ -11880,18 +11764,6 @@ export const HMIS_106A_03_CONFIG: HmisFormConfig = {
             }
           ],
           "rows": [
-            {
-              "key": "tab3-section-1-row-1",
-              "type": "section",
-              "cells": [
-                {
-                  "key": "tab3-section-1-row-1-cell-1",
-                  "kind": "label",
-                  "text": "j) TB22. Cohort Analysis Section",
-                  "colSpan": 20
-                }
-              ]
-            },
             {
               "key": "tab3-section-1-row-2",
               "type": "subhead",
@@ -13875,18 +13747,6 @@ export const HMIS_106A_03_CONFIG: HmisFormConfig = {
           ],
           "rows": [
             {
-              "key": "tab3-section-2-row-1",
-              "type": "section",
-              "cells": [
-                {
-                  "key": "tab3-section-2-row-1-cell-1",
-                  "kind": "label",
-                  "text": "j2) TB23. Management of malnourished TB patients during the reporting period",
-                  "colSpan": 16
-                }
-              ]
-            },
-            {
               "key": "tab3-section-2-row-2",
               "type": "subhead",
               "cells": [
@@ -14980,18 +14840,6 @@ export const HMIS_106A_03_CONFIG: HmisFormConfig = {
           ],
           "rows": [
             {
-              "key": "tab3-section-3-row-1",
-              "type": "section",
-              "cells": [
-                {
-                  "key": "tab3-section-3-row-1-cell-1",
-                  "kind": "label",
-                  "text": "j3) TB24. Outcomes of contacts of TB patients who are expected to complete TPT during the reporting period",
-                  "colSpan": 17
-                }
-              ]
-            },
-            {
               "key": "tab3-section-3-row-2",
               "type": "subhead",
               "cells": [
@@ -15844,18 +15692,6 @@ export const HMIS_106A_03_CONFIG: HmisFormConfig = {
           ],
           "rows": [
             {
-              "key": "tab4-section-1-row-1",
-              "type": "section",
-              "cells": [
-                {
-                  "key": "tab4-section-1-row-1-cell-1",
-                  "kind": "label",
-                  "text": "3.2 Drug Resistant TB Services (For DR-TB initiation sites only)",
-                  "colSpan": 7
-                }
-              ]
-            },
-            {
               "key": "tab4-section-1-row-2",
               "type": "section",
               "cells": [
@@ -16359,18 +16195,6 @@ export const HMIS_106A_03_CONFIG: HmisFormConfig = {
           ],
           "rows": [
             {
-              "key": "tab4-section-2-row-1",
-              "type": "section",
-              "cells": [
-                {
-                  "key": "tab4-section-2-row-1-cell-1",
-                  "kind": "label",
-                  "text": "b1) DR09. Enrolment of TB Cases With DR-TB on Second-Line TB Treatment during the reporting period",
-                  "colSpan": 7
-                }
-              ]
-            },
-            {
               "key": "tab4-section-2-row-2",
               "type": "subhead",
               "cells": [
@@ -16824,18 +16648,6 @@ export const HMIS_106A_03_CONFIG: HmisFormConfig = {
           ],
           "rows": [
             {
-              "key": "tab4-section-3-row-1",
-              "type": "subhead",
-              "cells": [
-                {
-                  "key": "tab4-section-3-row-1-cell-1",
-                  "kind": "label",
-                  "text": "b2) DR10. Number of DR-TB patients started on Treatment disagregated by treatment History in the reporting period",
-                  "colSpan": 11
-                }
-              ]
-            },
-            {
               "key": "tab4-section-3-row-2",
               "type": "subhead",
               "cells": [
@@ -17135,18 +16947,6 @@ export const HMIS_106A_03_CONFIG: HmisFormConfig = {
           ],
           "rows": [
             {
-              "key": "tab4-section-4-row-1",
-              "type": "section",
-              "cells": [
-                {
-                  "key": "tab4-section-4-row-1-cell-1",
-                  "kind": "label",
-                  "text": "c) DR011. HIV Testing among RR/MDR/PreXDR/XDR TB Patients",
-                  "colSpan": 6
-                }
-              ]
-            },
-            {
               "key": "tab4-section-4-row-2",
               "type": "subhead",
               "cells": [
@@ -17379,23 +17179,6 @@ export const HMIS_106A_03_CONFIG: HmisFormConfig = {
             }
           ],
           "rows": [
-            {
-              "key": "tab4-section-5-row-1",
-              "type": "section",
-              "cells": [
-                {
-                  "key": "tab4-section-5-row-1-cell-1",
-                  "kind": "label",
-                  "text": "d) DR012. DR TB Contact tracing done during the reporting period",
-                  "colSpan": 9
-                },
-                {
-                  "key": "tab4-section-5-row-1-cell-2",
-                  "kind": "label",
-                  "colSpan": 9
-                }
-              ]
-            },
             {
               "key": "tab4-section-5-row-2",
               "type": "subhead",
@@ -17871,18 +17654,6 @@ export const HMIS_106A_03_CONFIG: HmisFormConfig = {
           ],
           "rows": [
             {
-              "key": "tab4-section-6-row-1",
-              "type": "section",
-              "cells": [
-                {
-                  "key": "tab4-section-6-row-1-cell-1",
-                  "kind": "label",
-                  "text": "e) DR13. Interim outcome of TB Cases With RR-TB and MDR-TB started on Second-Line TB Treatment (”for patients started 9-12 months earlier”)",
-                  "colSpan": 7
-                }
-              ]
-            },
-            {
               "key": "tab4-section-6-row-2",
               "type": "subhead",
               "cells": [
@@ -18343,18 +18114,6 @@ export const HMIS_106A_03_CONFIG: HmisFormConfig = {
             }
           ],
           "rows": [
-            {
-              "key": "tab4-section-7-row-1",
-              "type": "section",
-              "cells": [
-                {
-                  "key": "tab4-section-7-row-1-cell-1",
-                  "kind": "label",
-                  "text": "f) DR14. 12 months outcomes of TB Cases with RR TB, MDR-TB, PreXDR and XDR TB that started second-line TB treatment (15-18 months earlier).",
-                  "colSpan": 9
-                }
-              ]
-            },
             {
               "key": "tab4-section-7-row-2",
               "type": "subhead",
@@ -18945,18 +18704,6 @@ export const HMIS_106A_03_CONFIG: HmisFormConfig = {
           ],
           "rows": [
             {
-              "key": "tab4-section-8-row-1",
-              "type": "section",
-              "cells": [
-                {
-                  "key": "tab4-section-8-row-1-cell-1",
-                  "kind": "label",
-                  "text": "g) DR15. : Cohort analysis for TB cases with RR TB, MDR, preXDR and XDR (Started on second line treatment (27-29 months earlier)",
-                  "colSpan": 9
-                }
-              ]
-            },
-            {
               "key": "tab4-section-8-row-2",
               "type": "subhead",
               "cells": [
@@ -19482,18 +19229,6 @@ export const HMIS_106A_03_CONFIG: HmisFormConfig = {
             }
           ],
           "rows": [
-            {
-              "key": "tab4-section-9-row-1",
-              "type": "section",
-              "cells": [
-                {
-                  "key": "tab4-section-9-row-1-cell-1",
-                  "kind": "label",
-                  "text": "h). DR. 16. Adverse Drug reactions for active RR TB, MDR, preXDR and XDR patients in the reporting period",
-                  "colSpan": 10
-                }
-              ]
-            },
             {
               "key": "tab4-section-9-row-2",
               "type": "subhead",
@@ -20323,18 +20058,6 @@ export const HMIS_106A_03_CONFIG: HmisFormConfig = {
             }
           ],
           "rows": [
-            {
-              "key": "tab5-section-1-row-1",
-              "type": "section",
-              "cells": [
-                {
-                  "key": "tab5-section-1-row-1-cell-1",
-                  "kind": "label",
-                  "text": "3.3 LC01. LEPROSY CONTROL",
-                  "colSpan": 49
-                }
-              ]
-            },
             {
               "key": "tab5-section-1-row-2",
               "type": "subhead",
@@ -25558,22 +25281,6 @@ export const HMIS_106A_03_CONFIG: HmisFormConfig = {
           ],
           "rows": [
             {
-              "key": "tab5-section-2-row-1",
-              "type": "section",
-              "cells": [
-                {
-                  "key": "tab5-section-2-row-1-cell-1",
-                  "kind": "label",
-                  "text": "3.3.1 LC02. LEPROSY CASE FINDING ACTIVITIES CARRIED OUT THIS QUARTER",
-                  "colSpan": 4
-                },
-                {
-                  "key": "tab5-section-2-row-1-cell-2",
-                  "kind": "label"
-                }
-              ]
-            },
-            {
               "key": "tab5-section-2-row-2",
               "type": "subhead",
               "cells": [
@@ -25825,18 +25532,6 @@ export const HMIS_106A_03_CONFIG: HmisFormConfig = {
             }
           ],
           "rows": [
-            {
-              "key": "tab5-section-3-row-1",
-              "type": "section",
-              "cells": [
-                {
-                  "key": "tab5-section-3-row-1-cell-1",
-                  "kind": "label",
-                  "text": "3.3.2 OUTCOMES PAUCIBACILLARY (PB) CASES REPORTED in 12 - 15 months ago",
-                  "colSpan": 10
-                }
-              ]
-            },
             {
               "key": "tab5-section-3-row-2",
               "type": "subhead",
@@ -26154,19 +25849,7 @@ export const HMIS_106A_03_CONFIG: HmisFormConfig = {
               "index": 0
             }
           ],
-          "rows": [
-            {
-              "key": "tab5-section-4-row-1",
-              "type": "subhead",
-              "cells": [
-                {
-                  "key": "tab5-section-4-row-1-cell-1",
-                  "kind": "label",
-                  "text": "Not Evaluated(Reported-Total)"
-                }
-              ]
-            }
-          ]
+          "rows": []
         },
         {
           "key": "tab5-section-5",
@@ -26215,18 +25898,6 @@ export const HMIS_106A_03_CONFIG: HmisFormConfig = {
             }
           ],
           "rows": [
-            {
-              "key": "tab5-section-5-row-1",
-              "type": "section",
-              "cells": [
-                {
-                  "key": "tab5-section-5-row-1-cell-1",
-                  "kind": "label",
-                  "text": "3.3.3 LC04. OUTCOMES OF MULTIBACILLARY (MB) CASES REPORTED 24 - 27 months ago",
-                  "colSpan": 10
-                }
-              ]
-            },
             {
               "key": "tab5-section-5-row-2",
               "type": "subhead",

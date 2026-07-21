@@ -123,18 +123,6 @@ export const HMIS_106A_01_02_CONFIG: HmisFormConfig = {
           ],
           "rows": [
             {
-              "key": "tab1-section-1-row-1",
-              "type": "section",
-              "cells": [
-                {
-                  "key": "tab1-section-1-row-1-cell-1",
-                  "kind": "label",
-                  "text": "1A – HIV CARE/ART SERVICES",
-                  "colSpan": 22
-                }
-              ]
-            },
-            {
               "key": "tab1-section-1-row-2",
               "type": "subhead",
               "cells": [
@@ -26870,18 +26858,6 @@ export const HMIS_106A_01_02_CONFIG: HmisFormConfig = {
           ],
           "rows": [
             {
-              "key": "tab2-section-1-row-1",
-              "type": "section",
-              "cells": [
-                {
-                  "key": "tab2-section-1-row-1-cell-1",
-                  "kind": "label",
-                  "text": "1B. Cervical Cancer Screening and Pre-Cancer Treatment Services",
-                  "colSpan": 13
-                }
-              ]
-            },
-            {
               "key": "tab2-section-1-row-2",
               "type": "subhead",
               "cells": [
@@ -29179,18 +29155,6 @@ export const HMIS_106A_01_02_CONFIG: HmisFormConfig = {
           ],
           "rows": [
             {
-              "key": "tab3-section-1-row-1",
-              "type": "section",
-              "cells": [
-                {
-                  "key": "tab3-section-1-row-1-cell-1",
-                  "kind": "label",
-                  "text": "1C - ART Cohort Analysis",
-                  "colSpan": 17
-                }
-              ]
-            },
-            {
               "key": "tab3-section-1-row-2",
               "type": "subhead",
               "cells": [
@@ -31250,18 +31214,6 @@ export const HMIS_106A_01_02_CONFIG: HmisFormConfig = {
           ],
           "rows": [
             {
-              "key": "tab3-section-2-row-1",
-              "type": "section",
-              "cells": [
-                {
-                  "key": "tab3-section-2-row-1-cell-1",
-                  "kind": "label",
-                  "text": "1D. TPT Completion",
-                  "colSpan": 11
-                }
-              ]
-            },
-            {
               "key": "tab3-section-2-row-2",
               "type": "subhead",
               "cells": [
@@ -32140,18 +32092,6 @@ export const HMIS_106A_01_02_CONFIG: HmisFormConfig = {
             }
           ],
           "rows": [
-            {
-              "key": "tab3-section-3-row-1",
-              "type": "section",
-              "cells": [
-                {
-                  "key": "tab3-section-3-row-1-cell-1",
-                  "kind": "label",
-                  "text": "1E. CrAg positive Cohort Monitoring",
-                  "colSpan": 17
-                }
-              ]
-            },
             {
               "key": "tab3-section-3-row-2",
               "type": "subhead",
@@ -33267,18 +33207,6 @@ export const HMIS_106A_01_02_CONFIG: HmisFormConfig = {
             }
           ],
           "rows": [
-            {
-              "key": "tab4-section-1-row-1",
-              "type": "section",
-              "cells": [
-                {
-                  "key": "tab4-section-1-row-1-cell-1",
-                  "kind": "label",
-                  "text": "POST EXPOSURE PROPHYLAXIS (PEP)",
-                  "colSpan": 22
-                }
-              ]
-            },
             {
               "key": "tab4-section-1-row-2",
               "type": "subhead",
@@ -36022,18 +35950,6 @@ export const HMIS_106A_01_02_CONFIG: HmisFormConfig = {
           ],
           "rows": [
             {
-              "key": "tab5-section-1-row-1",
-              "type": "section",
-              "cells": [
-                {
-                  "key": "tab5-section-1-row-1-cell-1",
-                  "kind": "label",
-                  "text": "PRE-EXPOSURE PROPHYLAXIS (PrEP)",
-                  "colSpan": 17
-                }
-              ]
-            },
-            {
               "key": "tab5-section-1-row-2",
               "type": "subhead",
               "cells": [
@@ -38293,23 +38209,6 @@ export const HMIS_106A_01_02_CONFIG: HmisFormConfig = {
             }
           ],
           "rows": [
-            {
-              "key": "tab6-section-1-row-1",
-              "type": "section",
-              "cells": [
-                {
-                  "key": "tab6-section-1-row-1-cell-1",
-                  "kind": "label",
-                  "text": "COMMUNITY SERVICES QUARTERLY REPORT",
-                  "colSpan": 12
-                },
-                {
-                  "key": "tab6-section-1-row-1-cell-2",
-                  "kind": "label",
-                  "colSpan": 12
-                }
-              ]
-            },
             {
               "key": "tab6-section-1-row-2",
               "type": "subhead",
