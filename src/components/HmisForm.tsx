@@ -561,6 +561,13 @@ const InnerHmisForm: React.FC<HmisFormProps> = ({
         initialValues ?? new Map(),
     );
 
+    // Re-seed local state when the loader returns fresh initialValues (e.g.,
+    // the user changed period or orgUnit — the route doesn't remount, so
+    // useState alone would keep the previous period's map).
+    React.useEffect(() => {
+        setValues(initialValues ?? new Map());
+    }, [initialValues]);
+
     const draftKey =
         dataSet && period && orgUnit && attributeOptionCombo
             ? draftId({

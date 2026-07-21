@@ -34,6 +34,7 @@ async function fetchServerValues(
     dataSet: string,
     orgUnit: string,
     period: string,
+    defaultAttributeOptionCombo?: string,
 ): Promise<Map<string, string>> {
     const params = new URLSearchParams({
         source: "hmis_dvs",
@@ -56,7 +57,9 @@ async function fetchServerValues(
                     categoryOptionCombo,
                     value,
                 }: any) => [
-                    `${dataElement}_${categoryOptionCombo}_${attributeOptionCombo}`,
+                    `${dataElement}_${categoryOptionCombo}_${
+                        attributeOptionCombo ?? defaultAttributeOptionCombo ?? ""
+                    }`,
                     value,
                 ],
             ),
@@ -149,13 +152,21 @@ export const DataSetReportRoute = createRoute({
             return empty;
         }
 
-        // Server values (ereports) do not depend on AOC — always fetch.
-        const serverValues = await fetchServerValues(dataSet, orgUnit, period);
-
-        // Verified state + local draft are keyed by AOC, which for 033B is
-        // hardcoded rather than URL-provided. If we still cannot resolve one,
-        // just skip those reads and return the server values as-is.
+        // Resolve the AOC the form will actually use for key lookups. For 033B
+        // this is a hardcoded default; for other forms it comes from the URL.
+        // We pass it to fetchServerValues so that if the server row omits or
+        // nullifies attributeOptionCombo, we fall back to the effective one —
+        // otherwise keys built here won't match keys built by FieldCell.
         const effectiveAttribution = resolveAttribution(dataSet, attribution);
+        const serverValues = await fetchServerValues(
+            dataSet,
+            orgUnit,
+            period,
+            effectiveAttribution,
+        );
+
+        // Verified state + local draft are keyed by AOC. If we still cannot
+        // resolve one, skip those reads and return the server values as-is.
         if (!effectiveAttribution) {
             return {
                 initialValues: serverValues,
