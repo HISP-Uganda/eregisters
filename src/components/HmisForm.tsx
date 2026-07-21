@@ -171,9 +171,22 @@ const HmisFormStyles = () => (
         text-align: center;
       }
 
+      /* antd v6 InputNumber uses .ant-input-number-disabled on the wrapper
+         and .ant-input-number-input on the actual <input>. Its default
+         disabled color is rgba(0,0,0,0.25) which is unreadable on our grey
+         background — override both selectors. */
+      .hmis105-field.ant-input-number-disabled,
       .hmis105-field.ant-input-disabled {
         background-color: #e6e6e6 !important;
+        cursor: not-allowed !important;
+      }
+
+      .hmis105-field.ant-input-number-disabled .ant-input-number-input,
+      .hmis105-field.ant-input-disabled .ant-input-number-input,
+      .hmis105-field.ant-input-number-disabled input,
+      .hmis105-field.ant-input-disabled input {
         color: #000 !important;
+        -webkit-text-fill-color: #000 !important;
         cursor: not-allowed !important;
       }
 
