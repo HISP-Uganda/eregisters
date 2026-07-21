@@ -633,7 +633,7 @@ Inside `SectionTable`, when calling `renderRow`, pass `rowEditable`:
 )}
 ```
 
-Do the same for the `headRows.map(...)` call — subheads pass `true` (headers are label-only anyway):
+Do the same for the `headRows.map(...)` call. Header rows are subheads (row.type === "subhead") that carry column labels — they contain label cells (`text` only, no `title`) and no data-entry `field` cells. `isRowEditable` on such a row returns `false` under `mode: "allowlist"` or `"none"` (no titled cell to match), which is harmless because there are no fields to disable. Passing `true` unconditionally is equivalent and clearer about the intent (header row → no editability decision required):
 
 ```ts
 {headRows.map((row) =>
@@ -975,7 +975,7 @@ Import the type:
 import type { HmisDraft } from "./hmis-drafts";
 ```
 
-(Circular import is fine here because `HmisDraft` is a `type` — TS strips the import at runtime.)
+`import type` is stripped at compile time so there is no runtime circular reference between `db/index.ts` (which is the source of the `db` singleton) and `db/hmis-drafts.ts` (which imports `db` at runtime). Do NOT change the `import type` to a value import — that would introduce an initialization-order bug where `db` could be `undefined` when `hmis-drafts.ts` is loaded first (e.g. by a test).
 
 Add the table property inside `RegisterDatabase` (alongside the other `!:` fields):
 
@@ -1012,12 +1012,76 @@ git add src/db/index.ts src/db/hmis-drafts.ts src/db/hmis-drafts.test.ts
 git commit -m "feat: add hmisDrafts Dexie table + merge helpers"
 ```
 
-### Task 1.2: Loader reads local draft + `completeDataSetRegistrations`
+### Task 1.2a: Expose the DHIS2 engine via router context
+
+**Files:**
+- Modify: `src/routes/__root.tsx`
+- Modify: `src/router.tsx`
+- Modify: `src/App.tsx`
+
+Loaders don't have hook access, so we can't call `useDataEngine()` from Task 1.2b's loader. We add `engine` to the router context so the loader can use `context.engine.query(...)` — the same instance the component already uses via `useDataEngine`. This is preferred over a raw `fetch("../../../api/...")` because the DHIS2 app mount depth is not stable, and `engine.query` transparently handles auth, base URL, and error shapes.
+
+- [ ] **Step 1: Add `engine` to `RootRoute`'s context generic.**
+
+Edit `src/routes/__root.tsx` around line 54:
+
+```ts
+import type { DataEngine } from "@dhis2/app-runtime";
+// ...
+export const RootRoute = createRootRouteWithContext<{
+    syncActor: ReturnType<typeof SyncContext.useActorRef>;
+    engine: DataEngine;
+}>()({
+    // ...unchanged body
+});
+```
+
+If `DataEngine` is not exported from `@dhis2/app-runtime`, use `ReturnType<typeof import("@dhis2/app-runtime").useDataEngine>` inline.
+
+- [ ] **Step 2: Initialize the field in `router.tsx`.**
+
+In `src/router.tsx`, extend the `context:` initializer:
+
+```ts
+context: {
+    syncActor: undefined!,
+    engine: undefined!,
+},
+```
+
+- [ ] **Step 3: Thread engine through `App.tsx`.**
+
+In `src/App.tsx`, `Main`:
+
+```tsx
+const Main = () => {
+    const syncActor = SyncContext.useActorRef();
+    const engine = useDataEngine();
+    return (
+        <RouterProvider router={router} context={{ syncActor, engine }} />
+    );
+};
+```
+
+- [ ] **Step 4: Typecheck.**
+
+Run: `pnpm exec tsc --noEmit`
+
+Expected: no new errors.
+
+- [ ] **Step 5: Commit.**
+
+```bash
+git add src/routes/__root.tsx src/router.tsx src/App.tsx
+git commit -m "chore: expose DHIS2 engine via router context for loader access"
+```
+
+### Task 1.2b: Loader reads local draft + `completeDataSetRegistrations`
 
 **Files:**
 - Modify: `src/routes/reports.data-set.tsx`
 
-The loader currently fetches ereports values only. Extend to also read the local draft and call DHIS2 `completeDataSetRegistrations`. Use raw `fetch()` for the DHIS2 read because `useDataEngine` is not available inside loaders — the app is same-origin with DHIS2 so cookies flow.
+The loader currently fetches ereports values only. Extend to also read the local draft and call DHIS2 `completeDataSetRegistrations` via `context.engine.query`.
 
 - [ ] **Step 1: Extend the loader return type.**
 
@@ -1033,12 +1097,25 @@ import {
 } from "../db/hmis-drafts";
 ```
 
-- [ ] **Step 2: Replace the loader body.**
+- [ ] **Step 2: Verify `loaderDeps` includes `attribution`.**
+
+Read `src/routes/reports.data-set.tsx` and confirm the existing `loaderDeps` line includes `attribution` in both the destructure and return:
+
+```ts
+loaderDeps: ({
+    search: { attribution, dataSet, orgUnit, period, periodType },
+}) => ({ attribution, dataSet, orgUnit, period, periodType }),
+```
+
+It already does at the time of writing — if a prior task changed it, restore it. Do not proceed to Step 3 until this is verified.
+
+- [ ] **Step 3: Replace the loader body.**
 
 Replace the existing `loader: async ({ deps: { dataSet, orgUnit, period } }) => { ... }` with:
 
 ```ts
 loader: async ({
+    context,
     deps: { dataSet, orgUnit, period, attribution },
 }) => {
     const empty = {
@@ -1064,7 +1141,7 @@ loader: async ({
 
     const [serverValues, serverVerified, draft] = await Promise.all([
         fetchServerValues(dataSet, orgUnit, period),
-        fetchServerVerified(dataSet, orgUnit, period, attribution),
+        fetchServerVerified(context.engine, dataSet, orgUnit, period, attribution),
         getHmisDraft(id).catch(() => undefined),
     ]);
 
@@ -1079,7 +1156,7 @@ loader: async ({
 },
 ```
 
-- [ ] **Step 3: Add the two fetch helpers (module scope, above `Reports`).**
+- [ ] **Step 4: Add the two fetch helpers (module scope, above `Reports`).**
 
 ```ts
 async function fetchServerValues(
@@ -1118,45 +1195,50 @@ async function fetchServerValues(
     }
 }
 
+interface DataEngineLike {
+    query: (q: Record<string, any>) => Promise<any>;
+}
+
 async function fetchServerVerified(
+    engine: DataEngineLike,
     dataSet: string,
     orgUnit: string,
     period: string,
     attribution: string,
 ): Promise<boolean | undefined> {
     try {
-        const params = new URLSearchParams({
-            dataSet,
-            period,
-            orgUnit,
-            children: "false",
+        const result = await engine.query({
+            registrations: {
+                resource: "completeDataSetRegistrations",
+                params: {
+                    dataSet,
+                    period,
+                    orgUnit,
+                    children: false,
+                },
+            },
         });
-        const response = await fetch(
-            `../../../api/completeDataSetRegistrations?${params.toString()}`,
-            { credentials: "include" },
-        );
-        if (!response.ok) return undefined;
-        const data = await response.json();
         const list: Array<{
             attributeOptionCombo?: string;
             completed?: boolean;
-        }> = data.completeDataSetRegistrations ?? [];
+        }> =
+            result?.registrations?.completeDataSetRegistrations ?? [];
         return list.some(
             (r) =>
                 r.attributeOptionCombo === attribution &&
                 r.completed === true,
         );
-    } catch {
+    } catch (err) {
+        console.warn(
+            "completeDataSetRegistrations read failed — treating verified state as unknown:",
+            err,
+        );
         return undefined;
     }
 }
 ```
 
-Note the `../../../api/...` path — the DHIS2 app is hosted under a nested path (`/api/apps/...`); relative `../../../api/...` resolves to the DHIS2 root API. If the deployed app path changes, the manual QA step will catch this — flag it in the QA notes.
-
-- [ ] **Step 4: Update `loaderDeps` to include `attribution`.**
-
-Already included in the existing `loaderDeps` line (`search: { attribution, ... }`) — verify by reading the file. If missing, add it.
+Uses the engine from router context (Task 1.2a) — no fragile relative path.
 
 - [ ] **Step 5: Update the component to consume the new shape.**
 
@@ -1258,6 +1340,12 @@ const draftKey =
         : undefined;
 
 const draftTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+const latestValuesRef = React.useRef<HmisFormValues>(values);
+
+// Keep the latest-values ref in sync so the unmount flush writes fresh data.
+React.useEffect(() => {
+    latestValuesRef.current = values;
+}, [values]);
 
 const flushDraft = React.useCallback(
     async (nextValues: HmisFormValues) => {
@@ -1273,26 +1361,34 @@ const flushDraft = React.useCallback(
             isVerified: existing?.isVerified ?? false,
             verifiedAt: existing?.verifiedAt,
             updatedAt: Date.now(),
-            syncStatus: existing?.syncStatus === "synced" ? "draft" : existing?.syncStatus ?? "draft",
+            syncStatus:
+                existing?.syncStatus === "synced"
+                    ? "draft"
+                    : existing?.syncStatus ?? "draft",
         });
     },
     [draftKey, dataSet, period, orgUnit, attributeOptionCombo],
 );
 
+// Final flush on unmount — only when there's a pending timer to avoid a
+// redundant write when the user has already stopped typing for 500 ms.
 React.useEffect(() => {
     return () => {
-        if (draftTimerRef.current) {
+        if (draftTimerRef.current !== null) {
             clearTimeout(draftTimerRef.current);
-            void flushDraft(values);
+            draftTimerRef.current = null;
+            void flushDraft(latestValuesRef.current);
         }
     };
+    // Intentionally not depending on flushDraft — this effect is a lifecycle
+    // hook, not a data effect. flushDraft is closed over via useRef pattern.
     // eslint-disable-next-line react-hooks/exhaustive-deps
 }, []);
 ```
 
 - [ ] **Step 5: Route `setValue` through the debounced writer.**
 
-Update the existing `setValue` `useCallback`:
+Update the existing `setValue` `useCallback`. The timer callback nulls the ref before firing so the unmount cleanup can distinguish "pending timer" from "already fired":
 
 ```ts
 const setValue = React.useCallback(
@@ -1314,8 +1410,11 @@ const setValue = React.useCallback(
                 ),
                 value,
             );
-            if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
+            if (draftTimerRef.current !== null) {
+                clearTimeout(draftTimerRef.current);
+            }
             draftTimerRef.current = setTimeout(() => {
+                draftTimerRef.current = null;
                 void flushDraft(next);
             }, 500);
             return next;
@@ -1444,9 +1543,13 @@ Add to the imports at the top:
 import { getHmisDraft, upsertHmisDraft } from "../db/hmis-drafts";
 ```
 
-- [ ] **Step 3: Force a loader refetch after verify (optional pass).**
+- [ ] **Step 3: Force a loader refetch after verify.**
 
-TanStack Router refetches on navigation. Simplest guaranteed approach: after `onSave` completes, `navigate` to the same URL with a cache-buster search key, OR call `router.invalidate()`. Add:
+TanStack Router refetches on navigation but not on same-URL state changes. The verify path mutates local + server state that the loader consumed, so we need to invalidate the loader cache.
+
+Version check first — confirm `@tanstack/react-router@^1.169` (already in `package.json`) exposes `useRouter().invalidate()`. Quick check: `pnpm exec node -e 'console.log(Object.keys(require("@tanstack/react-router")))'` should list `useRouter`. If it does not exist in the installed version, use `router.load({ purge: true })` or navigate to the same URL with a bump on a search key.
+
+Add:
 
 ```ts
 import { useRouter } from "@tanstack/react-router";
@@ -1510,7 +1613,12 @@ Just after the destructuring, add:
 const effectiveReadOnly = readOnly || (isVerified && syncStatus === "synced");
 ```
 
-Replace every downstream `readOnly` reference with `effectiveReadOnly` (search the file — there are ~4 sites: the `SectionTable` prop, the `Button disabled` in Section 4/5, the `RenderCell` prop, and the `FieldCell` prop).
+**Rename exactly two sites** inside the body of `InnerHmisForm` — nowhere else. Every other `readOnly` in the file is a locally-scoped parameter on `FieldCell` / `RenderCell` / `renderRow` / `SectionTable` and MUST stay untouched. Do not run a find-and-replace.
+
+1. In the `tab.sections.map(...)` inside `InnerHmisForm`, change `readOnly={readOnly}` on the `<SectionTable>` prop to `readOnly={effectiveReadOnly}`.
+2. In the `Card`'s `extra` Button, change `disabled={readOnly}` to `disabled={effectiveReadOnly}`.
+
+Confirm with: `grep -n "effectiveReadOnly" src/components/HmisForm.tsx` — expect exactly three matches (the `const` definition + the two prop/attr sites).
 
 - [ ] **Step 4: Replace the button.**
 
