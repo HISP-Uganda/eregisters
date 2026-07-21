@@ -204,7 +204,7 @@ Preserves the existing `readOnly` (report-level lock, now driven by `isVerified 
 
 ### Interaction with Section 1
 
-`isVerified === true` should set `readOnly = true` in the form (already the pattern — the form accepts a `readOnly` prop that disables all fields globally). This is threaded via `InnerHmisForm`.
+The route sets `readOnly = isVerified && syncStatus === "synced"` (see Section 1 UI). When both are true, `HmisForm`'s existing `readOnly` prop disables all fields globally regardless of the row's `editableScope`. When verification is pending (`isVerified === true` but `syncStatus === "pending"`), the form remains editable so the user can adjust values before retrying — allowlist rules from this section still apply.
 
 ### Regression test
 
