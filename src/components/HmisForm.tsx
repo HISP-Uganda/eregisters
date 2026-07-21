@@ -10,6 +10,7 @@ import {
 import React, { useState } from "react";
 import type {
     HmisCellConfig,
+    HmisEditableScope,
     HmisFormConfig,
     HmisFormValues,
     HmisRowConfig,
@@ -55,6 +56,19 @@ function dataValueKey(
 function cleanNumericValue(raw: unknown) {
     if (raw === null || raw === undefined) return "";
     return String(raw).replace(/[^\d]/g, "");
+}
+
+function isRowEditable(
+    row: HmisRowConfig,
+    scope: HmisEditableScope | undefined,
+): boolean {
+    if (!scope || scope.mode === "all") return true;
+    if (scope.mode === "none") return false;
+    const identifying = row.cells.find(
+        (c) => typeof c.title === "string" && c.title.length > 0,
+    );
+    if (!identifying?.title) return false;
+    return scope.allow.some((re) => re.test(identifying.title!));
 }
 
 function getRowClassName(row: HmisRowConfig) {
@@ -266,7 +280,15 @@ const FieldCell: React.FC<{
     readOnly: boolean;
     setValue: setValue;
     attributeOptionCombo: string;
-}> = ({ cell, values, readOnly, setValue, attributeOptionCombo }) => {
+    rowEditable: boolean;
+}> = ({
+    cell,
+    values,
+    readOnly,
+    setValue,
+    attributeOptionCombo,
+    rowEditable,
+}) => {
     if (!cell.dataElement || !cell.categoryOptionCombo) {
         return (
             <InputNumber
@@ -289,7 +311,7 @@ const FieldCell: React.FC<{
             inputMode="numeric"
             title={cell.title ?? key}
             value={values.getOrInsert(key, "")}
-            disabled={readOnly || !!cell.disabled}
+            disabled={readOnly || !!cell.disabled || !rowEditable}
             style={{ width: "100%" }}
             onChange={(value) => {
                 setValue({
@@ -312,6 +334,7 @@ const RenderCell: React.FC<{
     setValue: setValue;
     attributeOptionCombo: string;
     stickyLeft?: number;
+    rowEditable: boolean;
 }> = ({
     cell,
     values,
@@ -319,6 +342,7 @@ const RenderCell: React.FC<{
     setValue,
     attributeOptionCombo,
     stickyLeft,
+    rowEditable,
 }) => {
     const stickyStyle: React.CSSProperties =
         stickyLeft !== undefined ? { left: stickyLeft } : {};
@@ -344,6 +368,7 @@ const RenderCell: React.FC<{
                     readOnly={readOnly}
                     setValue={setValue}
                     attributeOptionCombo={attributeOptionCombo}
+                    rowEditable={rowEditable}
                 />
             </td>
         );
@@ -374,6 +399,7 @@ const renderRow = (
     setValue: setValue,
     attributeOptionCombo: string,
     carry: RowSpanCarry,
+    rowEditable: boolean,
 ) => {
     let cursor = 0;
     const advancePastCarry = () => {
@@ -404,6 +430,7 @@ const renderRow = (
                 setValue={setValue}
                 attributeOptionCombo={attributeOptionCombo}
                 stickyLeft={stickyLeft}
+                rowEditable={rowEditable}
             />
         );
     });
@@ -427,7 +454,15 @@ const SectionTable: React.FC<{
     readOnly: boolean;
     setValue: setValue;
     attributeOptionCombo: string;
-}> = ({ section, values, readOnly, setValue, attributeOptionCombo }) => {
+    editableScope: HmisEditableScope | undefined;
+}> = ({
+    section,
+    values,
+    readOnly,
+    setValue,
+    attributeOptionCombo,
+    editableScope,
+}) => {
     const frozenColumns = section.frozenColumns ?? 1;
     const carry: RowSpanCarry = new Map();
 
@@ -462,6 +497,7 @@ const SectionTable: React.FC<{
                         setValue,
                         attributeOptionCombo,
                         carry,
+                        true,
                     ),
                 )}
             </thead>
@@ -475,6 +511,7 @@ const SectionTable: React.FC<{
                         setValue,
                         attributeOptionCombo,
                         carry,
+                        isRowEditable(row, editableScope),
                     ),
                 )}
             </tbody>
@@ -583,6 +620,7 @@ const InnerHmisForm: React.FC<HmisFormProps> = ({
                         readOnly={readOnly}
                         setValue={setValue}
                         attributeOptionCombo={attributeOptionCombo}
+                        editableScope={config.editableScope}
                     />
                 ))}
             </div>
