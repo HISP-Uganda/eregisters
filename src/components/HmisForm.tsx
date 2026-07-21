@@ -690,12 +690,6 @@ const InnerHmisForm: React.FC<HmisFormProps> = ({
             <div
                 className="hmis105-tab-scroll"
                 tabIndex={0}
-                onWheel={(e) => {
-                    e.preventDefault();
-                    e.currentTarget.scrollTop += e.deltaY;
-                    e.currentTarget.scrollLeft += e.deltaX;
-                    e.stopPropagation();
-                }}
                 style={{
                     maxHeight: "calc(100vh - 260px)",
                     overflow: "auto",
