@@ -149,7 +149,7 @@ const HmisFormStyles = () => (
 
       .hmis105-field.ant-input-disabled {
         background-color: #e6e6e6 !important;
-        color: #333 !important;
+        color: #000 !important;
         cursor: not-allowed !important;
       }
 
