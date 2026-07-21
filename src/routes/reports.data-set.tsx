@@ -1,4 +1,4 @@
-import { createRoute } from "@tanstack/react-router";
+import { createRoute, useRouter } from "@tanstack/react-router";
 
 import { useDataEngine } from "@dhis2/app-runtime";
 import { App } from "antd";
@@ -17,44 +17,36 @@ import Hmis106A03Form from "../components/Hmis106A03";
 import Hmis106A04Form from "../components/Hmis106A04";
 import Hmis108Form from "../components/Hmis108";
 import { Spinner } from "../components/spinner";
+import {
+    combineIsVerified,
+    draftId,
+    getHmisDraft,
+    mergeDraftAndServer,
+    upsertHmisDraft,
+    type HmisDraft,
+} from "../db/hmis-drafts";
 import { ReportsRoute } from "./reports";
 
 dayjs.extend(advancedFormat);
 dayjs.extend(isoWeek);
 
-export const DataSetReportRoute = createRoute({
-    getParentRoute: () => ReportsRoute,
-    path: "/hmis",
-    component: Reports,
-    pendingComponent: Spinner,
-    loaderDeps: ({
-        search: { attribution, dataSet, orgUnit, period, periodType },
-    }) => ({ attribution, dataSet, orgUnit, period, periodType }),
-    loader: async ({ deps: { dataSet, orgUnit, period } }) => {
-        if (
-            orgUnit === undefined ||
-            period === undefined ||
-            dataSet === undefined
-        ) {
-            return new Map<string, string>();
-        }
-        const params = new URLSearchParams({
-            source: "hmis_dvs",
-            period,
-            dataset: dataSet,
-            orgunit: orgUnit,
-        });
+async function fetchServerValues(
+    dataSet: string,
+    orgUnit: string,
+    period: string,
+): Promise<Map<string, string>> {
+    const params = new URLSearchParams({
+        source: "hmis_dvs",
+        period,
+        dataset: dataSet,
+        orgunit: orgUnit,
+    });
+    try {
         const response = await fetch(
             `https://eregisters.health.go.ug/ereports/query?${params.toString()}`,
-            {
-                headers: {
-                    "x-api-key": "LnwYPc0EnRKIqjKaQabQWGIN31ranjYt",
-                },
-            },
+            { headers: { "x-api-key": "LnwYPc0EnRKIqjKaQabQWGIN31ranjYt" } },
         );
-        if (!response.ok) {
-            return new Map<string, string>();
-        }
+        if (!response.ok) return new Map();
         const data = await response.json();
         return new Map<string, string>(
             data.dataValues.map(
@@ -69,6 +61,106 @@ export const DataSetReportRoute = createRoute({
                 ],
             ),
         );
+    } catch {
+        return new Map();
+    }
+}
+
+interface DataEngineLike {
+    query: (q: Record<string, any>) => Promise<any>;
+}
+
+async function fetchServerVerified(
+    engine: DataEngineLike,
+    dataSet: string,
+    orgUnit: string,
+    period: string,
+    attribution: string,
+): Promise<boolean | undefined> {
+    try {
+        const result = await engine.query({
+            registrations: {
+                resource: "completeDataSetRegistrations",
+                params: {
+                    dataSet,
+                    period,
+                    orgUnit,
+                    children: false,
+                },
+            },
+        });
+        const list: Array<{
+            attributeOptionCombo?: string;
+            completed?: boolean;
+        }> =
+            result?.registrations?.completeDataSetRegistrations ?? [];
+        return list.some(
+            (r) =>
+                r.attributeOptionCombo === attribution &&
+                r.completed === true,
+        );
+    } catch (err) {
+        console.warn(
+            "completeDataSetRegistrations read failed — treating verified state as unknown:",
+            err,
+        );
+        return undefined;
+    }
+}
+
+export const DataSetReportRoute = createRoute({
+    getParentRoute: () => ReportsRoute,
+    path: "/hmis",
+    component: Reports,
+    pendingComponent: Spinner,
+    loaderDeps: ({
+        search: { attribution, dataSet, orgUnit, period, periodType },
+    }) => ({ attribution, dataSet, orgUnit, period, periodType }),
+    loader: async ({
+        context,
+        deps: { dataSet, orgUnit, period, attribution },
+    }) => {
+        const empty = {
+            initialValues: new Map<string, string>(),
+            isVerified: false,
+            syncStatus: "draft" as HmisDraft["syncStatus"],
+        };
+        if (
+            orgUnit === undefined ||
+            period === undefined ||
+            dataSet === undefined ||
+            attribution === undefined
+        ) {
+            return empty;
+        }
+
+        const id = draftId({
+            dataSet,
+            period,
+            orgUnit,
+            attributeOptionCombo: attribution,
+        });
+
+        const [serverValues, serverVerified, draft] = await Promise.all([
+            fetchServerValues(dataSet, orgUnit, period),
+            fetchServerVerified(
+                context.engine,
+                dataSet,
+                orgUnit,
+                period,
+                attribution,
+            ),
+            getHmisDraft(id).catch(() => undefined),
+        ]);
+
+        return {
+            initialValues: mergeDraftAndServer(draft, serverValues),
+            isVerified: combineIsVerified(
+                draft?.isVerified ?? false,
+                serverVerified,
+            ),
+            syncStatus: draft?.syncStatus ?? "draft",
+        };
     },
 });
 
@@ -77,7 +169,9 @@ function Reports() {
     const engine = useDataEngine();
     const { dataSet, attribution, orgUnit, period } =
         DataSetReportRoute.useSearch();
-    const data = DataSetReportRoute.useLoaderData();
+    const { initialValues, isVerified, syncStatus } =
+        DataSetReportRoute.useLoaderData();
+    const router = useRouter();
 
 
     const onSave = async (values: {
@@ -90,31 +184,101 @@ function Reports() {
             attributeOptionCombo: string;
         }[];
     }) => {
-        await engine.mutate({
-            resource: "dataValueSets",
-            data: {
-                ...values,
+        if (!dataSet || !period || !orgUnit || !attribution) {
+            message.error("Missing dataset/period/organisation before verifying.");
+            return;
+        }
+        const id = draftId({
+            dataSet,
+            period,
+            orgUnit,
+            attributeOptionCombo: attribution,
+        });
+        const now = Date.now();
+
+        try {
+            await engine.mutate({
+                resource: "dataValueSets",
+                data: {
+                    ...values,
+                    dataSet,
+                    completionDate: new Date().toISOString(),
+                    period,
+                    orgUnit,
+                    attributeOptionCombo: attribution,
+                },
+                type: "create",
+                params: { async: true },
+            });
+
+            await engine.mutate({
+                resource: "completeDataSetRegistrations",
+                type: "create",
+                data: {
+                    completeDataSetRegistrations: [
+                        {
+                            dataSet,
+                            period,
+                            organisationUnit: orgUnit,
+                            attributeOptionCombo: attribution,
+                            completed: true,
+                            date: new Date().toISOString(),
+                        },
+                    ],
+                },
+            });
+
+            await upsertHmisDraft({
+                id,
                 dataSet,
-                completionDate: new Date().toISOString(),
                 period,
                 orgUnit,
                 attributeOptionCombo: attribution,
-            },
-            type: "create",
-            params: {
-                async: true,
-            },
-        });
+                values: {},
+                isVerified: true,
+                verifiedAt: now,
+                updatedAt: now,
+                syncStatus: "synced",
+            });
 
-        message.success("Report Verified Successfully");
+            await router.invalidate();
+            message.success("Report Verified Successfully");
+        } catch (err) {
+            const existing = await getHmisDraft(id);
+            await upsertHmisDraft({
+                id,
+                dataSet,
+                period,
+                orgUnit,
+                attributeOptionCombo: attribution,
+                values:
+                    existing?.values ??
+                    Object.fromEntries(
+                        values.dataValues.map((dv) => [
+                            `${dv.dataElement}_${dv.categoryOptionCombo}_${dv.attributeOptionCombo}`,
+                            dv.value,
+                        ]),
+                    ),
+                isVerified: true,
+                verifiedAt: now,
+                updatedAt: now,
+                syncStatus: "pending",
+            });
+            await router.invalidate();
+            message.error("Verification queued — will sync when online.");
+            console.error("Verify failed:", err);
+        }
     };
 
     const dataSets: Record<string, ReactNode> = {
         C4oUitImBPK: (
             <Hmis033bForm
                 attributeOptionCombo={"HllvX50cXC0"}
+                dataSet={dataSet}
                 orgUnit={orgUnit}
-                initialValues={data}
+                initialValues={initialValues}
+                isVerified={isVerified}
+                syncStatus={syncStatus}
                 period={period}
                 onSave={onSave}
             />
@@ -122,8 +286,11 @@ function Reports() {
         RtEYsASU7PG: (
             <Hmis10501Form
                 attributeOptionCombo={attribution ?? ""}
+                dataSet={dataSet}
                 orgUnit={orgUnit}
-                initialValues={data}
+                initialValues={initialValues}
+                isVerified={isVerified}
+                syncStatus={syncStatus}
                 period={period}
                 onSave={onSave}
             />
@@ -131,8 +298,11 @@ function Reports() {
         ic1BSWhGOso: (
             <Hmis1050203Form
                 attributeOptionCombo={attribution ?? ""}
+                dataSet={dataSet}
                 orgUnit={orgUnit}
-                initialValues={data}
+                initialValues={initialValues}
+                isVerified={isVerified}
+                syncStatus={syncStatus}
                 period={period}
                 onSave={onSave}
             />
@@ -140,8 +310,11 @@ function Reports() {
         nGkMm2VBT4G: (
             <Hmis1050405Form
                 attributeOptionCombo={attribution ?? ""}
+                dataSet={dataSet}
                 orgUnit={orgUnit}
-                initialValues={data}
+                initialValues={initialValues}
+                isVerified={isVerified}
+                syncStatus={syncStatus}
                 period={period}
                 onSave={onSave}
             />
@@ -149,8 +322,11 @@ function Reports() {
         VDhwrW9DiC1: (
             <Hmis1050609Form
                 attributeOptionCombo={attribution ?? ""}
+                dataSet={dataSet}
                 orgUnit={orgUnit}
-                initialValues={data}
+                initialValues={initialValues}
+                isVerified={isVerified}
+                syncStatus={syncStatus}
                 period={period}
                 onSave={onSave}
             />
@@ -158,8 +334,11 @@ function Reports() {
         quMWqLxzcfO: (
             <Hmis10510Form
                 attributeOptionCombo={attribution ?? ""}
+                dataSet={dataSet}
                 orgUnit={orgUnit}
-                initialValues={data}
+                initialValues={initialValues}
+                isVerified={isVerified}
+                syncStatus={syncStatus}
                 period={period}
                 onSave={onSave}
             />
@@ -167,8 +346,11 @@ function Reports() {
         dFRD2A5fdvn: (
             <Hmis106A0102Form
                 attributeOptionCombo={attribution ?? ""}
+                dataSet={dataSet}
                 orgUnit={orgUnit}
-                initialValues={data}
+                initialValues={initialValues}
+                isVerified={isVerified}
+                syncStatus={syncStatus}
                 period={period}
                 onSave={onSave}
             />
@@ -176,8 +358,11 @@ function Reports() {
         DFMoIONIalm: (
             <Hmis106A03Form
                 attributeOptionCombo={attribution ?? ""}
+                dataSet={dataSet}
                 orgUnit={orgUnit}
-                initialValues={data}
+                initialValues={initialValues}
+                isVerified={isVerified}
+                syncStatus={syncStatus}
                 period={period}
                 onSave={onSave}
             />
@@ -185,8 +370,11 @@ function Reports() {
         GwSIuQVi8b2: (
             <Hmis106A04Form
                 attributeOptionCombo={attribution ?? ""}
+                dataSet={dataSet}
                 orgUnit={orgUnit}
-                initialValues={data}
+                initialValues={initialValues}
+                isVerified={isVerified}
+                syncStatus={syncStatus}
                 period={period}
                 onSave={onSave}
             />
@@ -194,8 +382,11 @@ function Reports() {
         EBqVAQRmiPm: (
             <Hmis108Form
                 attributeOptionCombo={attribution ?? ""}
+                dataSet={dataSet}
                 orgUnit={orgUnit}
-                initialValues={data}
+                initialValues={initialValues}
+                isVerified={isVerified}
+                syncStatus={syncStatus}
                 period={period}
                 onSave={onSave}
             />

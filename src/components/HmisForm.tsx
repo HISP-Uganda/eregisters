@@ -1,3 +1,4 @@
+import { CheckCircleOutlined } from "@ant-design/icons";
 import {
     App,
     Button,
@@ -8,6 +9,12 @@ import {
     Typography,
 } from "antd";
 import React, { useState } from "react";
+import {
+    draftId,
+    getHmisDraft,
+    upsertHmisDraft,
+} from "../db/hmis-drafts";
+import type { HmisDraft } from "../db/hmis-drafts";
 import type {
     HmisCellConfig,
     HmisEditableScope,
@@ -29,6 +36,7 @@ const COC_SEPARATOR = "_";
 export interface HmisFormProps {
     period?: string;
     orgUnit?: string;
+    dataSet?: string;
     initialValues?: HmisFormValues;
     readOnly?: boolean;
     config: HmisFormConfig;
@@ -43,6 +51,8 @@ export interface HmisFormProps {
         }>;
     }) => void | Promise<void>;
     attributeOptionCombo: string;
+    isVerified?: boolean;
+    syncStatus?: HmisDraft["syncStatus"];
 }
 
 function dataValueKey(
@@ -522,21 +532,83 @@ const SectionTable: React.FC<{
 const InnerHmisForm: React.FC<HmisFormProps> = ({
     period,
     orgUnit,
+    dataSet,
     initialValues,
     readOnly = false,
     config,
     onSave,
     attributeOptionCombo,
+    isVerified = false,
+    syncStatus = "draft",
 }) => {
+    const effectiveReadOnly = readOnly || (isVerified && syncStatus === "synced");
     const [loading, setLoading] = useState<boolean>(false);
     const { message } = App.useApp();
     const [values, setValues] = React.useState<HmisFormValues>(
         initialValues ?? new Map(),
     );
 
+    const draftKey =
+        dataSet && period && orgUnit && attributeOptionCombo
+            ? draftId({
+                  dataSet,
+                  period,
+                  orgUnit,
+                  attributeOptionCombo,
+              })
+            : undefined;
+
+    const draftTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(
+        null,
+    );
+    const latestValuesRef = React.useRef<HmisFormValues>(values);
+
+    // Keep the latest-values ref in sync so the unmount flush writes fresh data.
     React.useEffect(() => {
-        setValues(initialValues ?? new Map());
-    }, [initialValues]);
+        latestValuesRef.current = values;
+    }, [values]);
+
+    const flushDraft = React.useCallback(
+        async (nextValues: HmisFormValues) => {
+            if (!draftKey || !dataSet || !period || !orgUnit) return;
+            const existing = await getHmisDraft(draftKey);
+            await upsertHmisDraft({
+                id: draftKey,
+                dataSet,
+                period,
+                orgUnit,
+                attributeOptionCombo,
+                values: Object.fromEntries(nextValues),
+                isVerified: existing?.isVerified ?? false,
+                verifiedAt: existing?.verifiedAt,
+                updatedAt: Date.now(),
+                syncStatus:
+                    existing?.syncStatus === "synced"
+                        ? "draft"
+                        : existing?.syncStatus ?? "draft",
+            });
+        },
+        [draftKey, dataSet, period, orgUnit, attributeOptionCombo],
+    );
+
+    // Final flush on unmount — only when there's a pending timer to avoid a
+    // redundant write when the user has already stopped typing for 500 ms.
+    // If an in-flight `flushDraft` promise from an earlier timer is still
+    // resolving when unmount fires, both writes carry the same `values` payload
+    // (via `latestValuesRef`), and Dexie's `put` is last-write-wins on the same
+    // primary key — safe by construction, not by ordering.
+    React.useEffect(() => {
+        return () => {
+            if (draftTimerRef.current !== null) {
+                clearTimeout(draftTimerRef.current);
+                draftTimerRef.current = null;
+                void flushDraft(latestValuesRef.current);
+            }
+        };
+        // Intentionally not depending on flushDraft — this effect is a lifecycle
+        // hook, not a data effect. flushDraft is closed over via useRef pattern.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     const setValue = React.useCallback(
         ({
@@ -548,18 +620,26 @@ const InnerHmisForm: React.FC<HmisFormProps> = ({
             categoryOptionCombo: string;
             value: string;
         }) => {
-            setValues((previous) =>
-                new Map(previous).set(
+            setValues((previous) => {
+                const next = new Map(previous).set(
                     dataValueKey(
                         dataElement,
                         categoryOptionCombo,
                         attributeOptionCombo,
                     ),
                     value,
-                ),
-            );
+                );
+                if (draftTimerRef.current !== null) {
+                    clearTimeout(draftTimerRef.current);
+                }
+                draftTimerRef.current = setTimeout(() => {
+                    draftTimerRef.current = null;
+                    void flushDraft(next);
+                }, 500);
+                return next;
+            });
         },
-        [attributeOptionCombo],
+        [attributeOptionCombo, flushDraft],
     );
 
     const handleSave = async () => {
@@ -617,7 +697,7 @@ const InnerHmisForm: React.FC<HmisFormProps> = ({
                         key={section.key}
                         section={section}
                         values={values}
-                        readOnly={readOnly}
+                        readOnly={effectiveReadOnly}
                         setValue={setValue}
                         attributeOptionCombo={attributeOptionCombo}
                         editableScope={config.editableScope}
@@ -647,14 +727,26 @@ const InnerHmisForm: React.FC<HmisFormProps> = ({
                 </Title>
             }
             extra={
-                <Button
-                    type="default"
-                    onClick={handleSave}
-                    disabled={readOnly}
-                    loading={loading}
-                >
-                    Mark Report as Verified
-                </Button>
+                isVerified && syncStatus === "synced" ? (
+                    <Button
+                        type="default"
+                        icon={<CheckCircleOutlined />}
+                        disabled
+                    >
+                        Verified and Submitted
+                    </Button>
+                ) : (
+                    <Button
+                        type="default"
+                        onClick={handleSave}
+                        disabled={effectiveReadOnly}
+                        loading={loading}
+                    >
+                        {isVerified && syncStatus === "pending"
+                            ? "Retry Verification"
+                            : "Mark Report as Verified"}
+                    </Button>
+                )
             }
         >
             <HmisFormStyles />
