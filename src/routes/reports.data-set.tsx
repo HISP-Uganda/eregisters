@@ -70,6 +70,22 @@ interface DataEngineLike {
     query: (q: Record<string, any>) => Promise<any>;
 }
 
+// 033B uses a hardcoded attributeOptionCombo (no Nationality selector in the UI);
+// other datasets carry the AOC via the `attribution` search param. This helper is
+// the single source of truth so the loader, verify path, and form wrappers agree.
+const HARDCODED_AOC_BY_DATASET: Record<string, string> = {
+    C4oUitImBPK: "HllvX50cXC0",
+};
+
+function resolveAttribution(
+    dataSet: string | undefined,
+    attribution: string | undefined,
+): string | undefined {
+    if (attribution) return attribution;
+    if (!dataSet) return undefined;
+    return HARDCODED_AOC_BY_DATASET[dataSet];
+}
+
 async function fetchServerVerified(
     engine: DataEngineLike,
     dataSet: string,
@@ -128,27 +144,40 @@ export const DataSetReportRoute = createRoute({
         if (
             orgUnit === undefined ||
             period === undefined ||
-            dataSet === undefined ||
-            attribution === undefined
+            dataSet === undefined
         ) {
             return empty;
+        }
+
+        // Server values (ereports) do not depend on AOC — always fetch.
+        const serverValues = await fetchServerValues(dataSet, orgUnit, period);
+
+        // Verified state + local draft are keyed by AOC, which for 033B is
+        // hardcoded rather than URL-provided. If we still cannot resolve one,
+        // just skip those reads and return the server values as-is.
+        const effectiveAttribution = resolveAttribution(dataSet, attribution);
+        if (!effectiveAttribution) {
+            return {
+                initialValues: serverValues,
+                isVerified: false,
+                syncStatus: "draft" as HmisDraft["syncStatus"],
+            };
         }
 
         const id = draftId({
             dataSet,
             period,
             orgUnit,
-            attributeOptionCombo: attribution,
+            attributeOptionCombo: effectiveAttribution,
         });
 
-        const [serverValues, serverVerified, draft] = await Promise.all([
-            fetchServerValues(dataSet, orgUnit, period),
+        const [serverVerified, draft] = await Promise.all([
             fetchServerVerified(
                 context.engine,
                 dataSet,
                 orgUnit,
                 period,
-                attribution,
+                effectiveAttribution,
             ),
             getHmisDraft(id).catch(() => undefined),
         ]);
@@ -184,7 +213,8 @@ function Reports() {
             attributeOptionCombo: string;
         }[];
     }) => {
-        if (!dataSet || !period || !orgUnit || !attribution) {
+        const effectiveAttribution = resolveAttribution(dataSet, attribution);
+        if (!dataSet || !period || !orgUnit || !effectiveAttribution) {
             message.error("Missing dataset/period/organisation before verifying.");
             return;
         }
@@ -192,7 +222,7 @@ function Reports() {
             dataSet,
             period,
             orgUnit,
-            attributeOptionCombo: attribution,
+            attributeOptionCombo: effectiveAttribution,
         });
         const now = Date.now();
 
@@ -205,7 +235,7 @@ function Reports() {
                     completionDate: new Date().toISOString(),
                     period,
                     orgUnit,
-                    attributeOptionCombo: attribution,
+                    attributeOptionCombo: effectiveAttribution,
                 },
                 type: "create",
                 params: { async: true },
@@ -220,7 +250,7 @@ function Reports() {
                             dataSet,
                             period,
                             organisationUnit: orgUnit,
-                            attributeOptionCombo: attribution,
+                            attributeOptionCombo: effectiveAttribution,
                             completed: true,
                             date: new Date().toISOString(),
                         },
@@ -233,7 +263,7 @@ function Reports() {
                 dataSet,
                 period,
                 orgUnit,
-                attributeOptionCombo: attribution,
+                attributeOptionCombo: effectiveAttribution,
                 values: {},
                 isVerified: true,
                 verifiedAt: now,
@@ -250,7 +280,7 @@ function Reports() {
                 dataSet,
                 period,
                 orgUnit,
-                attributeOptionCombo: attribution,
+                attributeOptionCombo: effectiveAttribution,
                 values:
                     existing?.values ??
                     Object.fromEntries(
