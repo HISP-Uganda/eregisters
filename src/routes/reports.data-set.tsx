@@ -434,5 +434,14 @@ function Reports() {
         ),
     };
 
-    return dataSets[dataSet ?? ""];
+    // Key the form on the report-identifying tuple so React remounts when the
+    // user changes period, org unit, dataset, or nationality. Remount resets
+    // useState from the loader's fresh initialValues and lets the debounce
+    // cleanup effect flush any pending draft with the *previous* closure
+    // (correct old key + values). Loader re-invocations that keep the tuple
+    // the same do not remount, so unsaved typing is preserved.
+    const form = dataSets[dataSet ?? ""];
+    if (!form) return null;
+    const remountKey = `${dataSet ?? ""}|${period ?? ""}|${orgUnit ?? ""}|${attribution ?? ""}`;
+    return React.cloneElement(form as React.ReactElement, { key: remountKey });
 }
