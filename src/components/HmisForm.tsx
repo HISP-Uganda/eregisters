@@ -554,7 +554,9 @@ const InnerHmisForm: React.FC<HmisFormProps> = ({
     isVerified = false,
     syncStatus = "draft",
 }) => {
-    const effectiveReadOnly = readOnly || (isVerified && syncStatus === "synced");
+    // A verified report is not read-only — the user can still edit values
+    // and re-submit. The button label communicates the current state.
+    const effectiveReadOnly = readOnly;
     const [loading, setLoading] = useState<boolean>(false);
     const { message } = App.useApp();
     const [values, setValues] = React.useState<HmisFormValues>(
@@ -634,14 +636,14 @@ const InnerHmisForm: React.FC<HmisFormProps> = ({
             value: string;
         }) => {
             setValues((previous) => {
-                const next = new Map(previous).set(
-                    dataValueKey(
-                        dataElement,
-                        categoryOptionCombo,
-                        attributeOptionCombo,
-                    ),
-                    value,
+                const key = dataValueKey(
+                    dataElement,
+                    categoryOptionCombo,
+                    attributeOptionCombo,
                 );
+                const next = new Map(previous).set(key, value);
+                // eslint-disable-next-line no-console
+                console.log("[setValue]", { key, value, size: next.size });
                 if (draftTimerRef.current !== null) {
                     clearTimeout(draftTimerRef.current);
                 }
@@ -672,6 +674,16 @@ const InnerHmisForm: React.FC<HmisFormProps> = ({
             });
 
         const payload = { period, orgUnit, dataValues, attributeOptionCombo };
+
+        // eslint-disable-next-line no-console
+        console.log("[handleSave] payload", {
+            valuesSize: values.size,
+            dataValuesLength: dataValues.length,
+            first3: dataValues.slice(0, 3),
+            attributeOptionCombo,
+            period,
+            orgUnit,
+        });
 
         if (onSave) {
             await onSave(payload);
@@ -734,26 +746,23 @@ const InnerHmisForm: React.FC<HmisFormProps> = ({
                 </Title>
             }
             extra={
-                isVerified && syncStatus === "synced" ? (
-                    <Button
-                        type="default"
-                        icon={<CheckCircleOutlined />}
-                        disabled
-                    >
-                        Verified and Submitted
-                    </Button>
-                ) : (
-                    <Button
-                        type="default"
-                        onClick={handleSave}
-                        disabled={effectiveReadOnly}
-                        loading={loading}
-                    >
-                        {isVerified && syncStatus === "pending"
-                            ? "Retry Verification"
-                            : "Mark Report as Verified"}
-                    </Button>
-                )
+                <Button
+                    type="default"
+                    icon={
+                        isVerified && syncStatus === "synced" ? (
+                            <CheckCircleOutlined />
+                        ) : undefined
+                    }
+                    onClick={handleSave}
+                    disabled={effectiveReadOnly}
+                    loading={loading}
+                >
+                    {isVerified && syncStatus === "synced"
+                        ? "Verified — Re-submit to Update"
+                        : isVerified && syncStatus === "pending"
+                          ? "Retry Verification"
+                          : "Mark Report as Verified"}
+                </Button>
             }
         >
             <HmisFormStyles />
