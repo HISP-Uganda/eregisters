@@ -5,13 +5,14 @@ import dayjs from "dayjs";
 import advancedFormat from "dayjs/plugin/advancedFormat";
 import isoWeek from "dayjs/plugin/isoWeek";
 import { every, isArray, orderBy } from "lodash";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import PeriodPicker from "../components/period-picker";
 import { Spinner } from "../components/spinner";
 import { useMetadata } from "../hooks/useMetadata";
 import { CategoryOptionCombo, DataSet, ReportSchema } from "../schemas";
 import { RootRoute } from "./__root";
 import { SafeKey } from "antd/es/table/interface";
+import { buildOrgUnitSearchIndex, matchOrgUnit } from "./org-unit-search";
 
 dayjs.extend(advancedFormat);
 dayjs.extend(isoWeek);
@@ -30,6 +31,11 @@ function Reports() {
         ReportsRoute.useSearch();
 
     const [expanded, setExpanded] = useState<SafeKey[]>([]);
+
+    const orgUnitSearchIndex = useMemo(
+        () => buildOrgUnitSearchIndex(organisationUnits),
+        [organisationUnits],
+    );
 
     useEffect(() => {
         const search = organisationUnits.find(({ id }) => id === orgUnit);
@@ -75,7 +81,10 @@ function Reports() {
                             }),
                         )}
                         style={{ width: 400 }}
-                        showSearch={{ filterTreeNode: true }}
+                        showSearch
+                        filterTreeNode={(input, node) =>
+                            matchOrgUnit(orgUnitSearchIndex, node.id as string, input)
+                        }
                         value={orgUnit}
 												treeDefaultExpandedKeys={expanded}
                         onChange={(value) => {
