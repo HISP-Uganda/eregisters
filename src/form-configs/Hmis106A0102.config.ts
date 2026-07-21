@@ -22,6 +22,7 @@ import type {
 export const HMIS_106A_01_02_CONFIG: HmisFormConfig = {
   "id": "hmis-106a-01-02-sections-1-and-2",
   "title": "HMIS 106A:01-02 - HIV QUARTERLY REPORT (SECTIONS 1&2)",
+  editableScope: { mode: "none" },
   "tabs": [
     {
       "key": "tab1",

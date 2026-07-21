@@ -65,15 +65,22 @@ export interface Hmis105TabConfig {
   sections: Hmis105SectionConfig[];
 }
 
+export type Hmis108EditableScope =
+  | { mode: "all" }
+  | { mode: "none" }
+  | { mode: "allowlist"; allow: RegExp[] };
+
 export interface Hmis105FormConfig {
   id: string;
   title: string;
   tabs: Hmis105TabConfig[];
+  editableScope?: Hmis108EditableScope;
 }
 
 export const HMIS_108_CONFIG: Hmis105FormConfig = {
   "id": "hmis-108-inpatient-monthly-report",
   "title": "HMIS 108 - INPATIENT MONTHLY REPORT",
+  editableScope: { mode: "none" },
   "tabs": [
     {
       "key": "tab1",

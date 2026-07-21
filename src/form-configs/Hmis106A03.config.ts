@@ -22,6 +22,7 @@ import type {
 export const HMIS_106A_03_CONFIG: HmisFormConfig = {
   "id": "hmis-106a-03-section-3",
   "title": "HMIS 106A:03 - TB/LEPROSY REPORT (SECTION 3)",
+  editableScope: { mode: "none" },
   "tabs": [
     {
       "key": "tab1",

@@ -22,6 +22,7 @@ import type {
 export const HMIS_105_06_09_CONFIG: HmisFormConfig = {
   "id": "hmis-105-06-09-sections-6-7-8-and-9",
   "title": "HMIS 105:06-09 - OUTPATIENT REPORT (SECTIONS 6,7,8 &9 )",
+  editableScope: { mode: "all" },
   "tabs": [
     {
       "key": "tab1",

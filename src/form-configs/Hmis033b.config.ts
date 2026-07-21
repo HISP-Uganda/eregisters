@@ -3,6 +3,7 @@ import type { HmisFormConfig } from './types';
 export const HMIS_033B_CONFIG: HmisFormConfig = {
   "id": "hmis-033b-weekly-epidemiological-surveillance-report",
   "title": "HMIS 033B - WEEKLY EPIDEMIOLOGICAL SURVEILLANCE REPORT",
+  editableScope: { mode: "allowlist", allow: [/033B-TR0[1-8]/, /033B-RV(0[1-9]|10)/] },
   "tabs": [
     {
       "key": "tab1",

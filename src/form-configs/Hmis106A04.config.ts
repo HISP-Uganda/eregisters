@@ -22,6 +22,7 @@ import type {
 export const HMIS_106A_04_CONFIG: HmisFormConfig = {
   "id": "hmis-106a-04-section-4",
   "title": "4.1 QUARTERLY LABORATORY DISEASE SURVEILLANCE AND OUTBREAK RESPONSE",
+  editableScope: { mode: "none" },
   "tabs": [
     {
       "key": "tab1",
