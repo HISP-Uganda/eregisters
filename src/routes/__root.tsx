@@ -48,11 +48,14 @@ import {
 
 dayjs.extend(relativeTime);
 
+type DataEngine = ReturnType<typeof import("@dhis2/app-runtime").useDataEngine>;
+
 const { Header } = Layout;
 const { Title, Text } = Typography;
 
 export const RootRoute = createRootRouteWithContext<{
     syncActor: ReturnType<typeof SyncContext.useActorRef>;
+    engine: DataEngine;
 }>()({
     component: LayoutWithDrafts,
     pendingComponent: () => (
