@@ -62,8 +62,14 @@ export interface HmisTabConfig {
     sections: HmisSectionConfig[];
 }
 
+export type HmisEditableScope =
+    | { mode: "all" }
+    | { mode: "none" }
+    | { mode: "allowlist"; allow: RegExp[] };
+
 export interface HmisFormConfig {
     id: string;
     title: string;
     tabs: HmisTabConfig[];
+    editableScope?: HmisEditableScope;
 }
