@@ -1023,11 +1023,11 @@ Loaders don't have hook access, so we can't call `useDataEngine()` from Task 1.2
 
 - [ ] **Step 1: Add `engine` to `RootRoute`'s context generic.**
 
-Edit `src/routes/__root.tsx` around line 54:
+Edit `src/routes/__root.tsx` around line 54. `@dhis2/app-runtime` may not export a `DataEngine` named type across versions, so derive it from `useDataEngine`'s return type inline (this always works regardless of what the package exports):
 
 ```ts
-import type { DataEngine } from "@dhis2/app-runtime";
-// ...
+type DataEngine = ReturnType<typeof import("@dhis2/app-runtime").useDataEngine>;
+
 export const RootRoute = createRootRouteWithContext<{
     syncActor: ReturnType<typeof SyncContext.useActorRef>;
     engine: DataEngine;
@@ -1035,8 +1035,6 @@ export const RootRoute = createRootRouteWithContext<{
     // ...unchanged body
 });
 ```
-
-If `DataEngine` is not exported from `@dhis2/app-runtime`, use `ReturnType<typeof import("@dhis2/app-runtime").useDataEngine>` inline.
 
 - [ ] **Step 2: Initialize the field in `router.tsx`.**
 
@@ -1372,6 +1370,10 @@ const flushDraft = React.useCallback(
 
 // Final flush on unmount — only when there's a pending timer to avoid a
 // redundant write when the user has already stopped typing for 500 ms.
+// If an in-flight `flushDraft` promise from an earlier timer is still
+// resolving when unmount fires, both writes carry the same `values` payload
+// (via `latestValuesRef`), and Dexie's `put` is last-write-wins on the same
+// primary key — safe by construction, not by ordering.
 React.useEffect(() => {
     return () => {
         if (draftTimerRef.current !== null) {
@@ -1613,9 +1615,9 @@ Just after the destructuring, add:
 const effectiveReadOnly = readOnly || (isVerified && syncStatus === "synced");
 ```
 
-**Rename exactly two sites** inside the body of `InnerHmisForm` — nowhere else. Every other `readOnly` in the file is a locally-scoped parameter on `FieldCell` / `RenderCell` / `renderRow` / `SectionTable` and MUST stay untouched. Do not run a find-and-replace.
+**Change the value passed at exactly two sites** inside the body of `InnerHmisForm` — nowhere else. This is *not* a rename or find-and-replace: every other `readOnly` in the file is a locally-scoped parameter on `FieldCell` / `RenderCell` / `renderRow` / `SectionTable` and MUST stay untouched.
 
-1. In the `tab.sections.map(...)` inside `InnerHmisForm`, change `readOnly={readOnly}` on the `<SectionTable>` prop to `readOnly={effectiveReadOnly}`.
+1. In the `tab.sections.map(...)` inside `InnerHmisForm`, on the `<SectionTable>` element, change the prop from `readOnly={readOnly}` to `readOnly={effectiveReadOnly}`.
 2. In the `Card`'s `extra` Button, change `disabled={readOnly}` to `disabled={effectiveReadOnly}`.
 
 Confirm with: `grep -n "effectiveReadOnly" src/components/HmisForm.tsx` — expect exactly three matches (the `const` definition + the two prop/attr sites).
