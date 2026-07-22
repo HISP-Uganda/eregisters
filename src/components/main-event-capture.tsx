@@ -9,10 +9,9 @@ import {
     Row,
     Select,
     Tabs,
-    Typography,
 } from "antd";
 import dayjs from "dayjs";
-import { orderBy } from "lodash";
+import { orderBy, isEmpty } from "lodash";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
     enrollmentsCollection,
@@ -222,10 +221,12 @@ export default function MainEventCapture({
                 },
             });
 
-            if (dataElement) {
-                if (dataElement === "REWqohCg4Km" && value === "Yes") {
-                    await createChild();
-                }
+            if (
+                dataElement &&
+                dataElement === "REWqohCg4Km" &&
+                !isEmpty(value)
+            ) {
+                await createChild();
             }
         },
         [eventActor, form, createChild],

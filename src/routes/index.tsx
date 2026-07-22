@@ -5,8 +5,10 @@ export const IndexRoute = createRoute({
     getParentRoute: () => RootRoute,
     path: "/",
     beforeLoad: ({ context: { syncActor } }) => {
-        const program = syncActor.getSnapshot().context.metadata?.program;
-        if (!program) {
+        const organizationUnits =
+            syncActor.getSnapshot().context.userInfo.organisationUnits;
+        const programs = organizationUnits.flatMap((a) => a.programs);
+        if (programs.length === 0) {
             throw redirect({ to: "/reports" });
         }
         throw redirect({

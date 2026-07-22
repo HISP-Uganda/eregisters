@@ -28,8 +28,10 @@ export const TrackedEntitiesRoute = createRoute({
     getParentRoute: () => RootRoute,
     path: "/tracked-entities",
     beforeLoad: ({ context: { syncActor } }) => {
-        const program = syncActor.getSnapshot().context.metadata?.program;
-        if (!program) {
+        const organizationUnits =
+            syncActor.getSnapshot().context.userInfo.organisationUnits;
+        const programs = organizationUnits.flatMap((a) => a.programs);
+        if (programs.length === 0) {
             throw redirect({ to: "/reports" });
         }
     },
@@ -50,7 +52,7 @@ function TrackedEntities() {
                 .where(({ trackedEntities }) =>
                     and(
                         not(eq(trackedEntities.syncStatus, "draft")),
-												not(eq(trackedEntities.syncStatus, "deleted")),
+                        not(eq(trackedEntities.syncStatus, "deleted")),
                         eq(trackedEntities.orgUnit, orgUnit),
                     ),
                 ),

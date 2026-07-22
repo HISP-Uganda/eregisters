@@ -29,7 +29,6 @@ import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
 import React, { useEffect, useState } from "react";
 
-import { useConfig } from "@dhis2/app-runtime";
 import { eq, or, useLiveSuspenseQuery } from "@tanstack/react-db";
 import { waitFor } from "xstate";
 import {
@@ -154,7 +153,9 @@ function SplitSyncButton({
 }) {
     return (
         <Space.Compact>
-            <Tooltip title={disabled ? "Disabled — no program assigned" : tooltip}>
+            <Tooltip
+                title={disabled ? "Disabled — no program assigned" : tooltip}
+            >
                 <Button
                     icon={icon}
                     loading={isLoading}
@@ -527,9 +528,7 @@ function LayoutWithDrafts() {
     const { orgUnitName, program } = useMetadata();
     const stageNameMap = React.useMemo(
         () =>
-            new Map(
-                (program?.programStages ?? []).map((s) => [s.id, s.name]),
-            ),
+            new Map((program?.programStages ?? []).map((s) => [s.id, s.name])),
         [program],
     );
     const syncingMetadata = SyncContext.useSelector((snapshot) => {
@@ -559,8 +558,10 @@ function LayoutWithDrafts() {
     const isAdmin = SyncContext.useSelector((a) =>
         a.context.userInfo?.authorities?.includes("ALL"),
     );
-    const hasProgram = SyncContext.useSelector((a) =>
-        Boolean(a.context.metadata?.program),
+    const hasProgram = SyncContext.useSelector(
+        (a) =>
+            a.context.userInfo.organisationUnits.flatMap((a) => a.programs)
+                .length > 0,
     );
     const uiConfig = useUIConfig();
     const [showAppReload, setShowAppReload] = useState(false);
@@ -635,10 +636,10 @@ function LayoutWithDrafts() {
             .from({ events: eventsCollection })
             .where(({ events }) => eq(events.syncStatus, "failed")),
     );
-    const failedCount =
-        failedTrackedEntities.length +
-        failedEnrollments.length +
-        failedEvents.length;
+    // const failedCount =
+    //     failedTrackedEntities.length +
+    //     failedEnrollments.length +
+    //     failedEvents.length;
     const [failuresOpen, setFailuresOpen] = useState(false);
     useEffect(() => {
         const handleOnline = () =>
@@ -674,10 +675,7 @@ function LayoutWithDrafts() {
                         <HomeOutlined
                             style={{ fontSize: 20, color: "#bfbfbf" }}
                         />
-                        <Text
-                            style={{ color: "#8c8c8c" }}
-                            strong
-                        >
+                        <Text style={{ color: "#8c8c8c" }} strong>
                             {orgUnitName ?? "Loading..."}
                         </Text>
                     </Flex>
