@@ -8,7 +8,6 @@ import {
 } from "@tanstack/react-router";
 import { Layout, Menu, Typography } from "antd";
 import React, { useMemo } from "react";
-import { SyncContext } from "../machines/sync";
 import { RootRoute } from "./__root";
 
 const { Sider, Content } = Layout;

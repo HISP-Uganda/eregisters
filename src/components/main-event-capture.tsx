@@ -340,6 +340,7 @@ export default function MainEventCapture({
                     const visibleElements = section.dataElements.filter(
                         (de) => de.id !== "mrKZWf2WMIC",
                     );
+
                     return [
                         {
                             key: `${stage.id}-${section.id}`,

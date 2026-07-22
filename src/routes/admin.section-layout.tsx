@@ -13,12 +13,15 @@ import { createRoute } from "@tanstack/react-router";
 import {
     Button,
     Card,
+    ColorPicker,
     Empty,
     Flex,
     Input,
     List,
     message,
     Modal,
+    Popover,
+    Space,
     Tabs,
     Tag,
     Tooltip,
@@ -28,7 +31,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { db } from "../db";
 import { useMetadata } from "../hooks/useMetadata";
 import { useUIConfig } from "../hooks/useUIConfig";
-import { FormLayoutItem, SubsectionConfig } from "../schemas";
+import { FormLayoutItem, SectionStyle, SubsectionConfig } from "../schemas";
 import { AdminRoute } from "./admin";
 
 export const AdminSectionLayoutRoute = createRoute({
@@ -186,6 +189,7 @@ function SectionLayout() {
         sectionId: string | null;
         sectionName: string | null;
         sectionIndex: number | null;
+        sectionStyle: SectionStyle;
         elements: Array<{ id: string; index: number }>;
     };
 
@@ -195,6 +199,7 @@ function SectionLayout() {
             sectionId: null,
             sectionName: null,
             sectionIndex: null,
+            sectionStyle: {},
             elements: [],
         };
         result.push(current);
@@ -204,6 +209,11 @@ function SectionLayout() {
                     sectionId: step.id,
                     sectionName: step.name,
                     sectionIndex: index,
+                    sectionStyle: {
+                        titleColor: step.titleColor,
+                        headerBg: step.headerBg,
+                        borderColor: step.borderColor,
+                    },
                     elements: [],
                 };
                 result.push(current);
@@ -257,6 +267,20 @@ function SectionLayout() {
     function removeSection(sectionStartIndex: number) {
         // Drop only the header — the children fall back to the previous group.
         setLayout((prev) => prev.filter((_, i) => i !== sectionStartIndex));
+    }
+
+    function updateSectionStyle(
+        sectionStartIndex: number,
+        patch: Partial<SectionStyle>,
+    ) {
+        setLayout((prev) =>
+            prev.map((item, i) => {
+                if (i !== sectionStartIndex || item.kind !== "section") {
+                    return item;
+                }
+                return { ...item, ...patch };
+            }),
+        );
     }
 
     function moveElement(index: number, delta: -1 | 1) {
@@ -678,6 +702,16 @@ function SectionLayout() {
                                                     onRemoveElement={(idx) =>
                                                         removeElement(idx)
                                                     }
+                                                    onSectionStyleChange={(
+                                                        patch,
+                                                    ) =>
+                                                        group.sectionIndex !==
+                                                            null &&
+                                                        updateSectionStyle(
+                                                            group.sectionIndex,
+                                                            patch,
+                                                        )
+                                                    }
                                                 />
                                             );
                                         })}
@@ -833,6 +867,7 @@ type LayoutGroupCardProps = {
         sectionId: string | null;
         sectionName: string | null;
         sectionIndex: number | null;
+        sectionStyle: SectionStyle;
         elements: Array<{ id: string; index: number }>;
     };
     isActive: boolean;
@@ -850,6 +885,7 @@ type LayoutGroupCardProps = {
     onMoveElementUp: (index: number) => void;
     onMoveElementDown: (index: number) => void;
     onRemoveElement: (index: number) => void;
+    onSectionStyleChange: (patch: Partial<SectionStyle>) => void;
 };
 
 function LayoutGroupCard({
@@ -869,19 +905,24 @@ function LayoutGroupCard({
     onMoveElementUp,
     onMoveElementDown,
     onRemoveElement,
+    onSectionStyleChange,
 }: LayoutGroupCardProps) {
     const isRoot = group.sectionId === null;
+    const customBorder = group.sectionStyle.borderColor;
+    const customHeaderBg = group.sectionStyle.headerBg;
     return (
         <Card
             size="small"
             onClick={onSelect}
             style={{
                 cursor: "pointer",
-                borderColor: isActive
-                    ? "#7c3aed"
-                    : isRoot
-                      ? "#d9d9d9"
-                      : "#c4b5fd",
+                borderColor:
+                    customBorder ??
+                    (isActive
+                        ? "#7c3aed"
+                        : isRoot
+                          ? "#d9d9d9"
+                          : "#c4b5fd"),
                 borderWidth: isActive ? 2 : 1,
                 background: isRoot ? "#fff" : isActive ? "#f5f3ff" : "#faf5ff",
             }}
@@ -914,7 +955,10 @@ function LayoutGroupCard({
                             <Tag color={isActive ? "purple" : "default"}>
                                 Section
                             </Tag>
-                            <Typography.Text strong>
+                            <Typography.Text
+                                strong
+                                style={{ color: group.sectionStyle.titleColor }}
+                            >
                                 {group.sectionName}
                             </Typography.Text>
                             {isActive && (
@@ -965,6 +1009,111 @@ function LayoutGroupCard({
                                 onClick={onRename}
                             />
                         </Tooltip>
+                        <Popover
+                            trigger="click"
+                            placement="bottomRight"
+                            title="Section colors"
+                            content={
+                                <Space direction="vertical" size={8}>
+                                    <Flex align="center" justify="space-between" gap={12}>
+                                        <Typography.Text style={{ fontSize: 12 }}>
+                                            Title color
+                                        </Typography.Text>
+                                        <ColorPicker
+                                            allowClear
+                                            value={
+                                                group.sectionStyle.titleColor ??
+                                                null
+                                            }
+                                            onChangeComplete={(color) =>
+                                                onSectionStyleChange({
+                                                    titleColor: color
+                                                        ? color.toHexString()
+                                                        : undefined,
+                                                })
+                                            }
+                                        />
+                                    </Flex>
+                                    <Flex align="center" justify="space-between" gap={12}>
+                                        <Typography.Text style={{ fontSize: 12 }}>
+                                            Header background
+                                        </Typography.Text>
+                                        <ColorPicker
+                                            allowClear
+                                            value={
+                                                group.sectionStyle.headerBg ??
+                                                null
+                                            }
+                                            onChangeComplete={(color) =>
+                                                onSectionStyleChange({
+                                                    headerBg: color
+                                                        ? color.toHexString()
+                                                        : undefined,
+                                                })
+                                            }
+                                        />
+                                    </Flex>
+                                    <Flex align="center" justify="space-between" gap={12}>
+                                        <Typography.Text style={{ fontSize: 12 }}>
+                                            Border color
+                                        </Typography.Text>
+                                        <ColorPicker
+                                            allowClear
+                                            value={
+                                                group.sectionStyle
+                                                    .borderColor ?? null
+                                            }
+                                            onChangeComplete={(color) =>
+                                                onSectionStyleChange({
+                                                    borderColor: color
+                                                        ? color.toHexString()
+                                                        : undefined,
+                                                })
+                                            }
+                                        />
+                                    </Flex>
+                                    <Button
+                                        size="small"
+                                        block
+                                        onClick={() =>
+                                            onSectionStyleChange({
+                                                titleColor: undefined,
+                                                headerBg: undefined,
+                                                borderColor: undefined,
+                                            })
+                                        }
+                                    >
+                                        Reset to default
+                                    </Button>
+                                </Space>
+                            }
+                        >
+                            <Tooltip title="Section colors">
+                                <Button
+                                    type="text"
+                                    size="small"
+                                    icon={
+                                        <span
+                                            style={{
+                                                display: "inline-block",
+                                                width: 14,
+                                                height: 14,
+                                                borderRadius: 3,
+                                                background:
+                                                    group.sectionStyle
+                                                        .headerBg ??
+                                                    "linear-gradient(135deg,#ffdd57 0%,#ff5f6d 50%,#4facfe 100%)",
+                                                border: `1px solid ${
+                                                    group.sectionStyle
+                                                        .borderColor ?? "#d9d9d9"
+                                                }`,
+                                                verticalAlign: "middle",
+                                            }}
+                                        />
+                                    }
+                                />
+                            </Tooltip>
+                        </Popover>
                         <Tooltip title="Insert section after this">
                             <Button
                                 type="text"
@@ -985,11 +1134,17 @@ function LayoutGroupCard({
                     </Flex>
                 )
             }
-            styles={
-                isCollapsed
-                    ? { body: { display: "none" } }
-                    : undefined
-            }
+            styles={{
+                ...(customHeaderBg
+                    ? {
+                          header: {
+                              background: customHeaderBg,
+                              borderBottomColor: customBorder,
+                          },
+                      }
+                    : {}),
+                ...(isCollapsed ? { body: { display: "none" } } : {}),
+            }}
         >
             {group.elements.length === 0 ? (
                 <Typography.Text

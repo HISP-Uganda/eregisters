@@ -1,23 +1,38 @@
 import { Card, Flex, Row } from "antd";
 import React, { ReactNode } from "react";
-import { FormLayoutItem, SubsectionConfig } from "../schemas";
+import { FormLayoutItem, SectionStyle, SubsectionConfig } from "../schemas";
+import { EventContext } from "../machines/event-form";
+
+type Group<T> = {
+    label: string | null;
+    items: T[];
+    style?: SectionStyle;
+};
 
 export function groupByLayout<T>(
     items: T[],
     layout: FormLayoutItem[],
     getId: (item: T) => string,
-): Array<{ label: string | null; items: T[] }> {
+): Array<Group<T>> {
     const itemsById = new Map(items.map((item) => [getId(item), item]));
     const used = new Set<string>();
-    const groups: Array<{ label: string | null; items: T[] }> = [];
-    let current: { label: string | null; items: T[] } = {
+    const groups: Array<Group<T>> = [];
+    let current: Group<T> = {
         label: null,
         items: [],
     };
     groups.push(current);
     for (const step of layout) {
         if (step.kind === "section") {
-            current = { label: step.name, items: [] };
+            current = {
+                label: step.name,
+                items: [],
+                style: {
+                    titleColor: step.titleColor,
+                    headerBg: step.headerBg,
+                    borderColor: step.borderColor,
+                },
+            };
             groups.push(current);
         } else {
             const item = itemsById.get(step.id);
@@ -44,20 +59,18 @@ export function groupBySubsections<T>(
     items: T[],
     subsections: SubsectionConfig[] | undefined,
     getId: (item: T) => string,
-): Array<{ label: string | null; items: T[] }> {
+): Array<Group<T>> {
     if (!subsections || subsections.length === 0) {
         return items.length === 0 ? [] : [{ label: null, items }];
     }
     const itemsById = new Map(items.map((item) => [getId(item), item]));
     const assignedIds = new Set(subsections.flatMap((s) => s.dataElementIds));
-    const groups: Array<{ label: string | null; items: T[] }> = subsections.map(
-        (sub) => ({
-            label: sub.name,
-            items: sub.dataElementIds
-                .map((id) => itemsById.get(id))
-                .filter((x): x is T => x !== undefined),
-        }),
-    );
+    const groups: Array<Group<T>> = subsections.map((sub) => ({
+        label: sub.name,
+        items: sub.dataElementIds
+            .map((id) => itemsById.get(id))
+            .filter((x): x is T => x !== undefined),
+    }));
     const unassigned = items.filter((item) => !assignedIds.has(getId(item)));
     if (unassigned.length > 0) {
         groups.push({ label: null, items: unassigned });
@@ -65,7 +78,7 @@ export function groupBySubsections<T>(
     return groups.filter((g) => g.items.length > 0);
 }
 
-export function SubsectionGroups<T>({
+export function SubsectionGroups<T extends { id: string }>({
     items,
     subsections,
     formLayout,
@@ -82,6 +95,9 @@ export function SubsectionGroups<T>({
     sectionKey: string;
     rowGutter?: [number, number];
 }) {
+    const ruleResult = EventContext.useSelector(
+        (state) => state.context.ruleResult,
+    );
     const groups =
         formLayout && formLayout.length > 0
             ? groupByLayout(items, formLayout, getId)
@@ -100,7 +116,7 @@ export function SubsectionGroups<T>({
     }
     return (
         <Flex vertical gap={12}>
-            {groups.map(({ label, items: groupItems }) => {
+            {groups.map(({ label, items: groupItems, style }) => {
                 const key = `${sectionKey}::${label ?? "__unassigned"}`;
                 const row = (
                     <Row gutter={rowGutter}>
@@ -109,16 +125,45 @@ export function SubsectionGroups<T>({
                         )}
                     </Row>
                 );
+                if (groupItems.length === 0) {
+                    return null;
+                }
                 if (label === null) {
                     return <React.Fragment key={key}>{row}</React.Fragment>;
                 }
+
+                if (
+                    new Set(ruleResult.hiddenFields).isSupersetOf(
+                        new Set(groupItems.map((a) => a.id)),
+                    )
+                ) {
+                    return null;
+                }
+                const cardStyle: React.CSSProperties = {
+                    borderRadius: 4,
+                    borderColor: style?.borderColor,
+                };
+                const headerStyle: React.CSSProperties = {
+                    background: style?.headerBg,
+                    color: style?.titleColor,
+                    borderBottomColor: style?.borderColor,
+                };
                 return (
                     <Card
                         key={key}
-                        title={label}
+                        title={
+                            <span
+                                style={{
+                                    color: style?.titleColor,
+                                }}
+                            >
+                                {label}
+                            </span>
+                        }
                         type="inner"
                         size="small"
-                        style={{ borderRadius: 4 }}
+                        style={cardStyle}
+                        styles={{ header: headerStyle }}
                     >
                         {row}
                     </Card>

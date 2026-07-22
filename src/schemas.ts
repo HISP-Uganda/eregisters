@@ -730,8 +730,14 @@ export type SubsectionConfig = {
     dataElementIds: string[];
 };
 
+export type SectionStyle = {
+    titleColor?: string;
+    headerBg?: string;
+    borderColor?: string;
+};
+
 export type FormLayoutItem =
-    | { kind: "section"; id: string; name: string }
+    | ({ kind: "section"; id: string; name: string } & SectionStyle)
     | { kind: "element"; id: string };
 
 export type UIConfig = {
