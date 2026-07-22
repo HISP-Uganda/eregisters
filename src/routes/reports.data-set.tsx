@@ -58,7 +58,9 @@ async function fetchServerValues(
                     value,
                 }: any) => [
                     `${dataElement}_${categoryOptionCombo}_${
-                        attributeOptionCombo ?? defaultAttributeOptionCombo ?? ""
+                        attributeOptionCombo ??
+                        defaultAttributeOptionCombo ??
+                        ""
                     }`,
                     value,
                 ],
@@ -111,12 +113,10 @@ async function fetchServerVerified(
         const list: Array<{
             attributeOptionCombo?: string;
             completed?: boolean;
-        }> =
-            result?.registrations?.completeDataSetRegistrations ?? [];
+        }> = result?.registrations?.completeDataSetRegistrations ?? [];
         return list.some(
             (r) =>
-                r.attributeOptionCombo === attribution &&
-                r.completed === true,
+                r.attributeOptionCombo === attribution && r.completed === true,
         );
     } catch (err) {
         console.warn(
@@ -213,7 +213,6 @@ function Reports() {
         DataSetReportRoute.useLoaderData();
     const router = useRouter();
 
-
     const onSave = async (values: {
         period?: string | undefined;
         orgUnit?: string | undefined;
@@ -226,7 +225,9 @@ function Reports() {
     }) => {
         const effectiveAttribution = resolveAttribution(dataSet, attribution);
         if (!dataSet || !period || !orgUnit || !effectiveAttribution) {
-            message.error("Missing dataset/period/organisation before verifying.");
+            message.error(
+                "Missing dataset/period/organisation before verifying.",
+            );
             return;
         }
         const id = draftId({
@@ -238,20 +239,21 @@ function Reports() {
         const now = Date.now();
 
         try {
-            await engine.mutate({
-                resource: "dataValueSets",
-                data: {
-                    ...values,
-                    dataSet,
-                    completionDate: new Date().toISOString(),
-                    period,
-                    orgUnit,
-                    attributeOptionCombo: effectiveAttribution,
-                },
-                type: "create",
-                params: { async: true },
-            });
+            const dataValueSetsPayload = {
+                ...values,
+                dataSet,
+                completionDate: new Date().toISOString(),
+                period,
+                orgUnit,
+                attributeOptionCombo: effectiveAttribution,
+            };
 
+            const response = await engine.mutate({
+                resource: "dataValueSets",
+                data: dataValueSetsPayload,
+                type: "create",
+                params: { async: false },
+            });
             await engine.mutate({
                 resource: "completeDataSetRegistrations",
                 type: "create",

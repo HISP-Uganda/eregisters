@@ -1190,12 +1190,19 @@ async function deleteRecursiveDraftSubtree(
     eventId: string | undefined,
     trackedEntityId: string | undefined,
 ): Promise<void> {
-    const eventsTable: DexieTable<FlattenedEvent, string> =
-        eventsCollection.utils.getTable();
-    const tETable: DexieTable<FlattenedTrackedEntity, string> =
-        trackedEntitiesCollection.utils.getTable();
-    const enrollmentsTable: DexieTable<FlattenedEnrollment, string> =
-        enrollmentsCollection.utils.getTable();
+    const eventsTable = eventsCollection.utils.getTable() as DexieTable<
+        FlattenedEvent,
+        string
+    >;
+    const tETable = trackedEntitiesCollection.utils.getTable() as DexieTable<
+        FlattenedTrackedEntity,
+        string
+    >;
+    const enrollmentsTable =
+        enrollmentsCollection.utils.getTable() as DexieTable<
+            FlattenedEnrollment,
+            string
+        >;
 
     if (eventId) {
         const childEvents = await eventsTable
@@ -1258,12 +1265,19 @@ async function deleteRecursiveDraftSubtree(
 export async function deleteEventWithChildren(
     eventId: string,
 ): Promise<{ markedDeleted: FlattenedEvent[] }> {
-    const eventsTable: DexieTable<FlattenedEvent, string> =
-        eventsCollection.utils.getTable();
-    const teTable: DexieTable<FlattenedTrackedEntity, string> =
-        trackedEntitiesCollection.utils.getTable();
-    const enrollmentsTable: DexieTable<FlattenedEnrollment, string> =
-        enrollmentsCollection.utils.getTable();
+    const eventsTable = eventsCollection.utils.getTable() as DexieTable<
+        FlattenedEvent,
+        string
+    >;
+    const teTable = trackedEntitiesCollection.utils.getTable() as DexieTable<
+        FlattenedTrackedEntity,
+        string
+    >;
+    const enrollmentsTable =
+        enrollmentsCollection.utils.getTable() as DexieTable<
+            FlattenedEnrollment,
+            string
+        >;
 
     const markedDeleted: FlattenedEvent[] = [];
 
@@ -1362,12 +1376,19 @@ export async function deleteEventWithChildren(
 export async function deleteTrackedEntityWithChildren(
     trackedEntityId: string,
 ): Promise<{ needsSync: boolean }> {
-    const eventsTable: DexieTable<FlattenedEvent, string> =
-        eventsCollection.utils.getTable();
-    const enrollmentsTable: DexieTable<FlattenedEnrollment, string> =
-        enrollmentsCollection.utils.getTable();
-    const teTable: DexieTable<FlattenedTrackedEntity, string> =
-        trackedEntitiesCollection.utils.getTable();
+    const eventsTable = eventsCollection.utils.getTable() as DexieTable<
+        FlattenedEvent,
+        string
+    >;
+    const enrollmentsTable =
+        enrollmentsCollection.utils.getTable() as DexieTable<
+            FlattenedEnrollment,
+            string
+        >;
+    const teTable = trackedEntitiesCollection.utils.getTable() as DexieTable<
+        FlattenedTrackedEntity,
+        string
+    >;
 
     const rootTE = await teTable.get(trackedEntityId);
     if (!rootTE) return { needsSync: false };
@@ -1456,7 +1477,11 @@ export async function cancelDataModal(
             const tx = trackedEntitiesCollection.delete(data.trackedEntity);
             await tx.isPersisted.promise;
             // Delete the linked enrollment (guard: enrollment may not exist)
-            const enrollmentsTable = enrollmentsCollection.utils.getTable();
+            const enrollmentsTable =
+                enrollmentsCollection.utils.getTable() as DexieTable<
+                    FlattenedEnrollment,
+                    string
+                >;
             const enrollment = await enrollmentsTable
                 .where("trackedEntity")
                 .equals(data.trackedEntity)

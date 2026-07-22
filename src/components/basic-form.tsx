@@ -1,9 +1,11 @@
-import { Form, FormInstance, Row, Typography } from "antd";
+import { Form, FormInstance, Typography } from "antd";
 import React, { useCallback } from "react";
 import { useMetadata } from "../hooks/useMetadata";
+import { useUIConfig } from "../hooks/useUIConfig";
 import { EventContext } from "../machines";
 import { buildCurrentDataElements } from "../utils/utils";
 import { DataElementRenderer } from "./data-element-renderer";
+import { SubsectionGroups } from "./subsection-groups";
 
 export default function BasicForm({
     section,
@@ -14,6 +16,7 @@ export default function BasicForm({
 }) {
     const eventActor = EventContext.useActorRef();
     const { program } = useMetadata();
+    const uiConfig = useUIConfig();
     const ruleResult = EventContext.useSelector(
         (state) => state.context.ruleResult,
     );
@@ -44,32 +47,44 @@ export default function BasicForm({
             <Typography.Title level={4} style={{ marginBottom: 16 }}>
                 {section}
             </Typography.Title>
-            <Row gutter={[16, 16]}>
-                {triageSection?.dataElements.map((dataElement) => (
+            {triageSection && (
+                <SubsectionGroups
+                    items={triageSection.dataElements}
+                    subsections={uiConfig.subsections[triageSection.id]}
+                    formLayout={uiConfig.formLayouts?.[triageSection.id]}
+                    getId={(de) => de.id}
+                    sectionKey={triageSection.id}
+                    renderElement={(dataElement, groupLength) => (
+                        <DataElementRenderer
+                            key={dataElement.id}
+                            dataElementId={dataElement.id}
+                            currentDataElements={currentDataElements}
+                            ruleResult={ruleResult}
+                            sectionLength={groupLength}
+                            form={form}
+                            onFieldChange={onFieldChange}
+                        />
+                    )}
+                />
+            )}
+            <SubsectionGroups
+                items={currentSection.dataElements}
+                subsections={uiConfig.subsections[currentSection.id]}
+                formLayout={uiConfig.formLayouts?.[currentSection.id]}
+                getId={(de) => de.id}
+                sectionKey={currentSection.id}
+                renderElement={(dataElement, groupLength) => (
                     <DataElementRenderer
                         key={dataElement.id}
                         dataElementId={dataElement.id}
                         currentDataElements={currentDataElements}
                         ruleResult={ruleResult}
-                        sectionLength={triageSection.dataElements.length}
+                        sectionLength={groupLength}
                         form={form}
                         onFieldChange={onFieldChange}
                     />
-                ))}
-            </Row>
-            <Row gutter={[16, 16]}>
-                {currentSection.dataElements.map((dataElement) => (
-                    <DataElementRenderer
-                        key={dataElement.id}
-                        dataElementId={dataElement.id}
-                        currentDataElements={currentDataElements}
-                        ruleResult={ruleResult}
-                        sectionLength={currentSection.dataElements.length}
-                        form={form}
-                        onFieldChange={onFieldChange}
-                    />
-                ))}
-            </Row>
+                )}
+            />
         </Form>
     );
 }

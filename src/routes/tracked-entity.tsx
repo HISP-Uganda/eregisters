@@ -531,18 +531,23 @@ function TrackedEntityComponent() {
                 enrollment={enrollment}
                 onSave={async ({ values }) => {
                     if (values && data && enrollment) {
-                        const eventTable: DexieTable<FlattenedEvent, string> =
-                            eventsCollection.utils.getTable();
+                        const eventTable =
+                            eventsCollection.utils.getTable() as DexieTable<
+                                FlattenedEvent,
+                                string
+                            >;
 
-                        const trackedEntityTable: DexieTable<
-                            FlattenedTrackedEntity,
-                            string
-                        > = trackedEntitiesCollection.utils.getTable();
+                        const trackedEntityTable =
+                            trackedEntitiesCollection.utils.getTable() as DexieTable<
+                                FlattenedTrackedEntity,
+                                string
+                            >;
 
-                        const enrollmentTable: DexieTable<
-                            FlattenedEnrollment,
-                            string
-                        > = enrollmentsCollection.utils.getTable();
+                        const enrollmentTable =
+                            enrollmentsCollection.utils.getTable() as DexieTable<
+                                FlattenedEnrollment,
+                                string
+                            >;
 
                         const allRelatedEvents = await eventTable
                             .filter((a) => a.parentEvent === data.event)

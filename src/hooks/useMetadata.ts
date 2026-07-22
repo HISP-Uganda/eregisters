@@ -1,5 +1,5 @@
 import { SyncContext } from "../machines";
-import { DataElement, TrackedEntityAttribute } from "../schemas";
+import { DataElement, Program, TrackedEntityAttribute } from "../schemas";
 import { queryInfo } from "../utils/utils";
 
 export const useMetadata = (): Awaited<ReturnType<typeof queryInfo>> => {
@@ -38,15 +38,11 @@ export const useMetadata = (): Awaited<ReturnType<typeof queryInfo>> => {
         categoryOptionCombos = [],
     } = metadata;
 
-    if (program === undefined) {
-        throw new Error("OrgUnit or program undefined");
-    }
-
     return {
         trackedEntityAttributes,
         programRules,
         programRuleVariables,
-        program,
+        program: program as Program,
         dataElements,
         optionGroups,
         optionSets,
