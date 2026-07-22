@@ -1,6 +1,6 @@
 import { CalendarOutlined, UserOutlined } from "@ant-design/icons";
 import { and, eq, not, useLiveSuspenseQuery } from "@tanstack/react-db";
-import { createRoute, Outlet } from "@tanstack/react-router";
+import { createRoute, Outlet, redirect } from "@tanstack/react-router";
 import {
     Button,
     Card,
@@ -27,6 +27,12 @@ const { Title } = Typography;
 export const TrackedEntitiesRoute = createRoute({
     getParentRoute: () => RootRoute,
     path: "/tracked-entities",
+    beforeLoad: ({ context: { syncActor } }) => {
+        const program = syncActor.getSnapshot().context.metadata?.program;
+        if (!program) {
+            throw redirect({ to: "/reports" });
+        }
+    },
     component: TrackedEntities,
     validateSearch: ClientSchema,
 });

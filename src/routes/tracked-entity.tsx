@@ -7,7 +7,7 @@ import {
     PlusOutlined,
     UserOutlined,
 } from "@ant-design/icons";
-import { createRoute } from "@tanstack/react-router";
+import { createRoute, redirect } from "@tanstack/react-router";
 import type { DescriptionsProps, TableProps } from "antd";
 
 import { and, eq, not, useLiveSuspenseQuery } from "@tanstack/react-db";
@@ -61,6 +61,12 @@ import { RootRoute } from "./__root";
 export const TrackedEntityRoute = createRoute({
     getParentRoute: () => RootRoute,
     path: "/tracked-entity/$trackedEntity",
+    beforeLoad: ({ context: { syncActor } }) => {
+        const program = syncActor.getSnapshot().context.metadata?.program;
+        if (!program) {
+            throw redirect({ to: "/reports" });
+        }
+    },
     component: TrackedEntityComponent,
     params: z.object({
         trackedEntity: z.string(),

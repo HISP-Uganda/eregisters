@@ -695,6 +695,13 @@ export type Metadata = {
         sortOrder: number;
     }>;
     metadataVersion: MetadataVersion[];
+    /**
+     * Set of resources that the last pull attempt actually fetched
+     * successfully. NOT persisted — used only in-flight between
+     * `pullResource` and `saveMetadata` / `deleteAllMetadata` so those actors
+     * skip failed resources instead of wiping local tables.
+     */
+    succeededResources?: Set<Resource>;
 };
 
 export type MeUser = {
@@ -723,8 +730,13 @@ export type SubsectionConfig = {
     dataElementIds: string[];
 };
 
+export type FormLayoutItem =
+    | { kind: "section"; id: string; name: string }
+    | { kind: "element"; id: string };
+
 export type UIConfig = {
     subsections: Record<string, SubsectionConfig[]>;
+    formLayouts?: Record<string, FormLayoutItem[]>;
     reloadSignal: {
         app: { timestamp: string } | null;
         metadata: { timestamp: string } | null;
@@ -733,6 +745,7 @@ export type UIConfig = {
 
 export const emptyUIConfig: UIConfig = {
     subsections: {},
+    formLayouts: {},
     reloadSignal: { app: null, metadata: null },
 };
 export type DataSet = {
