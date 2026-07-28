@@ -15,6 +15,7 @@ import {
     upsertHmisDraft,
 } from "../db/hmis-drafts";
 import type { HmisDraft } from "../db/hmis-drafts";
+import { isPeriodFullyPast } from "../utils/periods";
 import type {
     HmisCellConfig,
     HmisEditableScope,
@@ -745,25 +746,56 @@ const InnerHmisForm: React.FC<HmisFormProps> = ({
                     {config.title}
                 </Title>
             }
-            extra={
-                <Button
-                    type="default"
-                    icon={
-                        isVerified && syncStatus === "synced" ? (
-                            <CheckCircleOutlined />
-                        ) : undefined
-                    }
-                    onClick={handleSave}
-                    disabled={effectiveReadOnly}
-                    loading={loading}
-                >
-                    {isVerified && syncStatus === "synced"
+            extra={(() => {
+                const periodFullyPast =
+                    period ? isPeriodFullyPast(period) : false;
+                const periodBlocked = !period || !periodFullyPast;
+                const disabled = effectiveReadOnly || periodBlocked;
+                const label =
+                    isVerified && syncStatus === "synced"
                         ? "Verified — Re-submit to Update"
                         : isVerified && syncStatus === "pending"
                           ? "Retry Verification"
-                          : "Mark Report as Verified"}
-                </Button>
-            }
+                          : periodBlocked && period
+                            ? "Waiting for period to end"
+                            : "Mark Report as Verified";
+                // Keep the label + button chrome fully readable even when
+                // disabled — antd's default disabled state fades everything
+                // to near-invisible on the teal header background.
+                const disabledVisibleStyle: React.CSSProperties = disabled
+                    ? {
+                          background: "#ffffff",
+                          borderColor: "#ffffff",
+                          color: TEAL,
+                          opacity: 1,
+                          cursor: "not-allowed",
+                          fontWeight: 600,
+                      }
+                    : {
+                          fontWeight: 600,
+                      };
+                return (
+                    <Button
+                        type="default"
+                        icon={
+                            isVerified && syncStatus === "synced" ? (
+                                <CheckCircleOutlined />
+                            ) : undefined
+                        }
+                        onClick={handleSave}
+                        disabled={disabled}
+                        loading={loading}
+                        style={disabledVisibleStyle}
+                        title={
+                            periodBlocked && period && !effectiveReadOnly
+                                ? "This period has not yet fully ended — verification will be enabled once the period is in the past."
+                                : undefined
+                        }
+                    >
+                        {label}
+                    </Button>
+                );
+            })()}
         >
             <HmisFormStyles />
             <Tabs

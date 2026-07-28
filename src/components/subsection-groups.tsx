@@ -1,7 +1,6 @@
 import { Card, Flex, Row } from "antd";
 import React, { ReactNode } from "react";
 import { FormLayoutItem, SectionStyle, SubsectionConfig } from "../schemas";
-import { EventContext } from "../machines/event-form";
 
 type Group<T> = {
     label: string | null;
@@ -85,6 +84,7 @@ export function SubsectionGroups<T extends { id: string }>({
     getId,
     renderElement,
     sectionKey,
+    hiddenFields,
     rowGutter = [16, 16],
 }: {
     items: T[];
@@ -93,10 +93,21 @@ export function SubsectionGroups<T extends { id: string }>({
     getId: (item: T) => string;
     renderElement: (item: T, groupLength: number) => ReactNode;
     sectionKey: string;
+    /**
+     * IDs of fields the caller considers hidden — used only to decide whether
+     * an *entire* subsection card should be dropped (when every one of its
+     * children is in this set). Cell-level hiding is still delegated to the
+     * caller's `renderElement`. `undefined` = no cards are dropped.
+     */
+    hiddenFields?: Iterable<string>;
     rowGutter?: [number, number];
 }) {
-    const ruleResult = EventContext.useSelector(
-        (state) => state.context.ruleResult,
+    const hiddenSet = React.useMemo(
+        () =>
+            hiddenFields instanceof Set
+                ? hiddenFields
+                : new Set(hiddenFields ?? []),
+        [hiddenFields],
     );
     const groups =
         formLayout && formLayout.length > 0
@@ -133,9 +144,8 @@ export function SubsectionGroups<T extends { id: string }>({
                 }
 
                 if (
-                    new Set(ruleResult.hiddenFields).isSupersetOf(
-                        new Set(groupItems.map((a) => a.id)),
-                    )
+                    hiddenSet.size > 0 &&
+                    groupItems.every((a) => hiddenSet.has(a.id))
                 ) {
                     return null;
                 }

@@ -81,10 +81,10 @@ function Reports() {
                             }),
                         )}
                         style={{ width: 400 }}
-                        showSearch
                         filterTreeNode={(input, node) =>
                             matchOrgUnit(orgUnitSearchIndex, node.id as string, input)
                         }
+
                         value={orgUnit}
 												treeDefaultExpandedKeys={expanded}
                         onChange={(value) => {

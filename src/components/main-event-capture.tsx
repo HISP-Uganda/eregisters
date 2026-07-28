@@ -317,14 +317,22 @@ export default function MainEventCapture({
                     return {
                         key: stage.id,
                         label: stage.name,
-                        children: (
-                            <ProgramStageCapture
-                                programStage={stage}
-                                trackedEntity={trackedEntity}
-                                mainEvent={mainEvent}
-                                enrollment={enrollment}
-                            />
-                        ),
+                        children:
+                            stage.id === "DA0Yt3V16AN" ? (
+                                <ProgramStageCapture
+                                    programStage={stage}
+                                    trackedEntity={trackedEntity}
+                                    mainEvent={mainEvent}
+                                    enrollment={enrollment}
+                                />
+                            ) : (
+                                <ProgramStageCapture
+                                    programStage={stage}
+                                    trackedEntity={trackedEntity}
+                                    mainEvent={mainEvent}
+                                    enrollment={enrollment}
+                                />
+                            ),
                     };
                 }
                 return orderBy(
@@ -355,6 +363,7 @@ export default function MainEventCapture({
                                         formLayout={
                                             uiConfig.formLayouts?.[section.id]
                                         }
+                                        hiddenFields={ruleResult.hiddenFields}
                                         getId={(de) => de.id}
                                         sectionKey={`${stage.id}-${section.id}`}
                                         rowGutter={[16, 32]}

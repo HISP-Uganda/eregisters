@@ -51,6 +51,7 @@ export default function ProgramStageForm({
                         items={section.dataElements}
                         subsections={uiConfig.subsections[section.id]}
                         formLayout={uiConfig.formLayouts?.[section.id]}
+                        hiddenFields={ruleResult.hiddenFields}
                         getId={(de) => de.id}
                         sectionKey={section.id}
                         renderElement={(dataElement, groupLength) => (

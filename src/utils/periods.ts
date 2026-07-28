@@ -1,4 +1,4 @@
-import dayjs, { Dayjs } from "dayjs";
+import dayjs, { Dayjs, OpUnitType } from "dayjs";
 import advancedFormat from "dayjs/plugin/advancedFormat";
 import isoWeek from "dayjs/plugin/isoWeek";
 
@@ -256,10 +256,38 @@ function financial(
     ];
 }
 
-export function enumeratePeriods(
-    type: DhisPeriodType,
-    year: number,
-): Period[] {
+export function whichPeriod(type: DhisPeriodType): OpUnitType | "isoWeek" {
+    switch (type) {
+        case "Daily":
+            return "day";
+        case "Weekly":
+            return "week";
+        case "BiWeekly":
+            return "week";
+        case "Monthly":
+            return "month";
+        case "BiMonthly":
+            return "month";
+        case "Quarterly":
+            return "month";
+        case "SixMonthly":
+            return "month";
+        case "SixMonthlyApril":
+            return "month";
+        case "Yearly":
+            return "year";
+        case "FinancialApril":
+            return "year";
+        case "FinancialJuly":
+            return "year";
+        case "FinancialOct":
+            return "year";
+				default:
+					return "day"
+    }
+}
+
+export function enumeratePeriods(type: DhisPeriodType, year: number): Period[] {
     let list: Period[];
     switch (type) {
         case "Daily":
@@ -326,4 +354,37 @@ export function parsePeriodId(
         if (m) return { type, year: parseInt(m[1], 10) };
     }
     return null;
+}
+
+/**
+ * True when the given DHIS2 period is entirely in the past — i.e. the period's
+ * end date, compared at the same granularity as the period itself (`month`,
+ * `week`, `year`, `day`), is strictly before today. The current period returns
+ * `false` (it hasn't finished yet), so it should not be considered verifiable.
+ */
+export function isPeriodFullyPast(periodId: string, now: Dayjs = dayjs()): boolean {
+    // Daily periods are formatted YYYYMMDD and don't go through enumeratePeriods
+    // (parsePeriodId returns `Daily` with `year = the year part`), so handle them
+    // directly: end == start == that day. A daily period is past if strictly
+    // before today.
+    if (/^\d{8}$/.test(periodId)) {
+        const iso = `${periodId.slice(0, 4)}-${periodId.slice(4, 6)}-${periodId.slice(6, 8)}`;
+        const d = dayjs(iso);
+        if (!d.isValid()) return false;
+        return d.isBefore(now, "day");
+    }
+    const parsed = parsePeriodId(periodId);
+    if (!parsed) return false;
+    const period = enumeratePeriods(parsed.type, parsed.year).find(
+        (p) => p.id === periodId,
+    );
+    if (!period) return false;
+    // Compare at `day` granularity: the period is fully past when today's
+    // date is strictly after the period's last day. Using the period-type
+    // unit (`week`/`month`/etc.) via `isBefore` is fragile — e.g. dayjs's
+    // default `week` unit uses locale-based (Sun-start) week boundaries,
+    // which lumps a Sunday-ending ISO week together with the following
+    // Monday-starting one. Comparing calendar days sidesteps all of that
+    // and matches the plain-English meaning of "the period has ended".
+    return period.end.startOf("day").isBefore(now.startOf("day"), "day");
 }

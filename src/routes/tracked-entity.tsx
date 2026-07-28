@@ -61,12 +61,6 @@ import { RootRoute } from "./__root";
 export const TrackedEntityRoute = createRoute({
     getParentRoute: () => RootRoute,
     path: "/tracked-entity/$trackedEntity",
-    beforeLoad: ({ context: { syncActor } }) => {
-        const program = syncActor.getSnapshot().context.metadata?.program;
-        if (!program) {
-            throw redirect({ to: "/reports" });
-        }
-    },
     component: TrackedEntityComponent,
     params: z.object({
         trackedEntity: z.string(),
@@ -677,15 +671,12 @@ function TrackedEntityComponent() {
                                             mainStageDataElements,
                                         form,
                                         allEnrollmentEvents:
-                                            allEnrollmentEventsRaw.map(
-                                                (e) => ({
-                                                    event: e.event,
-                                                    programStage:
-                                                        e.programStage,
-                                                    occurredAt: e.occurredAt,
-                                                    dataValues: e.dataValues,
-                                                }),
-                                            ),
+                                            allEnrollmentEventsRaw.map((e) => ({
+                                                event: e.event,
+                                                programStage: e.programStage,
+                                                occurredAt: e.occurredAt,
+                                                dataValues: e.dataValues,
+                                            })),
                                     },
                                 }}
                             >

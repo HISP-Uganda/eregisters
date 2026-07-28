@@ -118,6 +118,7 @@ export const TrackerRegistration: React.FC<TrackerRegistrationProps> = ({
                                 items={tei}
                                 subsections={uiConfig.subsections[id]}
                                 formLayout={uiConfig.formLayouts?.[id]}
+                                hiddenFields={ruleResult.hiddenFields}
                                 getId={(a) => a.id}
                                 sectionKey={id}
                                 renderElement={(attr, groupLength) => (

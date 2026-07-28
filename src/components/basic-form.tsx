@@ -52,6 +52,7 @@ export default function BasicForm({
                     items={triageSection.dataElements}
                     subsections={uiConfig.subsections[triageSection.id]}
                     formLayout={uiConfig.formLayouts?.[triageSection.id]}
+                    hiddenFields={ruleResult.hiddenFields}
                     getId={(de) => de.id}
                     sectionKey={triageSection.id}
                     renderElement={(dataElement, groupLength) => (
@@ -71,6 +72,7 @@ export default function BasicForm({
                 items={currentSection.dataElements}
                 subsections={uiConfig.subsections[currentSection.id]}
                 formLayout={uiConfig.formLayouts?.[currentSection.id]}
+                hiddenFields={ruleResult.hiddenFields}
                 getId={(de) => de.id}
                 sectionKey={currentSection.id}
                 renderElement={(dataElement, groupLength) => (
