@@ -414,7 +414,7 @@ function SectionLayout() {
     }
 
     return (
-        <Flex vertical gap={16}>
+        <Flex vertical gap={16} style={{ flex: 1, minHeight: 0, height: "100%" }}>
             <Typography.Title level={4} style={{ margin: 0 }}>
                 Section Layout
             </Typography.Title>
@@ -436,8 +436,14 @@ function SectionLayout() {
                 ]}
             />
 
-            <Flex gap={16} align="flex-start">
-                <div style={{ width: 240, flexShrink: 0 }}>
+            <Flex gap={16} align="stretch" style={{ flex: 1, minHeight: 0 }}>
+                <div
+                    style={{
+                        width: 240,
+                        flexShrink: 0,
+                        overflowY: "auto",
+                    }}
+                >
                     <List
                         bordered
                         size="small"
@@ -475,20 +481,35 @@ function SectionLayout() {
                     />
                 </div>
 
-                <div style={{ flex: 1 }}>
+                <div
+                    style={{
+                        flex: 1,
+                        minWidth: 0,
+                        minHeight: 0,
+                        display: "flex",
+                        flexDirection: "column",
+                        overflow: "hidden",
+                    }}
+                >
                     {!selectedSectionId ? (
                         <Typography.Text type="secondary">
                             Select a section to build its form
                         </Typography.Text>
                     ) : (
-                        <Flex gap={16} align="flex-start">
+                        <Flex
+                            gap={16}
+                            align="stretch"
+                            style={{ flex: 1, minHeight: 0 }}
+                        >
                             <div
                                 style={{
                                     flex: 1,
+                                    minWidth: 0,
                                     border: "1px solid #f0f0f0",
                                     borderRadius: 6,
                                     padding: 12,
                                     background: "#fafafa",
+                                    overflowY: "auto",
                                 }}
                             >
                                 <Flex
@@ -722,10 +743,12 @@ function SectionLayout() {
                             <div
                                 style={{
                                     width: 260,
+                                    flexShrink: 0,
                                     border: "1px solid #f0f0f0",
                                     borderRadius: 6,
                                     padding: 12,
                                     background: "#fff",
+                                    overflowY: "auto",
                                 }}
                             >
                                 <Typography.Text strong>
@@ -796,7 +819,18 @@ function SectionLayout() {
                     )}
 
                     {selectedSectionId && (
-                        <Flex gap={8} style={{ marginTop: 16 }}>
+                        <Flex
+                            gap={8}
+                            style={{
+                                marginTop: 16,
+                                position: "sticky",
+                                bottom: 0,
+                                background: "#fff",
+                                padding: "12px 0",
+                                borderTop: "1px solid #f0f0f0",
+                                zIndex: 2,
+                            }}
+                        >
                             <Button
                                 type="primary"
                                 loading={saving}

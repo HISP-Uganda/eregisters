@@ -1,4 +1,4 @@
-import { Card, Flex, Form, FormInstance, Row } from "antd";
+import { Card, Collapse, Flex, Form, FormInstance, Row } from "antd";
 import dayjs from "dayjs";
 import React, { useEffect } from "react";
 import { useMetadata } from "../hooks/useMetadata";
@@ -101,44 +101,61 @@ export const TrackerRegistration: React.FC<TrackerRegistrationProps> = ({
                     />
                 </Row>
             </Card>
-            {program.programSections.map(
-                ({ name, trackedEntityAttributes: tei, id }) => {
-                    const allAreHidden = tei.every(({ id }) =>
-                        ruleResult.hiddenFields.includes(id),
-                    );
-                    if (allAreHidden) return null;
-                    return (
-                        <Card
-                            title={name}
-                            key={id}
-                            style={{ borderRadius: 0 }}
-                            size="small"
-                        >
-                            <SubsectionGroups
-                                items={tei}
-                                subsections={uiConfig.subsections[id]}
-                                formLayout={uiConfig.formLayouts?.[id]}
-                                hiddenFields={ruleResult.hiddenFields}
-                                getId={(a) => a.id}
-                                sectionKey={id}
-                                renderElement={(attr, groupLength) => (
-                                    <DataElementRenderer
-                                        key={attr.id}
-                                        dataElementId={attr.id}
-                                        currentDataElements={allAttributes}
-                                        ruleResult={ruleResult}
-                                        sectionLength={groupLength}
-                                        form={form}
-                                        mode="attribute"
-                                        xl={spans.get(attr.id) ?? undefined}
-                                        onFieldChange={onFieldChange}
+            {(() => {
+                const sectionItems = program.programSections.flatMap(
+                    ({ name, trackedEntityAttributes: tei, id }) => {
+                        const allAreHidden = tei.every(({ id }) =>
+                            ruleResult.hiddenFields.includes(id),
+                        );
+                        if (allAreHidden) return [];
+                        return [
+                            {
+                                key: id,
+                                label: name,
+                                children: (
+                                    <SubsectionGroups
+                                        items={tei}
+                                        subsections={uiConfig.subsections[id]}
+                                        formLayout={
+                                            uiConfig.formLayouts?.[id]
+                                        }
+                                        hiddenFields={ruleResult.hiddenFields}
+                                        getId={(a) => a.id}
+                                        sectionKey={id}
+                                        renderElement={(attr, groupLength) => (
+                                            <DataElementRenderer
+                                                key={attr.id}
+                                                dataElementId={attr.id}
+                                                currentDataElements={
+                                                    allAttributes
+                                                }
+                                                ruleResult={ruleResult}
+                                                sectionLength={groupLength}
+                                                form={form}
+                                                mode="attribute"
+                                                xl={
+                                                    spans.get(attr.id) ??
+                                                    undefined
+                                                }
+                                                onFieldChange={onFieldChange}
+                                            />
+                                        )}
                                     />
-                                )}
-                            />
-                        </Card>
-                    );
-                },
-            )}
+                                ),
+                            },
+                        ];
+                    },
+                );
+                if (sectionItems.length === 0) return null;
+                return (
+                    <Collapse
+                        accordion
+                        size="small"
+                        defaultActiveKey={sectionItems[0].key}
+                        items={sectionItems}
+                    />
+                );
+            })()}
         </Flex>
     );
 };

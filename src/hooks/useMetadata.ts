@@ -30,6 +30,7 @@ export const useMetadata = (): Awaited<ReturnType<typeof queryInfo>> => {
                 name: string;
                 code: string;
                 optionSet: string;
+                optionSetName?: string;
                 sortOrder: number;
             }>
         >(),

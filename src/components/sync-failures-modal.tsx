@@ -1,6 +1,21 @@
-import { CloudUploadOutlined, ExclamationCircleOutlined } from "@ant-design/icons";
+import {
+    CloudUploadOutlined,
+    EditOutlined,
+    ExclamationCircleOutlined,
+} from "@ant-design/icons";
 import { eq, useLiveSuspenseQuery } from "@tanstack/react-db";
-import { Button, Empty, Modal, Space, Table, Tabs, Tag, Typography } from "antd";
+import { useNavigate } from "@tanstack/react-router";
+import {
+    Button,
+    Collapse,
+    Empty,
+    Modal,
+    Space,
+    Table,
+    Tabs,
+    Tag,
+    Typography,
+} from "antd";
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
 import React, { useMemo } from "react";
@@ -16,23 +31,62 @@ import {
     FlattenedEvent,
     FlattenedTrackedEntity,
 } from "../schemas";
+import { humanizeSyncError } from "../utils/sync-error-messages";
 
 const { Text, Paragraph } = Typography;
 
-function ErrorCell({ error }: { error?: string | null }) {
+function ErrorCell({
+    error,
+    names,
+}: {
+    error?: string | null;
+    names?: Map<string, string>;
+}) {
     if (!error) return <Text type="secondary">—</Text>;
+    const { friendly, technical } = humanizeSyncError(error, names);
     return (
-        <Paragraph
-            copyable={{ text: error }}
-            style={{
-                marginBottom: 0,
-                whiteSpace: "pre-wrap",
-                color: "#ff4d4f",
-                fontSize: 12,
-            }}
-        >
-            {error}
-        </Paragraph>
+        <Space direction="vertical" size={4} style={{ width: "100%" }}>
+            <Paragraph
+                style={{
+                    marginBottom: 0,
+                    whiteSpace: "pre-wrap",
+                    color: "#ff4d4f",
+                    fontSize: 13,
+                }}
+            >
+                {friendly}
+            </Paragraph>
+            {technical ? (
+                <Collapse
+                    ghost
+                    size="small"
+                    items={[
+                        {
+                            key: "tech",
+                            label: (
+                                <Text type="secondary" style={{ fontSize: 11 }}>
+                                    Technical details
+                                </Text>
+                            ),
+                            children: (
+                                <Paragraph
+                                    copyable={{ text: technical }}
+                                    style={{
+                                        marginBottom: 0,
+                                        whiteSpace: "pre-wrap",
+                                        color: "#8c8c8c",
+                                        fontSize: 11,
+                                        fontFamily: "monospace",
+                                    }}
+                                >
+                                    {technical}
+                                </Paragraph>
+                            ),
+                        },
+                    ]}
+                />
+            ) : null}
+        </Space>
     );
 }
 
@@ -53,7 +107,92 @@ export function SyncFailuresModal({
     onClose: () => void;
 }) {
     const syncActor = SyncContext.useActorRef();
-    const { program } = useMetadata();
+    const navigate = useNavigate();
+    const {
+        program,
+        dataElements,
+        trackedEntityAttributes,
+        optionSets,
+    } = useMetadata();
+
+    const nameLookup = useMemo(() => {
+        const map = new Map<string, string>();
+        const optionSetNames = new Map<string, string>();
+        const optionSetConsumers = new Map<string, Set<string>>();
+
+        const noteConsumer = (optionSetId: string, consumer: string) => {
+            const set =
+                optionSetConsumers.get(optionSetId) ?? new Set<string>();
+            set.add(consumer);
+            optionSetConsumers.set(optionSetId, set);
+        };
+
+        for (const de of dataElements.values()) {
+            const deName = de.formName || de.name;
+            map.set(de.id, deName);
+            if (de.optionSet) {
+                optionSetNames.set(de.optionSet.id, de.optionSet.name);
+                noteConsumer(de.optionSet.id, deName);
+            }
+        }
+        for (const tea of trackedEntityAttributes.values()) {
+            const teaName = tea.displayFormName || tea.name;
+            map.set(tea.id, teaName);
+            if (tea.optionSet) {
+                optionSetNames.set(tea.optionSet.id, tea.optionSet.name);
+                noteConsumer(tea.optionSet.id, teaName);
+            }
+        }
+        for (const [optionSetId, options] of optionSets.entries()) {
+            const optionSetName =
+                options.find((o) => o.optionSetName)?.optionSetName ??
+                optionSetNames.get(optionSetId);
+            if (optionSetName) optionSetNames.set(optionSetId, optionSetName);
+            for (const opt of options) {
+                map.set(
+                    opt.id,
+                    optionSetName ? `${opt.name} (${optionSetName})` : opt.name,
+                );
+            }
+        }
+        for (const [optionSetId, name] of optionSetNames.entries()) {
+            const consumers = optionSetConsumers.get(optionSetId);
+            if (consumers && consumers.size > 0) {
+                map.set(
+                    optionSetId,
+                    `${name} — used by ${Array.from(consumers).join(", ")}`,
+                );
+            } else {
+                map.set(optionSetId, name);
+            }
+        }
+        for (const stage of program?.programStages ?? []) {
+            map.set(stage.id, stage.name);
+            for (const section of stage.programStageSections ?? []) {
+                map.set(section.id, section.displayName || section.name);
+            }
+        }
+        return map;
+    }, [dataElements, trackedEntityAttributes, optionSets, program]);
+
+    const openClient = (trackedEntity: string) => {
+        navigate({
+            to: "/tracked-entity/$trackedEntity",
+            params: { trackedEntity },
+            search: { edit: "client" },
+        });
+        onClose();
+    };
+
+    const openEvent = (trackedEntity: string | undefined, event: string) => {
+        if (!trackedEntity) return;
+        navigate({
+            to: "/tracked-entity/$trackedEntity",
+            params: { trackedEntity },
+            search: { event },
+        });
+        onClose();
+    };
 
     const displayAttributeIds = useMemo(
         () =>
@@ -109,13 +248,27 @@ export function SyncFailuresModal({
         {
             title: "Error",
             key: "error",
-            render: (_, r) => <ErrorCell error={r.syncError} />,
+            render: (_, r) => <ErrorCell error={r.syncError} names={nameLookup} />,
         },
         {
             title: "Last attempt",
             key: "lastSynced",
             width: 140,
             render: (_, r) => <LastAttemptCell ts={r.lastSynced} />,
+        },
+        {
+            title: "Action",
+            key: "action",
+            width: 100,
+            render: (_, r) => (
+                <Button
+                    size="small"
+                    icon={<EditOutlined />}
+                    onClick={() => openClient(r.trackedEntity)}
+                >
+                    Open
+                </Button>
+            ),
         },
     ];
 
@@ -135,13 +288,27 @@ export function SyncFailuresModal({
         {
             title: "Error",
             key: "error",
-            render: (_, r) => <ErrorCell error={r.syncError} />,
+            render: (_, r) => <ErrorCell error={r.syncError} names={nameLookup} />,
         },
         {
             title: "Last attempt",
             key: "lastSynced",
             width: 140,
             render: (_, r) => <LastAttemptCell ts={r.lastSynced} />,
+        },
+        {
+            title: "Action",
+            key: "action",
+            width: 100,
+            render: (_, r) => (
+                <Button
+                    size="small"
+                    icon={<EditOutlined />}
+                    onClick={() => openClient(r.trackedEntity)}
+                >
+                    Open
+                </Button>
+            ),
         },
     ];
 
@@ -166,13 +333,28 @@ export function SyncFailuresModal({
         {
             title: "Error",
             key: "error",
-            render: (_, r) => <ErrorCell error={r.syncError} />,
+            render: (_, r) => <ErrorCell error={r.syncError} names={nameLookup} />,
         },
         {
             title: "Last attempt",
             key: "lastSynced",
             width: 140,
             render: (_, r) => <LastAttemptCell ts={r.lastSynced} />,
+        },
+        {
+            title: "Action",
+            key: "action",
+            width: 100,
+            render: (_, r) => (
+                <Button
+                    size="small"
+                    icon={<EditOutlined />}
+                    disabled={!r.trackedEntity}
+                    onClick={() => openEvent(r.trackedEntity, r.event)}
+                >
+                    Open
+                </Button>
+            ),
         },
     ];
 

@@ -840,7 +840,17 @@ function LayoutWithDrafts() {
                                 background: "#d97706",
                                 borderColor: "#d97706",
                             }}
-                            onClick={() => window.location.reload()}
+                            onClick={() => {
+                                const ts =
+                                    uiConfig.reloadSignal.app?.timestamp;
+                                if (ts)
+                                    localStorage.setItem(
+                                        "eregisters.lastSeenAppSignal",
+                                        ts,
+                                    );
+                                setShowAppReload(false);
+                                window.location.reload();
+                            }}
                         >
                             Reload now
                         </Button>

@@ -170,9 +170,6 @@ const NoPatientsCard: React.FC<NoPatientsCardProps> = ({
                         } else {
                             navigate({
                                 to: `/tracked-entity/$trackedEntity`,
-                                search: {
-                                    orgUnits:orgUnit,
-                                },
                                 params: {
                                     trackedEntity: trackedEntity.trackedEntity,
                                 },

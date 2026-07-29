@@ -1052,7 +1052,7 @@ const syncMachine = setup({
 
                     case "optionSets":
                         const optionSetsParams: any = {
-                            fields: "id,options[id,name,code,sortOrder]",
+                            fields: "id,name,options[id,name,code,sortOrder]",
                             paging: false,
                         };
                         if (
@@ -1072,6 +1072,7 @@ const syncMachine = setup({
                             optionSets: {
                                 optionSets: {
                                     id: string;
+                                    name: string;
                                     options: {
                                         id: string;
                                         name: string;
@@ -1087,6 +1088,7 @@ const syncMachine = setup({
                                 os.options.map((o) => ({
                                     ...o,
                                     optionSet: os.id,
+                                    optionSetName: os.name,
                                 })),
                             );
                         results.optionSets = flattenedOptionSets;

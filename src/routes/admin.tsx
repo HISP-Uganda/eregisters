@@ -97,7 +97,9 @@ function AdminLayout() {
                 style={{
                     padding: 24,
                     background: "#fff",
-                    overflow: "auto",
+                    overflow: "hidden",
+                    display: "flex",
+                    flexDirection: "column",
                 }}
             >
                 <Outlet />

@@ -774,6 +774,7 @@ export type FlattenedOptionSet = {
     name: string;
     code: string;
     optionSet: string;
+    optionSetName?: string;
     sortOrder: number;
 };
 
