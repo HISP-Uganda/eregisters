@@ -9,10 +9,9 @@ import {
     Row,
     Select,
     Tabs,
-    Typography,
 } from "antd";
 import dayjs from "dayjs";
-import { orderBy } from "lodash";
+import { orderBy, isEmpty } from "lodash";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
     enrollmentsCollection,
@@ -36,11 +35,13 @@ import {
     createGetValueProps,
     createNormalize,
 } from "../utils/utils";
+import { useUIConfig } from "../hooks/useUIConfig";
 import { DataElementField } from "./data-element-field";
 import { DataElementRenderer } from "./data-element-renderer";
 import { DataModal } from "./data-modal";
 import { ProgramStageCapture } from "./program-stage-capture";
 import RelationshipEvent from "./relationship-event";
+import { SubsectionGroups } from "./subsection-groups";
 import { TrackerRegistration } from "./tracker-registration";
 
 const stages: Map<string, number> = new Map([
@@ -168,6 +169,7 @@ export default function MainEventCapture({
     } = useModalState<FlattenedTrackedEntity>();
     const { program, optionSets, programRuleVariables, programRules } =
         useMetadata();
+    const uiConfig = useUIConfig();
     const [activeKey, setActiveKey] = useState<string>(
         "K2nxbE9ubSs-bnV62fxQmoE",
     );
@@ -219,10 +221,12 @@ export default function MainEventCapture({
                 },
             });
 
-            if (dataElement) {
-                if (dataElement === "REWqohCg4Km" && value === "Yes") {
-                    await createChild();
-                }
+            if (
+                dataElement &&
+                dataElement === "REWqohCg4Km" &&
+                !isEmpty(value)
+            ) {
+                await createChild();
             }
         },
         [eventActor, form, createChild],
@@ -313,14 +317,22 @@ export default function MainEventCapture({
                     return {
                         key: stage.id,
                         label: stage.name,
-                        children: (
-                            <ProgramStageCapture
-                                programStage={stage}
-                                trackedEntity={trackedEntity}
-                                mainEvent={mainEvent}
-                                enrollment={enrollment}
-                            />
-                        ),
+                        children:
+                            stage.id === "DA0Yt3V16AN" ? (
+                                <ProgramStageCapture
+                                    programStage={stage}
+                                    trackedEntity={trackedEntity}
+                                    mainEvent={mainEvent}
+                                    enrollment={enrollment}
+                                />
+                            ) : (
+                                <ProgramStageCapture
+                                    programStage={stage}
+                                    trackedEntity={trackedEntity}
+                                    mainEvent={mainEvent}
+                                    enrollment={enrollment}
+                                />
+                            ),
                     };
                 }
                 return orderBy(
@@ -333,43 +345,45 @@ export default function MainEventCapture({
                         ruleResult.hiddenSections.includes(section.id)
                     )
                         return [];
+                    const visibleElements = section.dataElements.filter(
+                        (de) => de.id !== "mrKZWf2WMIC",
+                    );
+
                     return [
                         {
                             key: `${stage.id}-${section.id}`,
                             label: section.displayName || section.name,
                             children: (
                                 <Card>
-                                    <Row gutter={[16, 32]}>
-                                        {section.dataElements.flatMap(
-                                            (dataElement) => {
-                                                if (
-                                                    dataElement.id ===
-                                                    "mrKZWf2WMIC"
-                                                )
-                                                    return [];
-                                                return (
-                                                    <DataElementRenderer
-                                                        key={dataElement.id}
-                                                        dataElementId={
-                                                            dataElement.id
-                                                        }
-                                                        currentDataElements={
-                                                            currentDataElements
-                                                        }
-                                                        ruleResult={ruleResult}
-                                                        sectionLength={
-                                                            section.dataElements
-                                                                .length
-                                                        }
-                                                        form={form}
-                                                        onFieldChange={
-                                                            onFieldChange
-                                                        }
-                                                    />
-                                                );
-                                            },
+                                    <SubsectionGroups
+                                        items={visibleElements}
+                                        subsections={
+                                            uiConfig.subsections[section.id]
+                                        }
+                                        formLayout={
+                                            uiConfig.formLayouts?.[section.id]
+                                        }
+                                        hiddenFields={ruleResult.hiddenFields}
+                                        getId={(de) => de.id}
+                                        sectionKey={`${stage.id}-${section.id}`}
+                                        rowGutter={[16, 32]}
+                                        renderElement={(
+                                            dataElement,
+                                            groupLength,
+                                        ) => (
+                                            <DataElementRenderer
+                                                key={dataElement.id}
+                                                dataElementId={dataElement.id}
+                                                currentDataElements={
+                                                    currentDataElements
+                                                }
+                                                ruleResult={ruleResult}
+                                                sectionLength={groupLength}
+                                                form={form}
+                                                onFieldChange={onFieldChange}
+                                            />
                                         )}
-                                    </Row>
+                                    />
                                     {["Maternity", "Postnatal"].includes(
                                         section.name,
                                     ) && (
@@ -394,6 +408,7 @@ export default function MainEventCapture({
             mainEvent,
             enrollment,
             form,
+            uiConfig.subsections,
         ],
     );
 

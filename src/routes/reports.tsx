@@ -5,12 +5,14 @@ import dayjs from "dayjs";
 import advancedFormat from "dayjs/plugin/advancedFormat";
 import isoWeek from "dayjs/plugin/isoWeek";
 import { every, isArray, orderBy } from "lodash";
-import React from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import PeriodPicker from "../components/period-picker";
 import { Spinner } from "../components/spinner";
 import { useMetadata } from "../hooks/useMetadata";
 import { CategoryOptionCombo, DataSet, ReportSchema } from "../schemas";
 import { RootRoute } from "./__root";
+import { SafeKey } from "antd/es/table/interface";
+import { buildOrgUnitSearchIndex, matchOrgUnit } from "./org-unit-search";
 
 dayjs.extend(advancedFormat);
 dayjs.extend(isoWeek);
@@ -27,17 +29,24 @@ function Reports() {
     const { dataSets, organisationUnits, categoryOptionCombos } = useMetadata();
     const { dataSet, periodType, orgUnit, period, attribution } =
         ReportsRoute.useSearch();
+
+    const [expanded, setExpanded] = useState<SafeKey[]>([]);
+
+    const orgUnitSearchIndex = useMemo(
+        () => buildOrgUnitSearchIndex(organisationUnits),
+        [organisationUnits],
+    );
+
+    useEffect(() => {
+        const search = organisationUnits.find(({ id }) => id === orgUnit);
+        if (search) {
+            setExpanded(() => search.path.split("/").slice(1));
+        }
+    }, [orgUnit]);
+
     return (
-        <Flex
-            style={{
-                padding: 5,
-                height: "calc(100vh - 112px)",
-                // overflow: "hidden",
-            }}
-            gap={5}
-            vertical
-        >
-            <Flex gap={10} style={{ flexShrink: 0, flexWrap: "wrap" }}>
+        <Flex vertical style={{ padding: 5 }}>
+            <Flex gap={10}>
                 <Form.Item label="Dataset">
                     <Select<string, DataSet>
                         options={dataSets}
@@ -49,8 +58,7 @@ function Reports() {
                                 ? option[0].periodType
                                 : option?.periodType;
                             navigate({
-                                to: "/reports/$dataSet",
-                                params: { dataSet: value },
+                                to: "/reports/hmis",
                                 search: (prev) => ({
                                     ...prev,
                                     dataSet: value,
@@ -73,11 +81,15 @@ function Reports() {
                             }),
                         )}
                         style={{ width: 400 }}
-                        showSearch={{ filterTreeNode: true }}
+                        filterTreeNode={(input, node) =>
+                            matchOrgUnit(orgUnitSearchIndex, node.id as string, input)
+                        }
+
                         value={orgUnit}
+												treeDefaultExpandedKeys={expanded}
                         onChange={(value) => {
                             navigate({
-                                from: "/reports/$dataSet",
+                                to: "/reports/hmis",
                                 search: (prev) => ({
                                     ...prev,
                                     orgUnit: value,
@@ -93,7 +105,7 @@ function Reports() {
                         value={period}
                         onChange={(value) => {
                             navigate({
-                                from: "/reports/$dataSet",
+                                to: "/reports/hmis",
                                 search: (prev) => ({
                                     ...prev,
                                     period: value,
@@ -125,10 +137,9 @@ function Reports() {
                             fieldNames={{ label: "name", value: "id" }}
                             style={{ width: 400 }}
                             value={attribution}
-                            onChange={(value, option) => {
+                            onChange={(value) => {
                                 navigate({
-                                    to: "/reports/$dataSet",
-                                    params: { dataSet: value },
+                                    to: "/reports/hmis",
                                     search: (prev) => ({
                                         ...prev,
                                         attribution: value,
@@ -139,17 +150,7 @@ function Reports() {
                     </Form.Item>
                 )}
             </Flex>
-            <div
-                style={{
-                    flex: 1,
-                    minHeight: 0,
-                    overflow: "hidden",
-                    display: "flex",
-                    flexDirection: "column",
-                }}
-            >
-                <Outlet />
-            </div>
+            <Outlet />
         </Flex>
     );
 }

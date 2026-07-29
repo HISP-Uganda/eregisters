@@ -18,6 +18,7 @@ import {
     TrackedEntityAttribute,
     UIConfig,
 } from "../schemas";
+import type { HmisDraft } from "./hmis-drafts";
 
 export interface SyncOperation {
     id: string;
@@ -109,6 +110,7 @@ class RegisterDatabase extends Dexie {
     uiConfig!: Table<{ id: string; config: UIConfig }, string>;
     dataSets!: Table<DataSet, string>;
     categoryOptionCombos!: Table<CategoryOptionCombo, string>;
+    hmisDrafts!: Table<HmisDraft, string>;
 
     constructor() {
         super("MOHRegisterDB");
@@ -131,6 +133,9 @@ class RegisterDatabase extends Dexie {
         });
         this.version(2).stores({
             uiConfig: "id",
+        });
+        this.version(3).stores({
+            hmisDrafts: "id, dataSet, period, orgUnit, syncStatus",
         });
     }
 }

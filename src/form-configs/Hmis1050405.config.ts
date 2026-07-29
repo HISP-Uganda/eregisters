@@ -22,6 +22,7 @@ import type {
 export const HMIS_105_04_05_CONFIG: HmisFormConfig = {
   "id": "hmis-105-04-05-sections-4-and-5",
   "title": "HMIS 105:04-05 - OUTPATIENT REPORT (SECTION 4&5)",
+  editableScope: { mode: "none" },
   "tabs": [
     {
       "key": "tab1",
@@ -118,53 +119,6 @@ export const HMIS_105_04_05_CONFIG: HmisFormConfig = {
             }
           ],
           "rows": [
-            {
-              "key": "tab1-section-1-row-1",
-              "type": "section",
-              "cells": [
-                {
-                  "key": "tab1-section-1-row-1-cell-1",
-                  "kind": "label",
-                  "text": "4.0 HIV/AIDS TESTING SERVICES (HTS)",
-                  "colSpan": 7
-                },
-                {
-                  "key": "tab1-section-1-row-1-cell-2",
-                  "kind": "label",
-                  "colSpan": 2
-                },
-                {
-                  "key": "tab1-section-1-row-1-cell-3",
-                  "kind": "label",
-                  "colSpan": 2
-                },
-                {
-                  "key": "tab1-section-1-row-1-cell-4",
-                  "kind": "label",
-                  "colSpan": 2
-                },
-                {
-                  "key": "tab1-section-1-row-1-cell-5",
-                  "kind": "label",
-                  "colSpan": 2
-                },
-                {
-                  "key": "tab1-section-1-row-1-cell-6",
-                  "kind": "label",
-                  "colSpan": 2
-                },
-                {
-                  "key": "tab1-section-1-row-1-cell-7",
-                  "kind": "label",
-                  "colSpan": 2
-                },
-                {
-                  "key": "tab1-section-1-row-1-cell-8",
-                  "kind": "label",
-                  "colSpan": 2
-                }
-              ]
-            },
             {
               "key": "tab1-section-1-row-2",
               "type": "subhead",
@@ -7922,21 +7876,6 @@ export const HMIS_105_04_05_CONFIG: HmisFormConfig = {
             }
           ],
           "rows": [
-            {
-              "key": "tab2-section-1-row-1",
-              "type": "section",
-              "cells": [
-                {
-                  "key": "tab2-section-1-row-1-cell-1",
-                  "kind": "label",
-                  "text": "5.0 SAFE MALE CIRCUMCISION (SMC)",
-                  "colSpan": 20,
-                  "style": {
-                    "background": "#c8cbd1"
-                  }
-                }
-              ]
-            },
             {
               "key": "tab2-section-1-row-2",
               "type": "subhead",

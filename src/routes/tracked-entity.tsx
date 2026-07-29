@@ -7,7 +7,7 @@ import {
     PlusOutlined,
     UserOutlined,
 } from "@ant-design/icons";
-import { createRoute } from "@tanstack/react-router";
+import { createRoute, redirect } from "@tanstack/react-router";
 import type { DescriptionsProps, TableProps } from "antd";
 
 import { and, eq, not, useLiveSuspenseQuery } from "@tanstack/react-db";
@@ -29,7 +29,7 @@ import {
 import dayjs from "dayjs";
 import { Table as DexieTable } from "dexie";
 import { isEmpty } from "lodash";
-import React, { useMemo } from "react";
+import React, { useCallback, useEffect, useMemo, useRef } from "react";
 import { z } from "zod";
 import {
     enrollmentsCollection,
@@ -64,6 +64,10 @@ export const TrackedEntityRoute = createRoute({
     component: TrackedEntityComponent,
     params: z.object({
         trackedEntity: z.string(),
+    }),
+    validateSearch: z.object({
+        event: z.string().optional(),
+        edit: z.enum(["client"]).optional(),
     }),
     pendingComponent: Spinner,
 });
@@ -103,7 +107,19 @@ function TrackedEntityComponent() {
         programRules,
     } = useMetadata();
     const { trackedEntity: tei } = TrackedEntityRoute.useParams();
+    const search = TrackedEntityRoute.useSearch();
     const navigate = TrackedEntityRoute.useNavigate();
+    const clearModalSearch = useCallback(() => {
+        navigate({
+            search: (prev) => ({
+                ...prev,
+                event: undefined,
+                edit: undefined,
+            }),
+            replace: true,
+        });
+    }, [navigate]);
+    const handledSearchRef = useRef<string | null>(null);
     const attributes = Array.from(trackedEntityAttributes.values());
     const mainStage = program?.programStages.find(
         (s) => s.id === "K2nxbE9ubSs",
@@ -200,6 +216,46 @@ function TrackedEntityComponent() {
 
     const screens = Grid.useBreakpoint();
     const isMobile = !screens.lg;
+
+    useEffect(() => {
+        if (!trackedEntity || !enrollment) return;
+        const key = `${search.event ?? ""}|${search.edit ?? ""}`;
+        if (handledSearchRef.current === key) return;
+        if (!search.event && !search.edit) {
+            handledSearchRef.current = key;
+            return;
+        }
+        if (search.event) {
+            const target = allEnrollmentEventsRaw.find(
+                (e) => e.event === search.event,
+            );
+            if (target) {
+                handledSearchRef.current = key;
+                openModal(target as FlattenedEvent, enrollment);
+            }
+        } else if (search.edit === "client") {
+            handledSearchRef.current = key;
+            openTrackedEntityModal(
+                {
+                    ...trackedEntity,
+                    attributes: {
+                        ...trackedEntity.attributes,
+                        enrolledAt: enrollment.enrolledAt,
+                        ...enrollment.attributes,
+                    },
+                },
+                enrollment,
+            );
+        }
+    }, [
+        search.event,
+        search.edit,
+        trackedEntity,
+        enrollment,
+        allEnrollmentEventsRaw,
+        openModal,
+        openTrackedEntityModal,
+    ]);
 
     if (trackedEntity === undefined || enrollment === undefined) {
         return <Text>No tracked Entity or Enrollment found</Text>;
@@ -520,23 +576,29 @@ function TrackedEntityComponent() {
                 data={data}
                 onClose={() => {
                     closeModal();
+                    clearModalSearch();
                 }}
                 onCancel={() => cancelDataModal(data!)}
                 enrollment={enrollment}
                 onSave={async ({ values }) => {
                     if (values && data && enrollment) {
-                        const eventTable: DexieTable<FlattenedEvent, string> =
-                            eventsCollection.utils.getTable();
+                        const eventTable =
+                            eventsCollection.utils.getTable() as DexieTable<
+                                FlattenedEvent,
+                                string
+                            >;
 
-                        const trackedEntityTable: DexieTable<
-                            FlattenedTrackedEntity,
-                            string
-                        > = trackedEntitiesCollection.utils.getTable();
+                        const trackedEntityTable =
+                            trackedEntitiesCollection.utils.getTable() as DexieTable<
+                                FlattenedTrackedEntity,
+                                string
+                            >;
 
-                        const enrollmentTable: DexieTable<
-                            FlattenedEnrollment,
-                            string
-                        > = enrollmentsCollection.utils.getTable();
+                        const enrollmentTable =
+                            enrollmentsCollection.utils.getTable() as DexieTable<
+                                FlattenedEnrollment,
+                                string
+                            >;
 
                         const allRelatedEvents = await eventTable
                             .filter((a) => a.parentEvent === data.event)
@@ -666,15 +728,12 @@ function TrackedEntityComponent() {
                                             mainStageDataElements,
                                         form,
                                         allEnrollmentEvents:
-                                            allEnrollmentEventsRaw.map(
-                                                (e) => ({
-                                                    event: e.event,
-                                                    programStage:
-                                                        e.programStage,
-                                                    occurredAt: e.occurredAt,
-                                                    dataValues: e.dataValues,
-                                                }),
-                                            ),
+                                            allEnrollmentEventsRaw.map((e) => ({
+                                                event: e.event,
+                                                programStage: e.programStage,
+                                                occurredAt: e.occurredAt,
+                                                dataValues: e.dataValues,
+                                            })),
                                     },
                                 }}
                             >
@@ -701,7 +760,10 @@ function TrackedEntityComponent() {
             <DataModal<FlattenedTrackedEntity>
                 open={trackedEntityIsOpen}
                 data={trackedEntityData}
-                onClose={closeTrackedEntityModal}
+                onClose={() => {
+                    closeTrackedEntityModal();
+                    clearModalSearch();
+                }}
                 onCancel={() => cancelDataModal(trackedEntityData!)}
                 enrollment={enrollment}
                 onSave={async ({ values }) => {

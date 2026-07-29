@@ -22,6 +22,7 @@ import type {
 export const HMIS_106A_04_CONFIG: HmisFormConfig = {
   "id": "hmis-106a-04-section-4",
   "title": "4.1 QUARTERLY LABORATORY DISEASE SURVEILLANCE AND OUTBREAK RESPONSE",
+  editableScope: { mode: "none" },
   "tabs": [
     {
       "key": "tab1",
@@ -58,18 +59,6 @@ export const HMIS_106A_04_CONFIG: HmisFormConfig = {
             }
           ],
           "rows": [
-            {
-              "key": "tab1-section-1-row-1",
-              "type": "section",
-              "cells": [
-                {
-                  "key": "tab1-section-1-row-1-cell-1",
-                  "kind": "label",
-                  "text": "4.1 QUARTERLY LABORATORY DISEASE SURVEILLANCE AND OUTBREAK RESPONSE",
-                  "colSpan": 6
-                }
-              ]
-            },
             {
               "key": "tab1-section-1-row-2",
               "type": "subhead",
@@ -703,18 +692,6 @@ export const HMIS_106A_04_CONFIG: HmisFormConfig = {
             }
           ],
           "rows": [
-            {
-              "key": "tab2-section-1-row-1",
-              "type": "section",
-              "cells": [
-                {
-                  "key": "tab2-section-1-row-1-cell-1",
-                  "kind": "label",
-                  "text": "4.2 EXTERNAL QUALITY ASSURANCE",
-                  "colSpan": 6
-                }
-              ]
-            },
             {
               "key": "tab2-section-1-row-2",
               "type": "subhead",

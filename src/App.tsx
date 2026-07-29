@@ -18,7 +18,10 @@ const ME_QUERY = {
 
 const Main = () => {
     const syncActor = SyncContext.useActorRef();
-    return <RouterProvider router={router} context={{ syncActor }} />;
+    const engine = useDataEngine();
+    return (
+        <RouterProvider router={router} context={{ syncActor, engine }} />
+    );
 };
 
 const FullApp: FC<{

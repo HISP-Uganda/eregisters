@@ -1,6 +1,6 @@
 import { CalendarOutlined, UserOutlined } from "@ant-design/icons";
 import { and, eq, not, useLiveSuspenseQuery } from "@tanstack/react-db";
-import { createRoute, Outlet } from "@tanstack/react-router";
+import { createRoute, Outlet, redirect } from "@tanstack/react-router";
 import {
     Button,
     Card,
@@ -27,6 +27,14 @@ const { Title } = Typography;
 export const TrackedEntitiesRoute = createRoute({
     getParentRoute: () => RootRoute,
     path: "/tracked-entities",
+    beforeLoad: ({ context: { syncActor } }) => {
+        const organizationUnits =
+            syncActor.getSnapshot().context.userInfo.organisationUnits;
+        const programs = organizationUnits.flatMap((a) => a.programs);
+        if (programs.length === 0) {
+            throw redirect({ to: "/reports" });
+        }
+    },
     component: TrackedEntities,
     validateSearch: ClientSchema,
 });
@@ -44,7 +52,7 @@ function TrackedEntities() {
                 .where(({ trackedEntities }) =>
                     and(
                         not(eq(trackedEntities.syncStatus, "draft")),
-												not(eq(trackedEntities.syncStatus, "deleted")),
+                        not(eq(trackedEntities.syncStatus, "deleted")),
                         eq(trackedEntities.orgUnit, orgUnit),
                     ),
                 ),

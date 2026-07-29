@@ -1,7 +1,11 @@
-import { assertEvent, assign, fromPromise, not, setup } from "xstate";
+import { assign, fromPromise, not, setup } from "xstate";
 import {
+    AggregateData,
+    CategoryOptionCombo,
     DataElement,
+    DataSet,
     Dhis2Report,
+    emptyUIConfig,
     Enrollment,
     Event,
     FlattenedEnrollment,
@@ -9,25 +13,22 @@ import {
     FlattenedTrackedEntity,
     Metadata,
     MeUser,
+    OU,
     Program,
     ProgramIndicator,
     ProgramRule,
     ProgramRuleVariable,
+    Resource,
     TrackedEntity,
     TrackedEntityAttribute,
     UIConfig,
-    emptyUIConfig,
-    Resource,
-    OU,
-    DataSet,
-    AggregateData,
-    CategoryOptionCombo,
 } from "../schemas";
 
 import type { useDataEngine } from "@dhis2/app-runtime";
 import { createActorContext } from "@xstate/react";
 import { MessageInstance } from "antd/es/message/interface";
 import { Table } from "dexie";
+import { isEmpty } from "lodash";
 import {
     enrollmentsCollection,
     eventsCollection,
@@ -60,7 +61,6 @@ import {
     shouldUseLastDataPull,
     shouldUseLastUpdatedFilter,
 } from "./sync-metadata-mode";
-import { isEmpty } from "lodash";
 
 function deriveValidIds(program: Program | undefined): {
     validAttributeIds: Set<string>;
@@ -240,9 +240,14 @@ const syncReportToLocal = async ({
             skipSideEffects: "true",
         },
     });
-    const failedResponses = new Map(
-        response.validationReport.errorReports.map((a) => [a.uid, a.message]),
-    );
+    const failedResponses = new Map<string, string>();
+    for (const err of response.validationReport.errorReports) {
+        const line = err.errorCode
+            ? `[${err.errorCode}] ${err.message}`
+            : err.message;
+        const existing = failedResponses.get(err.uid);
+        failedResponses.set(err.uid, existing ? `${existing}\n${line}` : line);
+    }
 
     const syncedEvents = new Set(
         response.bundleReport.typeReportMap.EVENT.objectReports.map(
@@ -277,7 +282,7 @@ const syncReportToLocal = async ({
                 ...a,
                 syncStatus: "synced",
                 lastSynced: new Date().toISOString(),
-                syncError: failedResponses.get(a.trackedEntity),
+                syncError: null,
             };
         }
         return [];
@@ -296,7 +301,7 @@ const syncReportToLocal = async ({
                 ...a,
                 syncStatus: "synced",
                 lastSynced: new Date().toISOString(),
-                syncError: failedResponses.get(a.enrollment),
+                syncError: null,
             };
         }
         return [];
@@ -315,7 +320,7 @@ const syncReportToLocal = async ({
                 ...a,
                 syncStatus: "synced",
                 lastSynced: new Date().toISOString(),
-                syncError: failedResponses.get(a.event),
+                syncError: null,
             };
         }
         return [];
@@ -416,13 +421,14 @@ const syncDeleteToLocal = async ({
             realFailures++;
         }
     }
-
-    const teTable: Table<FlattenedTrackedEntity, string> =
-        trackedEntitiesCollection.utils.getTable();
-    const enrollTable: Table<FlattenedEnrollment, string> =
-        enrollmentsCollection.utils.getTable();
-    const eventTable: Table<FlattenedEvent, string> =
-        eventsCollection.utils.getTable();
+    const eventTable = eventsCollection.utils.getTable() as Table<
+        FlattenedEvent,
+        string
+    >;
+    const enrollTable = enrollmentsCollection.utils.getTable() as Table<
+        FlattenedEnrollment,
+        string
+    >;
 
     for (const te of deletedTrackedEntities) {
         if (cleanupTeUids.has(te.trackedEntity)) {
@@ -654,12 +660,21 @@ const syncMachine = setup({
                         },
                     );
 
-                    const teTable: Table<FlattenedTrackedEntity, string> =
-                        trackedEntitiesCollection.utils.getTable();
-                    const eventTable: Table<FlattenedEvent, string> =
-                        eventsCollection.utils.getTable();
-                    const enrollTable: Table<FlattenedEnrollment, string> =
-                        enrollmentsCollection.utils.getTable();
+                    const teTable =
+                        trackedEntitiesCollection.utils.getTable() as Table<
+                            FlattenedTrackedEntity,
+                            string
+                        >;
+                    const eventTable =
+                        eventsCollection.utils.getTable() as Table<
+                            FlattenedEvent,
+                            string
+                        >;
+                    const enrollTable =
+                        enrollmentsCollection.utils.getTable() as Table<
+                            FlattenedEnrollment,
+                            string
+                        >;
 
                     const mergedTrackedEntities =
                         await mergeBulkTrackedEntities(
@@ -705,20 +720,51 @@ const syncMachine = setup({
             },
         ),
         saveMetadata: fromPromise<void, Metadata>(async ({ input }) => {
-            await db.organisationUnits.bulkPut(input.organisationUnits);
-            await db.programs.bulkPut(input.programs);
-            await db.dataElements.bulkPut(input.dataElements);
-            await db.programIndicators.bulkPut(input.programIndicators);
-            await db.trackedEntityAttributes.bulkPut(
-                input.trackedEntityAttributes,
-            );
-            await db.programRules.bulkPut(input.programRules);
-            await db.programRuleVariables.bulkPut(input.programRuleVariables);
-            await db.optionSets.bulkPut(input.optionSets);
-            await db.optionGroups.bulkPut(input.optionGroups);
+            const succeeded = input.succeededResources ?? new Set<Resource>();
+            const wrote = (resource: Resource) =>
+                succeeded.size === 0 || succeeded.has(resource);
+            if (wrote("organisationUnits")) {
+                await db.organisationUnits.bulkPut(input.organisationUnits);
+            }
+            if (wrote("programs")) {
+                await db.programs.bulkPut(input.programs);
+            }
+            if (wrote("dataElements")) {
+                await db.dataElements.bulkPut(input.dataElements);
+            }
+            if (wrote("programIndicators")) {
+                await db.programIndicators.bulkPut(input.programIndicators);
+            }
+            if (wrote("attributes")) {
+                await db.trackedEntityAttributes.bulkPut(
+                    input.trackedEntityAttributes,
+                );
+            }
+            if (wrote("programRules")) {
+                await db.programRules.bulkPut(input.programRules);
+            }
+            if (wrote("programRuleVariables")) {
+                await db.programRuleVariables.bulkPut(
+                    input.programRuleVariables,
+                );
+            }
+            if (wrote("optionSets")) {
+                await db.optionSets.bulkPut(input.optionSets);
+            }
+            if (wrote("optionGroups")) {
+                await db.optionGroups.bulkPut(input.optionGroups);
+            }
+            if (wrote("dataSets")) {
+                await db.dataSets.bulkPut(input.dataSets);
+            }
+            if (wrote("categoryOptionCombos")) {
+                await db.categoryOptionCombos.bulkPut(
+                    input.categoryOptionCombos,
+                );
+            }
+            // metadata-version bookkeeping always writes — its content only
+            // reflects successful resources thanks to per-resource try/catch.
             await db.metadataVersions.bulkPut(input.metadataVersion);
-            await db.dataSets.bulkPut(input.dataSets);
-            await db.categoryOptionCombos.bulkPut(input.categoryOptionCombos);
         }),
         pullUIConfig: fromPromise<
             UIConfig,
@@ -772,9 +818,11 @@ const syncMachine = setup({
                 metadataVersion: [],
                 dataSets: [],
                 categoryOptionCombos: [],
+                succeededResources: new Set<Resource>(),
             };
             for (const resource of resources) {
-                switch (resource) {
+                try {
+                    switch (resource) {
                     case "categoryOptionCombos":
                         const {
                             categoryOptionCombos: { categoryOptionCombos },
@@ -790,7 +838,6 @@ const syncMachine = setup({
                                 categoryOptionCombos: CategoryOptionCombo[];
                             };
                         };
-												console.log(categoryOptionCombos)
                         results.categoryOptionCombos = categoryOptionCombos;
                         break;
                     case "organisationUnits":
@@ -1005,7 +1052,7 @@ const syncMachine = setup({
 
                     case "optionSets":
                         const optionSetsParams: any = {
-                            fields: "id,options[id,name,code,sortOrder]",
+                            fields: "id,name,options[id,name,code,sortOrder]",
                             paging: false,
                         };
                         if (
@@ -1025,6 +1072,7 @@ const syncMachine = setup({
                             optionSets: {
                                 optionSets: {
                                     id: string;
+                                    name: string;
                                     options: {
                                         id: string;
                                         name: string;
@@ -1040,6 +1088,7 @@ const syncMachine = setup({
                                 os.options.map((o) => ({
                                     ...o,
                                     optionSet: os.id,
+                                    optionSetName: os.name,
                                 })),
                             );
                         results.optionSets = flattenedOptionSets;
@@ -1087,34 +1136,69 @@ const syncMachine = setup({
                         results.optionGroups = flattenedOptionGroups;
                         break;
                 }
-                const currentTimestamp = new Date().toISOString();
-                let version = await db.metadataVersions.get("metadata-version");
-                if (version === undefined) {
-                    version = {
-                        id: "metadata-version",
-                        lastSync: currentTimestamp,
-                        versions: {},
-                    };
+                    const currentTimestamp = new Date().toISOString();
+                    let version = await db.metadataVersions.get(
+                        "metadata-version",
+                    );
+                    if (version === undefined) {
+                        version = {
+                            id: "metadata-version",
+                            lastSync: currentTimestamp,
+                            versions: {},
+                        };
+                    }
+                    version.versions[resource] = currentTimestamp;
+                    version.lastSync = currentTimestamp;
+                    results.metadataVersion = [version];
+                    results.succeededResources!.add(resource);
+                } catch (error) {
+                    console.warn(
+                        `[metadata-sync] Skipping ${resource}:`,
+                        error,
+                    );
+                    continue;
                 }
-                version.versions[resource] = currentTimestamp;
-                version.lastSync = currentTimestamp;
-                results.metadataVersion = [version];
             }
             return results;
         }),
-        deleteAllMetadata: fromPromise(async () => {
-            await db.organisationUnits.clear();
-            await db.programs.clear();
-            await db.dataElements.clear();
-            await db.programIndicators.clear();
-            await db.trackedEntityAttributes.clear();
-            await db.programRules.clear();
-            await db.programRuleVariables.clear();
-            await db.optionSets.clear();
-            await db.optionGroups.clear();
+        deleteAllMetadata: fromPromise<void, Metadata>(async ({ input }) => {
+            const succeeded = input.succeededResources ?? new Set<Resource>();
+            const shouldClear = (resource: Resource) =>
+                succeeded.size === 0 || succeeded.has(resource);
+            if (shouldClear("organisationUnits")) {
+                await db.organisationUnits.clear();
+            }
+            if (shouldClear("programs")) {
+                await db.programs.clear();
+            }
+            if (shouldClear("dataElements")) {
+                await db.dataElements.clear();
+            }
+            if (shouldClear("programIndicators")) {
+                await db.programIndicators.clear();
+            }
+            if (shouldClear("attributes")) {
+                await db.trackedEntityAttributes.clear();
+            }
+            if (shouldClear("programRules")) {
+                await db.programRules.clear();
+            }
+            if (shouldClear("programRuleVariables")) {
+                await db.programRuleVariables.clear();
+            }
+            if (shouldClear("optionSets")) {
+                await db.optionSets.clear();
+            }
+            if (shouldClear("optionGroups")) {
+                await db.optionGroups.clear();
+            }
+            if (shouldClear("dataSets")) {
+                await db.dataSets.clear();
+            }
+            if (shouldClear("categoryOptionCombos")) {
+                await db.categoryOptionCombos.clear();
+            }
             await db.metadataVersions.clear();
-            await db.dataSets.clear();
-            await db.categoryOptionCombos.clear();
         }),
         resetDatabase: fromPromise(async () => {
             await db.delete();
@@ -1134,23 +1218,45 @@ const syncMachine = setup({
                 const { engine, validAttributeIds, validDataElementsByStage } =
                     input;
 
-                const teTable: Table<FlattenedTrackedEntity, string> =
-                    trackedEntitiesCollection.utils.getTable();
-                const eventTable: Table<FlattenedEvent, string> =
-                    eventsCollection.utils.getTable();
-                const enrollTable: Table<FlattenedEnrollment, string> =
-                    enrollmentsCollection.utils.getTable();
+                const teTable =
+                    trackedEntitiesCollection.utils.getTable() as Table<
+                        FlattenedTrackedEntity,
+                        string
+                    >;
+                const eventTable = eventsCollection.utils.getTable() as Table<
+                    FlattenedEvent,
+                    string
+                >;
+                const enrollTable =
+                    enrollmentsCollection.utils.getTable() as Table<
+                        FlattenedEnrollment,
+                        string
+                    >;
 
                 const pendingTEs = await teTable
-                    .filter((e) => e.syncStatus === "pending")
+                    .filter(
+                        (e) =>
+                            e.syncStatus === "pending" ||
+                            e.syncStatus === "failed",
+                    )
                     .toArray();
 
                 const pendingEnrollments = await enrollTable
-                    .filter((e) => e.syncStatus === "pending" && !!e.enrolledAt)
+                    .filter(
+                        (e) =>
+                            (e.syncStatus === "pending" ||
+                                e.syncStatus === "failed") &&
+                            !!e.enrolledAt,
+                    )
                     .toArray();
 
                 const pendingEvents = await eventTable
-                    .filter((e) => e.syncStatus === "pending" && !!e.occurredAt)
+                    .filter(
+                        (e) =>
+                            (e.syncStatus === "pending" ||
+                                e.syncStatus === "failed") &&
+                            !!e.occurredAt,
+                    )
                     .toArray();
 
                 const deletedEvents = await eventTable
@@ -1256,7 +1362,7 @@ const syncMachine = setup({
                 "programRules",
                 "dataSets",
                 "organisationUnits",
-            ],
+            ] as Resource[],
 
             enrollmentsCollection,
             eventsCollection,
@@ -1499,6 +1605,7 @@ const syncMachine = setup({
                 deletingMetadata: {
                     invoke: {
                         src: "deleteAllMetadata",
+                        input: ({ context: { rawMetadata } }) => rawMetadata,
                         onDone: "savingMetadata",
                         onError: "failure",
                     },

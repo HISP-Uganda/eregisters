@@ -22,6 +22,7 @@ import type {
 export const HMIS_105_10_CONFIG: HmisFormConfig = {
   "id": "hmis-105-10-section-10",
   "title": "HMIS 105:10 - OUTPATIENT REPORT (SECTION 10)",
+  editableScope: { mode: "none" },
   "tabs": [
     {
       "key": "tab1",
@@ -90,22 +91,6 @@ export const HMIS_105_10_CONFIG: HmisFormConfig = {
             }
           ],
           "rows": [
-            {
-              "key": "tab1-section-1-row-1",
-              "type": "section",
-              "cells": [
-                {
-                  "key": "tab1-section-1-row-1-cell-1",
-                  "kind": "label",
-                  "text": "10.0 LABORATORY",
-                  "colSpan": 14,
-                  "style": {
-                    "background": "#669872",
-                    "width": "700"
-                  }
-                }
-              ]
-            },
             {
               "key": "tab1-section-1-row-2",
               "type": "label",
@@ -4880,22 +4865,6 @@ export const HMIS_105_10_CONFIG: HmisFormConfig = {
           ],
           "rows": [
             {
-              "key": "tab1-section-4-row-1",
-              "type": "section",
-              "cells": [
-                {
-                  "key": "tab1-section-4-row-1-cell-1",
-                  "kind": "label",
-                  "text": "10.3 SUMMARY OF HIV TESTS BY PURPOSE",
-                  "colSpan": 12,
-                  "style": {
-                    "background": "#669872",
-                    "width": "700"
-                  }
-                }
-              ]
-            },
-            {
               "key": "tab1-section-4-row-2",
               "type": "subhead",
               "cells": [
@@ -5642,18 +5611,6 @@ export const HMIS_105_10_CONFIG: HmisFormConfig = {
             }
           ],
           "rows": [
-            {
-              "key": "tab3-section-1-row-1",
-              "type": "subhead",
-              "cells": [
-                {
-                  "key": "tab3-section-1-row-1-cell-1",
-                  "kind": "label",
-                  "text": "10.4.1. Volume of Sample Referred",
-                  "colSpan": 3
-                }
-              ]
-            },
             {
               "key": "tab3-section-1-row-2",
               "type": "subhead",
@@ -6824,22 +6781,6 @@ export const HMIS_105_10_CONFIG: HmisFormConfig = {
             }
           ],
           "rows": [
-            {
-              "key": "tab4-section-1-row-1",
-              "type": "section",
-              "cells": [
-                {
-                  "key": "tab4-section-1-row-1-cell-1",
-                  "kind": "label",
-                  "text": "10.6 AMR SURVEILLANCE",
-                  "colSpan": 43,
-                  "style": {
-                    "background": "#669872",
-                    "width": "700"
-                  }
-                }
-              ]
-            },
             {
               "key": "tab4-section-1-row-2",
               "type": "subhead",
@@ -17988,18 +17929,6 @@ export const HMIS_105_10_CONFIG: HmisFormConfig = {
           ],
           "rows": [
             {
-              "key": "tab2-section-1-row-1",
-              "type": "subhead",
-              "cells": [
-                {
-                  "key": "tab2-section-1-row-1-cell-1",
-                  "kind": "label",
-                  "text": "10.7. LABARATORY SPECIMEN REJECTION",
-                  "colSpan": 9
-                }
-              ]
-            },
-            {
               "key": "tab2-section-1-row-2",
               "type": "subhead",
               "cells": [
@@ -19296,21 +19225,6 @@ export const HMIS_105_10_CONFIG: HmisFormConfig = {
           ],
           "rows": [
             {
-              "key": "tab5-section-1-row-1",
-              "type": "section",
-              "cells": [
-                {
-                  "key": "tab5-section-1-row-1-cell-1",
-                  "kind": "label",
-                  "text": "11.1 CYTOLOGY",
-                  "colSpan": 13,
-                  "style": {
-                    "width": "700"
-                  }
-                }
-              ]
-            },
-            {
               "key": "tab5-section-1-row-2",
               "type": "subhead",
               "cells": [
@@ -19551,21 +19465,6 @@ export const HMIS_105_10_CONFIG: HmisFormConfig = {
             }
           ],
           "rows": [
-            {
-              "key": "tab5-section-2-row-1",
-              "type": "section",
-              "cells": [
-                {
-                  "key": "tab5-section-2-row-1-cell-1",
-                  "kind": "label",
-                  "text": "11.2. NON –GYNECOLOGICAL CYTOLOGY",
-                  "colSpan": 9,
-                  "style": {
-                    "background": "#DDD"
-                  }
-                }
-              ]
-            },
             {
               "key": "tab5-section-2-row-2",
               "type": "subhead",
@@ -20059,21 +19958,6 @@ export const HMIS_105_10_CONFIG: HmisFormConfig = {
             }
           ],
           "rows": [
-            {
-              "key": "tab5-section-4-row-1",
-              "type": "section",
-              "cells": [
-                {
-                  "key": "tab5-section-4-row-1-cell-1",
-                  "kind": "label",
-                  "text": "11.3 ANCILLARY TESTS",
-                  "colSpan": 9,
-                  "style": {
-                    "background": "#DDD"
-                  }
-                }
-              ]
-            },
             {
               "key": "tab5-section-4-row-2",
               "type": "subhead",
@@ -20610,21 +20494,6 @@ export const HMIS_105_10_CONFIG: HmisFormConfig = {
             }
           ],
           "rows": [
-            {
-              "key": "tab6-section-1-row-1",
-              "type": "section",
-              "cells": [
-                {
-                  "key": "tab6-section-1-row-1-cell-1",
-                  "kind": "label",
-                  "text": "11.4 HISTOLOGY",
-                  "colSpan": 9,
-                  "style": {
-                    "width": "652"
-                  }
-                }
-              ]
-            },
             {
               "key": "tab6-section-1-row-2",
               "type": "subhead",
@@ -22180,21 +22049,6 @@ export const HMIS_105_10_CONFIG: HmisFormConfig = {
           ],
           "rows": [
             {
-              "key": "tab6-section-2-row-1",
-              "type": "section",
-              "cells": [
-                {
-                  "key": "tab6-section-2-row-1-cell-1",
-                  "kind": "label",
-                  "text": "11.5 IMMUNOHISTOCHEMISTRY (IHC)",
-                  "colSpan": 4,
-                  "style": {
-                    "background": "#DDD"
-                  }
-                }
-              ]
-            },
-            {
               "key": "tab6-section-2-row-2",
               "type": "subhead",
               "cells": [
@@ -22910,21 +22764,6 @@ export const HMIS_105_10_CONFIG: HmisFormConfig = {
             }
           ],
           "rows": [
-            {
-              "key": "tab6-section-3-row-1",
-              "type": "section",
-              "cells": [
-                {
-                  "key": "tab6-section-3-row-1-cell-1",
-                  "kind": "label",
-                  "text": "11.5 IMMUNOHISTOCHEMISTRY (IHC) Continued",
-                  "colSpan": 4,
-                  "style": {
-                    "background": "#DDD"
-                  }
-                }
-              ]
-            },
             {
               "key": "tab6-section-3-row-2",
               "type": "subhead",

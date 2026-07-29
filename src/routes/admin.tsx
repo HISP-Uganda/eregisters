@@ -1,8 +1,13 @@
-import { SettingOutlined, AppstoreOutlined } from "@ant-design/icons";
-import { createRoute, Link, Outlet, redirect } from "@tanstack/react-router";
+import { AppstoreOutlined, SettingOutlined } from "@ant-design/icons";
+import {
+    createRoute,
+    Link,
+    Outlet,
+    redirect,
+    useMatches,
+} from "@tanstack/react-router";
 import { Layout, Menu, Typography } from "antd";
-import React from "react";
-import { SyncContext } from "../machines/sync";
+import React, { useMemo } from "react";
 import { RootRoute } from "./__root";
 
 const { Sider, Content } = Layout;
@@ -20,19 +25,54 @@ export const AdminRoute = createRoute({
     component: AdminLayout,
 });
 
+const ADMIN_ITEMS = [
+    {
+        key: "section-layout",
+        path: "/admin/section-layout",
+        icon: <AppstoreOutlined />,
+        label: "Section Layout",
+    },
+    {
+        key: "app-settings",
+        path: "/admin/app-settings",
+        icon: <SettingOutlined />,
+        label: "App Settings",
+    },
+];
+
 function AdminLayout() {
+    const matches = useMatches();
+    const selectedKey = useMemo(() => {
+        const paths = matches.map((m) => m.pathname);
+        const hit = ADMIN_ITEMS.find((item) =>
+            paths.some((p) => p.startsWith(item.path)),
+        );
+        return hit?.key;
+    }, [matches]);
+
     return (
-        <Layout style={{ minHeight: "calc(100vh - 64px)" }}>
+        <Layout
+            style={{
+                height: "calc(100vh - 112px)",
+                background: "#fff",
+            }}
+        >
             <Sider
-                width={200}
-                style={{ background: "#1e1b4b" }}
+                width={220}
+                theme="light"
                 breakpoint="lg"
                 collapsedWidth={0}
+                style={{
+                    background: "#fafafa",
+                    borderRight: "1px solid #f0f0f0",
+                    overflow: "hidden",
+                }}
             >
-                <div
+                <Typography.Text
                     style={{
-                        padding: "16px 12px 8px",
-                        color: "#a5b4fc",
+                        display: "block",
+                        padding: "16px 16px 8px",
+                        color: "#8c8c8c",
                         fontSize: 11,
                         fontWeight: 600,
                         letterSpacing: 1,
@@ -40,34 +80,28 @@ function AdminLayout() {
                     }}
                 >
                     Admin
-                </div>
+                </Typography.Text>
                 <Menu
                     mode="inline"
-                    theme="dark"
-                    style={{ background: "#1e1b4b", borderRight: 0 }}
-                    items={[
-                        {
-                            key: "section-layout",
-                            icon: <AppstoreOutlined />,
-                            label: (
-                                <Link to="/admin/section-layout">
-                                    Section Layout
-                                </Link>
-                            ),
-                        },
-                        {
-                            key: "app-settings",
-                            icon: <SettingOutlined />,
-                            label: (
-                                <Link to="/admin/app-settings">
-                                    App Settings
-                                </Link>
-                            ),
-                        },
-                    ]}
+                    theme="light"
+                    selectedKeys={selectedKey ? [selectedKey] : []}
+                    style={{ background: "transparent", borderRight: 0 }}
+                    items={ADMIN_ITEMS.map((item) => ({
+                        key: item.key,
+                        icon: item.icon,
+                        label: <Link to={item.path}>{item.label}</Link>,
+                    }))}
                 />
             </Sider>
-            <Content style={{ padding: 24, background: "#fff" }}>
+            <Content
+                style={{
+                    padding: 24,
+                    background: "#fff",
+                    overflow: "hidden",
+                    display: "flex",
+                    flexDirection: "column",
+                }}
+            >
                 <Outlet />
             </Content>
         </Layout>
