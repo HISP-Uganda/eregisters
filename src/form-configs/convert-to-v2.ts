@@ -19,6 +19,8 @@ function convertCell(legacy: HmisCellConfig): CellV2 {
     return {
         kind: legacy.kind,
         text: legacy.text,
+        title: legacy.title,
+        inputId: legacy.inputId,
         dataElement: legacy.dataElement,
         categoryOptionCombo: legacy.categoryOptionCombo,
         attributeOptionCombo: legacy.attributeOptionCombo,
@@ -46,8 +48,19 @@ function isBlankCell(cell: HmisCellConfig): boolean {
     return !cell.text && !cell.dataElement && !cell.title;
 }
 
-function convertColumn(legacy: HmisColumnConfig): ColumnV2 {
-    return { key: legacy.key, title: undefined, width: legacy.width };
+// Legacy configs may repeat the same column.key across multiple positions
+// (they treat position, not key, as identity). To make round-trip lossless we
+// uniquify by index: "<originalKey>#<index>". Back-converter strips the suffix.
+function uniqueColumnKey(legacy: HmisColumnConfig, index: number): string {
+    return `${legacy.key}#${index}`;
+}
+
+function convertColumn(legacy: HmisColumnConfig, index: number): ColumnV2 {
+    return {
+        key: uniqueColumnKey(legacy, index),
+        title: undefined,
+        width: legacy.width,
+    };
 }
 
 function convertRow(
@@ -59,7 +72,7 @@ function convertRow(
         if (isBlankCell(cell)) return;
         const col = columns[index];
         if (!col) return;
-        cells[col.key] = convertCell(cell);
+        cells[uniqueColumnKey(col, index)] = convertCell(cell);
     });
     return { key: legacy.key, type: legacy.type, cells };
 }
@@ -70,7 +83,7 @@ function convertSection(legacy: HmisSectionConfig): SectionV2 {
         key: legacy.key,
         title: legacy.title,
         frozenColumns: legacy.frozenColumns,
-        columns: columns.map(convertColumn),
+        columns: columns.map((c, i) => convertColumn(c, i)),
         rows: legacy.rows.map((r) => convertRow(r, columns)),
     };
 }

@@ -41,27 +41,19 @@ const legacy: HmisFormConfig = {
 };
 
 describe("convertLegacyForm", () => {
-    it("keys cells by column key and preserves colSpan", () => {
+    it("keys cells by uniquified column key and preserves colSpan", () => {
         const v2 = convertLegacyForm(legacy);
         expect(v2.id).toBe("test-form");
         expect(v2.editableScope).toEqual({ mode: "all" });
         const slot = v2.tabs[0].sections[0];
         expect(slot.kind).toBe("inline");
         if (slot.kind !== "inline") throw new Error();
-        expect(slot.section.columns.map((c) => c.key)).toEqual(["c0", "c1"]);
-        expect(slot.section.rows[0].cells.c0).toEqual({
-            kind: "label",
-            text: "Male",
-            dataElement: undefined,
-            categoryOptionCombo: undefined,
-            attributeOptionCombo: undefined,
-            disabled: undefined,
-            total: undefined,
-            rowSpan: undefined,
-            colSpan: undefined,
-            style: undefined,
-        });
-        expect(slot.section.rows[0].cells.c1.colSpan).toBe(2);
+        expect(slot.section.columns.map((c) => c.key)).toEqual([
+            "c0#0",
+            "c1#1",
+        ]);
+        expect(slot.section.rows[0].cells["c0#0"].text).toBe("Male");
+        expect(slot.section.rows[0].cells["c1#1"].colSpan).toBe(2);
     });
 
     it("drops blank cells (no text, no dataElement, no title)", () => {
@@ -94,6 +86,6 @@ describe("convertLegacyForm", () => {
         const v2 = convertLegacyForm(withBlank);
         const slot = v2.tabs[0].sections[0];
         if (slot.kind !== "inline") throw new Error();
-        expect(Object.keys(slot.section.rows[0].cells)).toEqual(["c1"]);
+        expect(Object.keys(slot.section.rows[0].cells)).toEqual(["c1#1"]);
     });
 });

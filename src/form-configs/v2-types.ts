@@ -3,6 +3,10 @@ import type { HmisEditableScope } from "./types";
 export type CellV2 = {
     kind: "label" | "field";
     text?: string;
+    /** Legacy indicator label (some sections use this instead of `text`). */
+    title?: string;
+    /** Legacy DOM id used by indicator wiring. */
+    inputId?: string;
     dataElement?: string;
     categoryOptionCombo?: string;
     attributeOptionCombo?: string;
