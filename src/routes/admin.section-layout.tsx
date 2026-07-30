@@ -75,18 +75,13 @@ function SectionLayout() {
     );
     const [layout, setLayout] = useState<FormLayoutItem[]>([]);
     const [activeSectionId, setActiveSectionId] = useState<string | null>(null);
-    const [collapsedSections, setCollapsedSections] = useState<Set<string>>(
-        () => new Set(),
+    const [expandedSectionId, setExpandedSectionId] = useState<string | null>(
+        null,
     );
     const [saving, setSaving] = useState(false);
 
-    function toggleCollapsed(sectionId: string) {
-        setCollapsedSections((prev) => {
-            const next = new Set(prev);
-            if (next.has(sectionId)) next.delete(sectionId);
-            else next.add(sectionId);
-            return next;
-        });
+    function toggleExpanded(sectionId: string) {
+        setExpandedSectionId((prev) => (prev === sectionId ? null : sectionId));
     }
     const [newSectionModal, setNewSectionModal] = useState<{
         insertAt: number;
@@ -125,7 +120,7 @@ function SectionLayout() {
 
     useEffect(() => {
         setActiveSectionId(null);
-        setCollapsedSections(new Set());
+        setExpandedSectionId(null);
         if (!selectedSectionId) {
             setLayout([]);
             return;
@@ -532,38 +527,16 @@ function SectionLayout() {
                                         </Typography.Text>
                                     </Flex>
                                     <Flex gap={4}>
-                                        <Tooltip title="Expand all sections">
-                                            <Button
-                                                size="small"
-                                                icon={<DownOutlined />}
-                                                onClick={() =>
-                                                    setCollapsedSections(
-                                                        new Set(),
-                                                    )
-                                                }
-                                                disabled={
-                                                    collapsedSections.size === 0
-                                                }
-                                            />
-                                        </Tooltip>
-                                        <Tooltip title="Collapse all sections">
+                                        <Tooltip title="Collapse expanded section">
                                             <Button
                                                 size="small"
                                                 icon={<CaretRightOutlined />}
-                                                onClick={() => {
-                                                    const ids = groups
-                                                        .map((g) => g.sectionId)
-                                                        .filter(
-                                                            (id): id is string =>
-                                                                id !== null,
-                                                        );
-                                                    setCollapsedSections(
-                                                        new Set(ids),
-                                                    );
-                                                }}
-                                                disabled={groups.every(
-                                                    (g) => g.sectionId === null,
-                                                )}
+                                                onClick={() =>
+                                                    setExpandedSectionId(null)
+                                                }
+                                                disabled={
+                                                    expandedSectionId === null
+                                                }
                                             />
                                         </Tooltip>
                                         <Button
@@ -605,14 +578,13 @@ function SectionLayout() {
                                                     isCollapsed={
                                                         group.sectionId !==
                                                             null &&
-                                                        collapsedSections.has(
-                                                            group.sectionId,
-                                                        )
+                                                        expandedSectionId !==
+                                                            group.sectionId
                                                     }
                                                     onToggleCollapse={
                                                         group.sectionId !== null
                                                             ? () =>
-                                                                  toggleCollapsed(
+                                                                  toggleExpanded(
                                                                       group.sectionId!,
                                                                   )
                                                             : undefined
