@@ -1,19 +1,15 @@
 import React from "react";
+import HmisForm, { type HmisFormValues, type HmisFormProps } from "./HmisForm";
 import { HMIS_105_02_03_CONFIG } from "../form-configs/Hmis1050203.config";
-import { getFormConfig } from "../form-configs/get-form-config";
 import type { HmisFormConfig } from "../form-configs/types";
-import { useHmisFormConfigs } from "../hooks/useHmisFormConfigs";
-import HmisForm, { type HmisFormProps } from "./HmisForm";
 
-type Props = Omit<HmisFormProps, "config"> & { config?: HmisFormConfig };
-
-const Hmis1050203Form = ({ config, ...props }: Props) => {
-    const doc = useHmisFormConfigs();
-    const resolved =
-        config ??
-        getFormConfig(HMIS_105_02_03_CONFIG.id, doc) ??
-        HMIS_105_02_03_CONFIG;
-    return <HmisForm config={resolved} {...props} />;
+type Hmis1050203FormProps = Omit<HmisFormProps, "config"> & {
+    config?: HmisFormConfig;
 };
+
+const Hmis1050203Form = ({
+    config = HMIS_105_02_03_CONFIG,
+    ...props
+}: Hmis1050203FormProps) => <HmisForm config={config} {...props} />;
 
 export default Hmis1050203Form;

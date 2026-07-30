@@ -12,7 +12,6 @@ import { TrackedEntitiesIndexRoute } from "./routes/tracked-entities.index";
 import { TrackedEntityRoute } from "./routes/tracked-entity";
 import { ReportsRoute } from "./routes/reports";
 import { AdminRoute } from "./routes/admin";
-import { AdminFormBuilderRoute } from "./routes/admin.form-builder";
 import { AdminSectionLayoutRoute } from "./routes/admin.section-layout";
 import { AdminAppSettingsRoute } from "./routes/admin.app-settings";
 import { DataSetReportRoute } from "./routes/reports.data-set";
@@ -22,11 +21,7 @@ const routeTree = RootRoute.addChildren([
     TrackedEntitiesRoute.addChildren([TrackedEntitiesIndexRoute]),
     TrackedEntityRoute,
     ReportsRoute.addChildren([DataSetReportRoute]),
-    AdminRoute.addChildren([
-        AdminSectionLayoutRoute,
-        AdminAppSettingsRoute,
-        AdminFormBuilderRoute,
-    ]),
+    AdminRoute.addChildren([AdminSectionLayoutRoute, AdminAppSettingsRoute]),
 ]);
 export const router = createRouter({
     routeTree,

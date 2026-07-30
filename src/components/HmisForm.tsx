@@ -842,7 +842,7 @@ const InnerHmisForm: React.FC<HmisFormProps> = ({
                                 onConfirm={() => onRevoke()}
                             >
                                 <Button danger loading={isRevokePending}>
-                                    Un verify report
+                                    Revoke verification
                                 </Button>
                             </Popconfirm>
                         )}

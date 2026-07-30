@@ -1,8 +1,4 @@
-import {
-    AppstoreOutlined,
-    FormOutlined,
-    SettingOutlined,
-} from "@ant-design/icons";
+import { AppstoreOutlined, SettingOutlined } from "@ant-design/icons";
 import {
     createRoute,
     Link,
@@ -35,12 +31,6 @@ const ADMIN_ITEMS = [
         path: "/admin/section-layout",
         icon: <AppstoreOutlined />,
         label: "Section Layout",
-    },
-    {
-        key: "form-builder",
-        path: "/admin/form-builder",
-        icon: <FormOutlined />,
-        label: "Form Builder",
     },
     {
         key: "app-settings",
