@@ -43,6 +43,9 @@ import {
 } from "../utils/utils";
 import { DataModal } from "./data-modal";
 import ProgramStageForm from "./program-stage-form";
+import { EventRuleAwareForm } from "./rule-aware-form";
+import { computeSaveBlock } from "../utils/save-block";
+import type { ProgramRuleResult } from "../schemas";
 
 import {
     enrollmentsCollection,
@@ -548,6 +551,24 @@ export const ProgramStageCapture: React.FC<{
         [programStage],
     );
 
+    const stageMandatoryIds = useMemo(
+        () =>
+            programStage.programStageDataElements
+                .filter((psde) => psde.compulsory)
+                .map((psde) => psde.dataElement.id),
+        [programStage],
+    );
+    const stageLabels = useMemo(() => {
+        const m = new Map<string, string>();
+        for (const psde of programStage.programStageDataElements) {
+            const de = dataElements.get(psde.dataElement.id);
+            if (de) m.set(de.id, de.formName || de.name);
+        }
+        return m;
+    }, [programStage, dataElements]);
+    const [stageRuleResult, setStageRuleResult] =
+        useState<ProgramRuleResult | null>(null);
+
     const handleCreate = async () => {
         const newEvent = createEmptyEvent({
             trackedEntity: trackedEntity.trackedEntity,
@@ -989,6 +1010,19 @@ export const ProgramStageCapture: React.FC<{
                     }
                     submitButtonText={`Save ${programStage.name}`}
                     hasAddAnother={true}
+                    saveBlockFor={(values) =>
+                        computeSaveBlock({
+                            metadataMandatoryIds: stageMandatoryIds,
+                            ruleMandatoryIds:
+                                stageRuleResult?.mandatoryFields ?? [],
+                            hiddenIds: stageRuleResult?.hiddenFields ?? [],
+                            values,
+                            labels: stageLabels,
+                            errors: (stageRuleResult?.errors ?? []).map(
+                                (e) => e.content,
+                            ),
+                        })
+                    }
                 >
                     {(form) => {
                         if (data) {
@@ -1022,17 +1056,21 @@ export const ProgramStageCapture: React.FC<{
                                         },
                                     }}
                                 >
-                                    <Form
-                                        form={form}
-                                        layout="vertical"
-                                        preserve={false}
-                                        initialValues={data?.dataValues}
+                                    <EventRuleAwareForm
+                                        onRuleResult={setStageRuleResult}
                                     >
-                                        <ProgramStageForm
+                                        <Form
                                             form={form}
-                                            programStage={programStage}
-                                        />
-                                    </Form>
+                                            layout="vertical"
+                                            preserve={false}
+                                            initialValues={data?.dataValues}
+                                        >
+                                            <ProgramStageForm
+                                                form={form}
+                                                programStage={programStage}
+                                            />
+                                        </Form>
+                                    </EventRuleAwareForm>
                                 </EventContext.Provider>
                             );
                         }
