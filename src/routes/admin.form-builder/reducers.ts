@@ -241,6 +241,121 @@ export function setCell(
     );
 }
 
+function withTemplate(
+    doc: FormConfigDoc,
+    templateId: string,
+    fn: (s: SectionV2) => SectionV2,
+): FormConfigDoc {
+    const tpl = doc.templates[templateId];
+    if (!tpl) return doc;
+    return {
+        ...doc,
+        templates: { ...doc.templates, [templateId]: fn(tpl) },
+    };
+}
+
+export function insertColumnInTemplate(
+    doc: FormConfigDoc,
+    templateId: string,
+    title: string,
+): FormConfigDoc {
+    return withTemplate(doc, templateId, (s) => ({
+        ...s,
+        columns: [...s.columns, { key: uid(), title }],
+    }));
+}
+
+export function renameColumnInTemplate(
+    doc: FormConfigDoc,
+    templateId: string,
+    columnKey: string,
+    title: string,
+): FormConfigDoc {
+    return withTemplate(doc, templateId, (s) => ({
+        ...s,
+        columns: s.columns.map((c) =>
+            c.key === columnKey ? { ...c, title } : c,
+        ),
+    }));
+}
+
+export function moveColumnInTemplate(
+    doc: FormConfigDoc,
+    templateId: string,
+    index: number,
+    delta: -1 | 1,
+): FormConfigDoc {
+    return withTemplate(doc, templateId, (s) => {
+        const columns = [...s.columns];
+        const target = index + delta;
+        if (target < 0 || target >= columns.length) return s;
+        [columns[index], columns[target]] = [columns[target], columns[index]];
+        return { ...s, columns };
+    });
+}
+
+export function deleteColumnInTemplate(
+    doc: FormConfigDoc,
+    templateId: string,
+    columnKey: string,
+): FormConfigDoc {
+    return withTemplate(doc, templateId, (s) => ({
+        ...s,
+        columns: s.columns.filter((c) => c.key !== columnKey),
+        rows: s.rows.map((r) => {
+            const cells = { ...r.cells };
+            delete cells[columnKey];
+            return { ...r, cells };
+        }),
+    }));
+}
+
+export function insertRowInTemplate(
+    doc: FormConfigDoc,
+    templateId: string,
+): FormConfigDoc {
+    return withTemplate(doc, templateId, (s) => ({
+        ...s,
+        rows: [...s.rows, { key: uid(), cells: {} }],
+    }));
+}
+
+export function setCellInTemplate(
+    doc: FormConfigDoc,
+    templateId: string,
+    rowKey: string,
+    columnKey: string,
+    cell: CellV2 | null,
+): FormConfigDoc {
+    return withTemplate(doc, templateId, (s) => ({
+        ...s,
+        rows: s.rows.map((r) => {
+            if (r.key !== rowKey) return r;
+            const cells = { ...r.cells };
+            if (cell === null) delete cells[columnKey];
+            else cells[columnKey] = cell;
+            return { ...r, cells };
+        }),
+    }));
+}
+
+export function renameTemplate(
+    doc: FormConfigDoc,
+    templateId: string,
+    title: string,
+): FormConfigDoc {
+    return withTemplate(doc, templateId, (s) => ({ ...s, title }));
+}
+
+export function deleteTemplate(
+    doc: FormConfigDoc,
+    templateId: string,
+): FormConfigDoc {
+    const templates = { ...doc.templates };
+    delete templates[templateId];
+    return { ...doc, templates };
+}
+
 export function extractTemplate(
     doc: FormConfigDoc,
     formId: string,

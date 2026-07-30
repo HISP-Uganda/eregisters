@@ -26,6 +26,7 @@ import {
     moveTab,
     renameTab,
 } from "./admin.form-builder/reducers";
+import { TemplateEditor } from "./admin.form-builder/template-editor";
 import { TemplatesPanel } from "./admin.form-builder/templates-panel";
 
 export const AdminFormBuilderRoute = createRoute({
@@ -40,6 +41,9 @@ function FormBuilder() {
     const [doc, setDoc] = useState<FormConfigDoc>(EMPTY_FORM_CONFIG_DOC);
     const [selectedFormId, setSelectedFormId] = useState<string | null>(null);
     const [activeTabKey, setActiveTabKey] = useState<string | null>(null);
+    const [editingTemplateId, setEditingTemplateId] = useState<string | null>(
+        null,
+    );
     const [dirty, setDirty] = useState(false);
     const [saving, setSaving] = useState(false);
     const [renameModal, setRenameModal] = useState<{
@@ -134,7 +138,21 @@ function FormBuilder() {
                         overflow: "hidden",
                     }}
                 >
-                    {!form ? (
+                    {editingTemplateId ? (
+                        <div
+                            style={{
+                                flex: 1,
+                                minHeight: 0,
+                                overflow: "auto",
+                            }}
+                        >
+                            <TemplateEditor
+                                doc={doc}
+                                templateId={editingTemplateId}
+                                onChange={apply}
+                            />
+                        </div>
+                    ) : !form ? (
                         <Typography.Text type="secondary">
                             Select a form to edit.
                         </Typography.Text>
@@ -265,6 +283,8 @@ function FormBuilder() {
                     doc={doc}
                     formId={selectedFormId}
                     tabKey={activeTabKey}
+                    editingTemplateId={editingTemplateId}
+                    onEditTemplate={setEditingTemplateId}
                     onChange={apply}
                 />
             </Flex>
