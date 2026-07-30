@@ -1,43 +1,53 @@
 import {
-    ArrowLeftOutlined,
-    CalendarOutlined,
-    CaretRightOutlined,
-    DeleteOutlined,
-    EditOutlined,
-    PlusOutlined,
-    UserOutlined,
+	ArrowLeftOutlined,
+	CalendarOutlined,
+	CaretRightOutlined,
+	DeleteOutlined,
+	EditOutlined,
+	PlusOutlined,
+	UserOutlined,
 } from "@ant-design/icons";
-import { createRoute, redirect } from "@tanstack/react-router";
+import { createRoute } from "@tanstack/react-router";
 import type { DescriptionsProps, TableProps } from "antd";
 
 import { and, eq, not, useLiveSuspenseQuery } from "@tanstack/react-db";
 import {
-    Button,
-    Card,
-    Collapse,
-    Descriptions,
-    Flex,
-    Form,
-    Grid,
-    Popconfirm,
-    Space,
-    Splitter,
-    Table,
-    Tag,
-    Typography,
+	Button,
+	Card,
+	Collapse,
+	Descriptions,
+	Flex,
+	Form,
+	Grid,
+	Popconfirm,
+	Space,
+	Splitter,
+	Table,
+	Tag,
+	Typography,
 } from "antd";
 import dayjs from "dayjs";
 import { Table as DexieTable } from "dexie";
 import { isEmpty } from "lodash";
-import React, { useCallback, useEffect, useMemo, useRef } from "react";
+import React, {
+	useCallback,
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+} from "react";
 import { z } from "zod";
 import {
-    enrollmentsCollection,
-    eventsCollection,
-    trackedEntitiesCollection,
+	enrollmentsCollection,
+	eventsCollection,
+	trackedEntitiesCollection,
 } from "../collections";
 import { DataModal } from "../components/data-modal";
 import MainEventCapture from "../components/main-event-capture";
+import {
+    EventRuleAwareForm,
+    TrackedEntityRuleAwareForm,
+} from "../components/rule-aware-form";
 import { Spinner } from "../components/spinner";
 import { SyncStatusComp } from "../components/sync-status-comp";
 import { TrackerRegistration } from "../components/tracker-registration";
@@ -46,15 +56,17 @@ import { useModalState } from "../hooks/useModalState";
 import { EventContext, TrackedEntityContext } from "../machines";
 import { SyncContext } from "../machines/sync";
 import {
-    FlattenedEnrollment,
-    FlattenedEvent,
-    FlattenedTrackedEntity,
+	FlattenedEnrollment,
+	FlattenedEvent,
+	FlattenedTrackedEntity,
+	ProgramRuleResult,
 } from "../schemas";
+import { computeSaveBlock } from "../utils/save-block";
 import {
-    cancelDataModal,
-    createEmptyEvent,
-    deleteEventWithChildren,
-    deleteTrackedEntityWithChildren,
+	cancelDataModal,
+	createEmptyEvent,
+	deleteEventWithChildren,
+	deleteTrackedEntityWithChildren,
 } from "../utils/utils";
 import { RootRoute } from "./__root";
 
@@ -101,11 +113,16 @@ function TrackedEntityComponent() {
     } = useModalState<FlattenedTrackedEntity>();
     const {
         trackedEntityAttributes,
+        dataElements,
         orgUnit,
         program,
         programRuleVariables,
         programRules,
     } = useMetadata();
+    const [eventRuleResult, setEventRuleResult] =
+        useState<ProgramRuleResult | null>(null);
+    const [teRuleResult, setTeRuleResult] =
+        useState<ProgramRuleResult | null>(null);
     const { trackedEntity: tei } = TrackedEntityRoute.useParams();
     const search = TrackedEntityRoute.useSearch();
     const navigate = TrackedEntityRoute.useNavigate();
@@ -133,6 +150,34 @@ function TrackedEntityComponent() {
             ),
         [mainStage],
     );
+    const eventMandatoryIds = useMemo(
+        () =>
+            (mainStage?.programStageDataElements ?? [])
+                .filter((psde) => psde.compulsory)
+                .map((psde) => psde.dataElement.id),
+        [mainStage],
+    );
+    const dataElementLabels = useMemo(() => {
+        const m = new Map<string, string>();
+        for (const de of dataElements.values()) {
+            m.set(de.id, de.formName || de.name);
+        }
+        return m;
+    }, [dataElements]);
+    const teaMandatoryIds = useMemo(
+        () =>
+            (program?.programTrackedEntityAttributes ?? [])
+                .filter((ptea) => ptea.mandatory)
+                .map((ptea) => ptea.trackedEntityAttribute.id),
+        [program],
+    );
+    const teaLabels = useMemo(() => {
+        const m = new Map<string, string>();
+        for (const tea of trackedEntityAttributes.values()) {
+            m.set(tea.id, tea.displayFormName || tea.name);
+        }
+        return m;
+    }, [trackedEntityAttributes]);
     const keys: Map<string, string> = new Map(
         attributes?.map((attr) => [
             attr.id,
@@ -239,9 +284,9 @@ function TrackedEntityComponent() {
                 {
                     ...trackedEntity,
                     attributes: {
+                        ...enrollment.attributes,
                         ...trackedEntity.attributes,
                         enrolledAt: enrollment.enrolledAt,
-                        ...enrollment.attributes,
                     },
                 },
                 enrollment,
@@ -436,10 +481,10 @@ function TrackedEntityComponent() {
                                         {
                                             ...trackedEntity,
                                             attributes: {
+                                                ...enrollment.attributes,
                                                 ...trackedEntity.attributes,
                                                 enrolledAt:
                                                     enrollment.enrolledAt,
-                                                ...enrollment.attributes,
                                             },
                                         },
                                         enrollment,
@@ -603,39 +648,6 @@ function TrackedEntityComponent() {
                         const allRelatedEvents = await eventTable
                             .filter((a) => a.parentEvent === data.event)
                             .toArray();
-
-                        // const allMainEvents = await eventTable
-                        //     .filter(
-                        //         (a) =>
-                        //             a.trackedEntity === tei &&
-                        //             a.programStage === "K2nxbE9ubSs" &&
-                        //             a.orgUnit === enrollment.orgUnit &&
-                        //             a.syncStatus !== "deleted" &&
-                        //             // a.dataValues["zxJ9SDZtKUS"] <= 1,
-                        //             a.dataValues["occurredAt"] <
-                        //                 values["occurredAt"],
-                        //     )
-                        //     .toArray();
-
-                        // const currentVaccinations = values["ZuYU54N4pjS"] ?? "";
-
-                        // console.log(currentVaccinations)
-
-                        // const evs = [
-                        //     ...allMainEvents
-                        //         .flatMap(
-                        //             (a) => a.dataValues["ZuYU54N4pjS"] ?? [],
-                        //         )
-                        //         .join(",")
-                        //         .split(","),
-
-                        //     ...(currentVaccinations
-                        //         ? currentVaccinations.split(",")
-                        //         : []),
-                        // ];
-
-                        // console.log(evs);
-
                         const relatedEvents = allRelatedEvents.filter(
                             (a) => a.syncStatus !== "synced",
                         );
@@ -709,7 +721,26 @@ function TrackedEntityComponent() {
                 }}
                 title={isNew ? "New Visit" : "Edit Visit"}
                 submitButtonText="Save Visit"
-                requiredFields={["occurredAt", "mrKZWf2WMIC"]}
+                saveBlockFor={(values) =>
+                    computeSaveBlock({
+                        metadataMandatoryIds: [
+                            "occurredAt",
+                            "mrKZWf2WMIC",
+                            ...eventMandatoryIds,
+                        ],
+                        ruleMandatoryIds:
+                            eventRuleResult?.mandatoryFields ?? [],
+                        hiddenIds: eventRuleResult?.hiddenFields ?? [],
+                        values,
+                        labels: new Map([
+                            ...dataElementLabels,
+                            ["occurredAt", "Visit Date"],
+                        ]),
+                        errors: (eventRuleResult?.errors ?? []).map(
+                            (e) => e.content,
+                        ),
+                    })
+                }
             >
                 {(form) => {
                     if (data) {
@@ -737,19 +768,23 @@ function TrackedEntityComponent() {
                                     },
                                 }}
                             >
-                                <Form
-                                    form={form}
-                                    layout="vertical"
-                                    preserve={false}
-                                    initialValues={data?.dataValues}
+                                <EventRuleAwareForm
+                                    onRuleResult={setEventRuleResult}
                                 >
-                                    <MainEventCapture
+                                    <Form
                                         form={form}
-                                        enrollment={enrollment}
-                                        trackedEntity={trackedEntity}
-                                        mainEvent={data}
-                                    />
-                                </Form>
+                                        layout="vertical"
+                                        preserve={false}
+                                        initialValues={data?.dataValues}
+                                    >
+                                        <MainEventCapture
+                                            form={form}
+                                            enrollment={enrollment}
+                                            trackedEntity={trackedEntity}
+                                            mainEvent={data}
+                                        />
+                                    </Form>
+                                </EventRuleAwareForm>
                             </EventContext.Provider>
                         );
                     }
@@ -788,6 +823,10 @@ function TrackedEntityComponent() {
                                 (draft) => {
                                     draft.enrolledAt = enrolledAt;
                                     draft.syncStatus = "pending";
+                                    draft.attributes = {
+                                        ...trackedEntityData.attributes,
+                                        ...attributeValues,
+                                    };
                                 },
                             );
                             await tx2.isPersisted.promise;
