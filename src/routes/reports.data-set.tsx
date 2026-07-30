@@ -358,14 +358,18 @@ function Reports() {
         try {
             await engine.mutate({
                 resource: "completeDataSetRegistrations",
-                type: "delete",
-                id: "",
-                params: {
-                    ds: dataSet,
-                    pe: period,
-                    ou: orgUnit,
-                    attributeOptionCombo: effectiveAttribution,
-                    multiple: false,
+                type: "create",
+                data: {
+                    completeDataSetRegistrations: [
+                        {
+                            dataSet,
+                            period,
+                            organisationUnit: orgUnit,
+                            attributeOptionCombo: effectiveAttribution,
+                            completed: false,
+                            date: new Date().toISOString(),
+                        },
+                    ],
                 },
             });
 
