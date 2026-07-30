@@ -835,6 +835,19 @@ function TrackedEntityComponent() {
                 }}
                 title="Edit Client"
                 submitButtonText="Save Client"
+                saveBlockFor={(values) =>
+                    computeSaveBlock({
+                        metadataMandatoryIds: teaMandatoryIds,
+                        ruleMandatoryIds:
+                            teRuleResult?.mandatoryFields ?? [],
+                        hiddenIds: teRuleResult?.hiddenFields ?? [],
+                        values,
+                        labels: teaLabels,
+                        errors: (teRuleResult?.errors ?? []).map(
+                            (e) => e.content,
+                        ),
+                    })
+                }
             >
                 {(form) => (
                     <TrackedEntityContext.Provider
@@ -849,17 +862,21 @@ function TrackedEntityComponent() {
                             },
                         }}
                     >
-                        <Form
-                            form={form}
-                            layout="vertical"
-                            preserve={false}
-                            initialValues={trackedEntityData?.attributes}
+                        <TrackedEntityRuleAwareForm
+                            onRuleResult={setTeRuleResult}
                         >
-                            <TrackerRegistration
-                                trackedEntity={trackedEntityData!}
+                            <Form
                                 form={form}
-                            />
-                        </Form>
+                                layout="vertical"
+                                preserve={false}
+                                initialValues={trackedEntityData?.attributes}
+                            >
+                                <TrackerRegistration
+                                    trackedEntity={trackedEntityData!}
+                                    form={form}
+                                />
+                            </Form>
+                        </TrackedEntityRuleAwareForm>
                     </TrackedEntityContext.Provider>
                 )}
             </DataModal>
