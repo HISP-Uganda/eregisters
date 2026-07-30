@@ -6,6 +6,7 @@ import { Spinner } from "./components/spinner";
 import { SyncContext } from "./machines/sync";
 import { router } from "./router";
 import { MeData, MeUser } from "./schemas";
+import { ensureFormConfigsSeeded } from "./utils/ensure-form-configs-seeded";
 
 const ME_QUERY = {
     me: {
@@ -19,6 +20,9 @@ const ME_QUERY = {
 const Main = () => {
     const syncActor = SyncContext.useActorRef();
     const engine = useDataEngine();
+    useEffect(() => {
+        void ensureFormConfigsSeeded(engine);
+    }, [engine]);
     return (
         <RouterProvider router={router} context={{ syncActor, engine }} />
     );
