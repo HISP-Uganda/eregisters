@@ -129,7 +129,7 @@ export function SyncFailuresModal({
 
         for (const de of dataElements.values()) {
             const deName = de.formName || de.name;
-            map.set(de.id, deName);
+            map.set(de.id, `Data element: ${deName}`);
             if (de.optionSet) {
                 optionSetNames.set(de.optionSet.id, de.optionSet.name);
                 noteConsumer(de.optionSet.id, deName);
@@ -137,10 +137,22 @@ export function SyncFailuresModal({
         }
         for (const tea of trackedEntityAttributes.values()) {
             const teaName = tea.displayFormName || tea.name;
-            map.set(tea.id, teaName);
+            map.set(tea.id, `Attribute: ${teaName}`);
             if (tea.optionSet) {
                 optionSetNames.set(tea.optionSet.id, tea.optionSet.name);
                 noteConsumer(tea.optionSet.id, teaName);
+            }
+        }
+        for (const ptea of program?.programTrackedEntityAttributes ?? []) {
+            const id = ptea.trackedEntityAttribute.id;
+            if (!map.has(id)) {
+                const tea = trackedEntityAttributes.get(id);
+                if (tea) {
+                    map.set(
+                        id,
+                        `Attribute: ${tea.displayFormName || tea.name}`,
+                    );
+                }
             }
         }
         for (const [optionSetId, options] of optionSets.entries()) {
