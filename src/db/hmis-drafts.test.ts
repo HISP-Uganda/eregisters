@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { HmisDraft } from "./hmis-drafts";
-import { combineIsVerified, mergeDraftAndServer } from "./hmis-drafts";
+import { mergeDraftAndServer } from "./hmis-drafts";
 
 const emptyDraft = (over: Partial<HmisDraft> = {}): HmisDraft => ({
     id: "ds_p_ou_aoc",
@@ -12,6 +12,7 @@ const emptyDraft = (over: Partial<HmisDraft> = {}): HmisDraft => ({
     isVerified: false,
     updatedAt: 0,
     syncStatus: "draft",
+    pendingVerificationAction: null,
     ...over,
 });
 
@@ -43,21 +44,16 @@ describe("mergeDraftAndServer", () => {
     });
 });
 
-describe("combineIsVerified", () => {
-    it("true when only local flag is set", () => {
-        expect(combineIsVerified(true, false)).toBe(true);
+describe("HmisDraft.pendingVerificationAction", () => {
+    it("defaults to null on a fresh draft shape", () => {
+        const draft = emptyDraft();
+        expect(draft.pendingVerificationAction).toBeNull();
     });
-    it("true when only server flag is set", () => {
-        expect(combineIsVerified(false, true)).toBe(true);
-    });
-    it("true when both flags are set", () => {
-        expect(combineIsVerified(true, true)).toBe(true);
-    });
-    it("false when neither flag is set", () => {
-        expect(combineIsVerified(false, false)).toBe(false);
-    });
-    it("treats server undefined (unknown) as false — falls back to local", () => {
-        expect(combineIsVerified(false, undefined)).toBe(false);
-        expect(combineIsVerified(true, undefined)).toBe(true);
+
+    it("accepts 'verify' and 'revoke'", () => {
+        const v = emptyDraft({ pendingVerificationAction: "verify" });
+        const r = emptyDraft({ pendingVerificationAction: "revoke" });
+        expect(v.pendingVerificationAction).toBe("verify");
+        expect(r.pendingVerificationAction).toBe("revoke");
     });
 });

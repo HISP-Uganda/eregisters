@@ -1,5 +1,7 @@
 import { db } from "./index";
 
+export type HmisPendingVerificationAction = "verify" | "revoke" | null;
+
 export interface HmisDraft {
     id: string;
     dataSet: string;
@@ -11,6 +13,7 @@ export interface HmisDraft {
     verifiedAt?: number;
     updatedAt: number;
     syncStatus: "draft" | "pending" | "synced";
+    pendingVerificationAction: HmisPendingVerificationAction;
 }
 
 export function draftId(input: {
@@ -35,17 +38,12 @@ export function mergeDraftAndServer(
     return merged;
 }
 
-export function combineIsVerified(
-    local: boolean,
-    server: boolean | undefined,
-): boolean {
-    return local || server === true;
-}
-
 export async function getHmisDraft(
     id: string,
 ): Promise<HmisDraft | undefined> {
-    return db.hmisDrafts.get(id);
+    const row = await db.hmisDrafts.get(id);
+    if (!row) return undefined;
+    return { pendingVerificationAction: null, ...row };
 }
 
 export async function upsertHmisDraft(row: HmisDraft): Promise<void> {
@@ -56,7 +54,7 @@ export async function patchHmisDraft(
     id: string,
     patch: Partial<HmisDraft>,
 ): Promise<void> {
-    const existing = await db.hmisDrafts.get(id);
+    const existing = await getHmisDraft(id);
     if (!existing) return;
     await db.hmisDrafts.put({ ...existing, ...patch });
 }
