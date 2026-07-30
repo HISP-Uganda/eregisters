@@ -228,8 +228,14 @@ function Reports() {
     const engine = useDataEngine();
     const { dataSet, attribution, orgUnit, period } =
         DataSetReportRoute.useSearch();
-    const { initialValues, isVerified, syncStatus } =
-        DataSetReportRoute.useLoaderData();
+    const {
+        initialValues,
+        isVerified,
+        verifiedAt,
+        verifiedBy,
+        syncStatus,
+        pendingVerificationAction,
+    } = DataSetReportRoute.useLoaderData();
     const router = useRouter();
 
     const onSave = async (values: {
@@ -301,6 +307,7 @@ function Reports() {
                 verifiedAt: now,
                 updatedAt: now,
                 syncStatus: "synced",
+                pendingVerificationAction: null,
             });
 
             await router.invalidate();
@@ -325,10 +332,78 @@ function Reports() {
                 verifiedAt: now,
                 updatedAt: now,
                 syncStatus: "pending",
+                pendingVerificationAction: "verify",
             });
             await router.invalidate();
             message.error("Verification queued — will sync when online.");
             console.error("Verify failed:", err);
+        }
+    };
+
+    const onRevoke = async () => {
+        const effectiveAttribution = resolveAttribution(dataSet, attribution);
+        if (!dataSet || !period || !orgUnit || !effectiveAttribution) {
+            message.error(
+                "Missing dataset/period/organisation before revoking.",
+            );
+            return;
+        }
+        const id = draftId({
+            dataSet,
+            period,
+            orgUnit,
+            attributeOptionCombo: effectiveAttribution,
+        });
+        const now = Date.now();
+        try {
+            await engine.mutate({
+                resource: "completeDataSetRegistrations",
+                type: "delete",
+                id: "",
+                params: {
+                    ds: dataSet,
+                    pe: period,
+                    ou: orgUnit,
+                    attributeOptionCombo: effectiveAttribution,
+                    multiple: false,
+                },
+            });
+
+            const existing = await getHmisDraft(id);
+            await upsertHmisDraft({
+                id,
+                dataSet,
+                period,
+                orgUnit,
+                attributeOptionCombo: effectiveAttribution,
+                values: existing?.values ?? {},
+                isVerified: false,
+                verifiedAt: undefined,
+                updatedAt: now,
+                syncStatus: "synced",
+                pendingVerificationAction: null,
+            });
+
+            await router.invalidate();
+            message.success("Verification revoked");
+        } catch (err) {
+            const existing = await getHmisDraft(id);
+            await upsertHmisDraft({
+                id,
+                dataSet,
+                period,
+                orgUnit,
+                attributeOptionCombo: effectiveAttribution,
+                values: existing?.values ?? {},
+                isVerified: existing?.isVerified ?? true,
+                verifiedAt: existing?.verifiedAt,
+                updatedAt: now,
+                syncStatus: "pending",
+                pendingVerificationAction: "revoke",
+            });
+            await router.invalidate();
+            message.error("Revocation queued — will sync when online.");
+            console.error("Revoke failed:", err);
         }
     };
 
@@ -340,9 +415,13 @@ function Reports() {
                 orgUnit={orgUnit}
                 initialValues={initialValues}
                 isVerified={isVerified}
+                verifiedAt={verifiedAt}
+                verifiedBy={verifiedBy}
+                pendingVerificationAction={pendingVerificationAction}
                 syncStatus={syncStatus}
                 period={period}
                 onSave={onSave}
+                onRevoke={onRevoke}
             />
         ),
         RtEYsASU7PG: (
@@ -352,9 +431,13 @@ function Reports() {
                 orgUnit={orgUnit}
                 initialValues={initialValues}
                 isVerified={isVerified}
+                verifiedAt={verifiedAt}
+                verifiedBy={verifiedBy}
+                pendingVerificationAction={pendingVerificationAction}
                 syncStatus={syncStatus}
                 period={period}
                 onSave={onSave}
+                onRevoke={onRevoke}
             />
         ),
         ic1BSWhGOso: (
@@ -364,9 +447,13 @@ function Reports() {
                 orgUnit={orgUnit}
                 initialValues={initialValues}
                 isVerified={isVerified}
+                verifiedAt={verifiedAt}
+                verifiedBy={verifiedBy}
+                pendingVerificationAction={pendingVerificationAction}
                 syncStatus={syncStatus}
                 period={period}
                 onSave={onSave}
+                onRevoke={onRevoke}
             />
         ),
         nGkMm2VBT4G: (
@@ -376,9 +463,13 @@ function Reports() {
                 orgUnit={orgUnit}
                 initialValues={initialValues}
                 isVerified={isVerified}
+                verifiedAt={verifiedAt}
+                verifiedBy={verifiedBy}
+                pendingVerificationAction={pendingVerificationAction}
                 syncStatus={syncStatus}
                 period={period}
                 onSave={onSave}
+                onRevoke={onRevoke}
             />
         ),
         VDhwrW9DiC1: (
@@ -388,9 +479,13 @@ function Reports() {
                 orgUnit={orgUnit}
                 initialValues={initialValues}
                 isVerified={isVerified}
+                verifiedAt={verifiedAt}
+                verifiedBy={verifiedBy}
+                pendingVerificationAction={pendingVerificationAction}
                 syncStatus={syncStatus}
                 period={period}
                 onSave={onSave}
+                onRevoke={onRevoke}
             />
         ),
         quMWqLxzcfO: (
@@ -400,9 +495,13 @@ function Reports() {
                 orgUnit={orgUnit}
                 initialValues={initialValues}
                 isVerified={isVerified}
+                verifiedAt={verifiedAt}
+                verifiedBy={verifiedBy}
+                pendingVerificationAction={pendingVerificationAction}
                 syncStatus={syncStatus}
                 period={period}
                 onSave={onSave}
+                onRevoke={onRevoke}
             />
         ),
         dFRD2A5fdvn: (
@@ -412,9 +511,13 @@ function Reports() {
                 orgUnit={orgUnit}
                 initialValues={initialValues}
                 isVerified={isVerified}
+                verifiedAt={verifiedAt}
+                verifiedBy={verifiedBy}
+                pendingVerificationAction={pendingVerificationAction}
                 syncStatus={syncStatus}
                 period={period}
                 onSave={onSave}
+                onRevoke={onRevoke}
             />
         ),
         DFMoIONIalm: (
@@ -424,9 +527,13 @@ function Reports() {
                 orgUnit={orgUnit}
                 initialValues={initialValues}
                 isVerified={isVerified}
+                verifiedAt={verifiedAt}
+                verifiedBy={verifiedBy}
+                pendingVerificationAction={pendingVerificationAction}
                 syncStatus={syncStatus}
                 period={period}
                 onSave={onSave}
+                onRevoke={onRevoke}
             />
         ),
         GwSIuQVi8b2: (
@@ -436,9 +543,13 @@ function Reports() {
                 orgUnit={orgUnit}
                 initialValues={initialValues}
                 isVerified={isVerified}
+                verifiedAt={verifiedAt}
+                verifiedBy={verifiedBy}
+                pendingVerificationAction={pendingVerificationAction}
                 syncStatus={syncStatus}
                 period={period}
                 onSave={onSave}
+                onRevoke={onRevoke}
             />
         ),
         EBqVAQRmiPm: (
@@ -448,9 +559,13 @@ function Reports() {
                 orgUnit={orgUnit}
                 initialValues={initialValues}
                 isVerified={isVerified}
+                verifiedAt={verifiedAt}
+                verifiedBy={verifiedBy}
+                pendingVerificationAction={pendingVerificationAction}
                 syncStatus={syncStatus}
                 period={period}
                 onSave={onSave}
+                onRevoke={onRevoke}
             />
         ),
     };
