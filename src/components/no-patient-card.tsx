@@ -4,7 +4,9 @@ import React, { useMemo } from "react";
 
 import { useMetadata } from "../hooks/useMetadata";
 import { useModalState } from "../hooks/useModalState";
+import { useTrackedEntitySaveBlock } from "../hooks/useTrackedEntitySaveBlock";
 import { TrackedEntityContext } from "../machines";
+import { TrackedEntityRuleAwareForm } from "./rule-aware-form";
 import { TrackedEntitiesRoute } from "../routes/tracked-entities";
 import { FlattenedTrackedEntity } from "../schemas";
 import {
@@ -48,6 +50,7 @@ const NoPatientsCard: React.FC<NoPatientsCardProps> = ({
         [],
     );
     const navigate = TrackedEntitiesRoute.useNavigate();
+    const { saveBlockFor, onRuleResult } = useTrackedEntitySaveBlock();
     const {
         enrollment,
         data: trackedEntity,
@@ -180,6 +183,7 @@ const NoPatientsCard: React.FC<NoPatientsCardProps> = ({
                 title="Register New Client"
                 submitButtonText="Register client"
                 hasAddAnother={true}
+                saveBlockFor={saveBlockFor}
             >
                 {(form) => {
                     return (
@@ -196,17 +200,21 @@ const NoPatientsCard: React.FC<NoPatientsCardProps> = ({
                                 },
                             }}
                         >
-                            <Form
-                                form={form}
-                                layout="vertical"
-                                preserve={false}
-                                initialValues={trackedEntity?.attributes}
+                            <TrackedEntityRuleAwareForm
+                                onRuleResult={onRuleResult}
                             >
-                                <TrackerRegistration
-                                    trackedEntity={trackedEntity!}
+                                <Form
                                     form={form}
-                                />
-                            </Form>
+                                    layout="vertical"
+                                    preserve={false}
+                                    initialValues={trackedEntity?.attributes}
+                                >
+                                    <TrackerRegistration
+                                        trackedEntity={trackedEntity!}
+                                        form={form}
+                                    />
+                                </Form>
+                            </TrackedEntityRuleAwareForm>
                         </TrackedEntityContext.Provider>
                     );
                 }}

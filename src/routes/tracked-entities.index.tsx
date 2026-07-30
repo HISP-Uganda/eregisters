@@ -21,8 +21,10 @@ import type { ColumnsType } from "antd/es/table";
 
 import React, { useMemo } from "react";
 import NoPatientsCard from "../components/no-patient-card";
+import { TrackedEntityRuleAwareForm } from "../components/rule-aware-form";
 import { TrackerRegistration } from "../components/tracker-registration";
 import { useModalState } from "../hooks/useModalState";
+import { useTrackedEntitySaveBlock } from "../hooks/useTrackedEntitySaveBlock";
 import { FlattenedTrackedEntity } from "../schemas";
 import {
     createEmptyEnrollment,
@@ -73,6 +75,7 @@ function TrackedEntitiesSearch() {
         openModal,
         closeModal,
     } = useModalState<FlattenedTrackedEntity>();
+    const { saveBlockFor, onRuleResult } = useTrackedEntitySaveBlock();
     const { search } = TrackedEntitiesRoute.useSearch();
     const searchInitialAttributes = useMemo(
         () =>
@@ -353,6 +356,7 @@ function TrackedEntitiesSearch() {
                 title="Register New Client"
                 submitButtonText="Register client"
                 hasAddAnother={true}
+                saveBlockFor={saveBlockFor}
             >
                 {(form) => (
                     <TrackedEntityContext.Provider
@@ -368,16 +372,20 @@ function TrackedEntitiesSearch() {
                             },
                         }}
                     >
-                        <Form
-                            form={form}
-                            layout="vertical"
-                            initialValues={trackedEntity?.attributes}
+                        <TrackedEntityRuleAwareForm
+                            onRuleResult={onRuleResult}
                         >
-                            <TrackerRegistration
-                                trackedEntity={trackedEntity!}
+                            <Form
                                 form={form}
-                            />
-                        </Form>
+                                layout="vertical"
+                                initialValues={trackedEntity?.attributes}
+                            >
+                                <TrackerRegistration
+                                    trackedEntity={trackedEntity!}
+                                    form={form}
+                                />
+                            </Form>
+                        </TrackedEntityRuleAwareForm>
                     </TrackedEntityContext.Provider>
                 )}
             </DataModal>

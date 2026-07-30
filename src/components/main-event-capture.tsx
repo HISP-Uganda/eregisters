@@ -41,8 +41,10 @@ import { DataElementRenderer } from "./data-element-renderer";
 import { DataModal } from "./data-modal";
 import { ProgramStageCapture } from "./program-stage-capture";
 import RelationshipEvent from "./relationship-event";
+import { TrackedEntityRuleAwareForm } from "./rule-aware-form";
 import { SubsectionGroups } from "./subsection-groups";
 import { TrackerRegistration } from "./tracker-registration";
+import { useTrackedEntitySaveBlock } from "../hooks/useTrackedEntitySaveBlock";
 
 const stages: Map<string, number> = new Map([
     ["x5x1cHHjg00", 7],
@@ -167,6 +169,8 @@ export default function MainEventCapture({
         openModal: openChildModal,
         closeModal: closeChildModal,
     } = useModalState<FlattenedTrackedEntity>();
+    const { saveBlockFor: childSaveBlockFor, onRuleResult: onChildRuleResult } =
+        useTrackedEntitySaveBlock();
     const { program, optionSets, programRuleVariables, programRules } =
         useMetadata();
     const uiConfig = useUIConfig();
@@ -578,6 +582,7 @@ export default function MainEventCapture({
                 }}
                 title="New Born Child"
                 submitButtonText="Save Child"
+                saveBlockFor={childSaveBlockFor}
             >
                 {(form) => {
                     if (childData) {
@@ -596,19 +601,23 @@ export default function MainEventCapture({
                                     },
                                 }}
                             >
-                                <Form
-                                    form={form}
-                                    layout="vertical"
-                                    preserve={false}
-                                    initialValues={childData?.attributes}
+                                <TrackedEntityRuleAwareForm
+                                    onRuleResult={onChildRuleResult}
                                 >
-                                    {childData ? (
-                                        <TrackerRegistration
-                                            trackedEntity={childData}
-                                            form={form}
-                                        />
-                                    ) : null}
-                                </Form>
+                                    <Form
+                                        form={form}
+                                        layout="vertical"
+                                        preserve={false}
+                                        initialValues={childData?.attributes}
+                                    >
+                                        {childData ? (
+                                            <TrackerRegistration
+                                                trackedEntity={childData}
+                                                form={form}
+                                            />
+                                        ) : null}
+                                    </Form>
+                                </TrackedEntityRuleAwareForm>
                             </TrackedEntityContext.Provider>
                         );
                     }
