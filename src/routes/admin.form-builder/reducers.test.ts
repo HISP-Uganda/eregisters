@@ -4,11 +4,15 @@ import {
     addSection,
     addTab,
     attachTemplate,
+    deleteColumn,
     deleteTab,
     detachTemplate,
     extractTemplate,
+    insertColumn,
     insertRow,
+    moveColumn,
     moveTab,
+    renameColumn,
     renameTab,
     setCell,
 } from "./reducers";
@@ -109,6 +113,37 @@ describe("editor reducers", () => {
         const next = setCell(baseDoc(), "f1", "t1", 0, "r1", "c0", null);
         const s = next.forms.f1.tabs[0].sections[0];
         if (s.kind !== "inline") throw new Error();
+        expect(s.section.rows[0].cells.c0).toBeUndefined();
+    });
+
+    it("insertColumn appends a column", () => {
+        const next = insertColumn(baseDoc(), "f1", "t1", 0, "New");
+        const s = next.forms.f1.tabs[0].sections[0];
+        if (s.kind !== "inline") throw new Error();
+        expect(s.section.columns).toHaveLength(2);
+        expect(s.section.columns[1].title).toBe("New");
+    });
+
+    it("renameColumn changes the title", () => {
+        const next = renameColumn(baseDoc(), "f1", "t1", 0, "c0", "Male");
+        const s = next.forms.f1.tabs[0].sections[0];
+        if (s.kind !== "inline") throw new Error();
+        expect(s.section.columns[0].title).toBe("Male");
+    });
+
+    it("moveColumn swaps neighbours", () => {
+        const withTwo = insertColumn(baseDoc(), "f1", "t1", 0, "New");
+        const moved = moveColumn(withTwo, "f1", "t1", 0, 1, -1);
+        const s = moved.forms.f1.tabs[0].sections[0];
+        if (s.kind !== "inline") throw new Error();
+        expect(s.section.columns[0].title).toBe("New");
+    });
+
+    it("deleteColumn drops the column and its cells", () => {
+        const next = deleteColumn(baseDoc(), "f1", "t1", 0, "c0");
+        const s = next.forms.f1.tabs[0].sections[0];
+        if (s.kind !== "inline") throw new Error();
+        expect(s.section.columns).toHaveLength(0);
         expect(s.section.rows[0].cells.c0).toBeUndefined();
     });
 

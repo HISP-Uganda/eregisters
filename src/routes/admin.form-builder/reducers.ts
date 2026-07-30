@@ -117,6 +117,89 @@ export function addSection(
     );
 }
 
+export function insertColumn(
+    doc: FormConfigDoc,
+    formId: string,
+    tabKey: string,
+    sectionIndex: number,
+    title: string,
+): FormConfigDoc {
+    return withForm(doc, formId, (f) =>
+        withTab(f, tabKey, (t) =>
+            withSection(t, sectionIndex, (s) => ({
+                ...s,
+                columns: [...s.columns, { key: uid(), title }],
+            })),
+        ),
+    );
+}
+
+export function renameColumn(
+    doc: FormConfigDoc,
+    formId: string,
+    tabKey: string,
+    sectionIndex: number,
+    columnKey: string,
+    title: string,
+): FormConfigDoc {
+    return withForm(doc, formId, (f) =>
+        withTab(f, tabKey, (t) =>
+            withSection(t, sectionIndex, (s) => ({
+                ...s,
+                columns: s.columns.map((c) =>
+                    c.key === columnKey ? { ...c, title } : c,
+                ),
+            })),
+        ),
+    );
+}
+
+export function moveColumn(
+    doc: FormConfigDoc,
+    formId: string,
+    tabKey: string,
+    sectionIndex: number,
+    index: number,
+    delta: -1 | 1,
+): FormConfigDoc {
+    return withForm(doc, formId, (f) =>
+        withTab(f, tabKey, (t) =>
+            withSection(t, sectionIndex, (s) => {
+                const columns = [...s.columns];
+                const target = index + delta;
+                if (target < 0 || target >= columns.length) return s;
+                [columns[index], columns[target]] = [
+                    columns[target],
+                    columns[index],
+                ];
+                return { ...s, columns };
+            }),
+        ),
+    );
+}
+
+export function deleteColumn(
+    doc: FormConfigDoc,
+    formId: string,
+    tabKey: string,
+    sectionIndex: number,
+    columnKey: string,
+): FormConfigDoc {
+    return withForm(doc, formId, (f) =>
+        withTab(f, tabKey, (t) =>
+            withSection(t, sectionIndex, (s) => ({
+                ...s,
+                columns: s.columns.filter((c) => c.key !== columnKey),
+                rows: s.rows.map((r) => {
+                    const cells = { ...r.cells };
+                    delete cells[columnKey];
+                    return { ...r, cells };
+                }),
+            })),
+        ),
+    );
+}
+
 export function insertRow(
     doc: FormConfigDoc,
     formId: string,

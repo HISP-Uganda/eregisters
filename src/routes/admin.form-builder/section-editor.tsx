@@ -1,4 +1,10 @@
-import { DeleteOutlined, PlusOutlined } from "@ant-design/icons";
+import {
+    ArrowLeftOutlined,
+    ArrowRightOutlined,
+    DeleteOutlined,
+    EditOutlined,
+    PlusOutlined,
+} from "@ant-design/icons";
 import {
     Button,
     Card,
@@ -20,9 +26,13 @@ import type {
 } from "../../form-configs/v2-types";
 import {
     addSection,
+    deleteColumn,
     detachTemplate,
     extractTemplate,
+    insertColumn,
     insertRow,
+    moveColumn,
+    renameColumn,
     setCell,
 } from "./reducers";
 
@@ -152,6 +162,16 @@ export function SectionEditor({
                             </Space>
                         }
                     >
+                        {!isRef && (
+                            <ColumnsStrip
+                                doc={doc}
+                                formId={formId}
+                                tabKey={tabKey}
+                                sectionIndex={index}
+                                section={section}
+                                onChange={onChange}
+                            />
+                        )}
                         <SectionTable
                             doc={doc}
                             formId={formId}
@@ -244,6 +264,149 @@ function SectionTable({
             columns={columns as any}
             dataSource={dataSource as any}
         />
+    );
+}
+
+function ColumnsStrip({
+    doc,
+    formId,
+    tabKey,
+    sectionIndex,
+    section,
+    onChange,
+}: {
+    doc: FormConfigDoc;
+    formId: string;
+    tabKey: string;
+    sectionIndex: number;
+    section: SectionV2;
+    onChange: (next: FormConfigDoc) => void;
+}) {
+    return (
+        <Flex
+            gap={4}
+            wrap
+            style={{
+                marginBottom: 8,
+                padding: 6,
+                background: "#fafafa",
+                border: "1px dashed #d9d9d9",
+                borderRadius: 4,
+            }}
+            align="center"
+        >
+            <Typography.Text
+                type="secondary"
+                style={{ fontSize: 11, marginRight: 4 }}
+            >
+                Columns:
+            </Typography.Text>
+            {section.columns.length === 0 && (
+                <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+                    none — add one on the right →
+                </Typography.Text>
+            )}
+            {section.columns.map((c, i) => (
+                <Space.Compact key={c.key} size="small">
+                    <Button
+                        size="small"
+                        icon={<ArrowLeftOutlined />}
+                        disabled={i === 0}
+                        onClick={() =>
+                            onChange(
+                                moveColumn(
+                                    doc,
+                                    formId,
+                                    tabKey,
+                                    sectionIndex,
+                                    i,
+                                    -1,
+                                ),
+                            )
+                        }
+                    />
+                    <Button
+                        size="small"
+                        onClick={() => {
+                            const next = window.prompt(
+                                "Column title",
+                                c.title ?? "",
+                            );
+                            if (next !== null)
+                                onChange(
+                                    renameColumn(
+                                        doc,
+                                        formId,
+                                        tabKey,
+                                        sectionIndex,
+                                        c.key,
+                                        next,
+                                    ),
+                                );
+                        }}
+                        icon={<EditOutlined />}
+                    >
+                        {c.title ?? c.key}
+                    </Button>
+                    <Button
+                        size="small"
+                        icon={<ArrowRightOutlined />}
+                        disabled={i === section.columns.length - 1}
+                        onClick={() =>
+                            onChange(
+                                moveColumn(
+                                    doc,
+                                    formId,
+                                    tabKey,
+                                    sectionIndex,
+                                    i,
+                                    1,
+                                ),
+                            )
+                        }
+                    />
+                    <Popconfirm
+                        title="Delete this column and all its cells?"
+                        onConfirm={() =>
+                            onChange(
+                                deleteColumn(
+                                    doc,
+                                    formId,
+                                    tabKey,
+                                    sectionIndex,
+                                    c.key,
+                                ),
+                            )
+                        }
+                    >
+                        <Button
+                            size="small"
+                            danger
+                            icon={<DeleteOutlined />}
+                        />
+                    </Popconfirm>
+                </Space.Compact>
+            ))}
+            <Button
+                size="small"
+                icon={<PlusOutlined />}
+                onClick={() => {
+                    const title = window.prompt("Column title");
+                    if (title !== null)
+                        onChange(
+                            insertColumn(
+                                doc,
+                                formId,
+                                tabKey,
+                                sectionIndex,
+                                title,
+                            ),
+                        );
+                }}
+            >
+                Column
+            </Button>
+        </Flex>
     );
 }
 
