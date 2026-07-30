@@ -43,7 +43,7 @@ export async function getHmisDraft(
 ): Promise<HmisDraft | undefined> {
     const row = await db.hmisDrafts.get(id);
     if (!row) return undefined;
-    return { pendingVerificationAction: null, ...row };
+    return { ...row, pendingVerificationAction: row.pendingVerificationAction ?? null };
 }
 
 export async function upsertHmisDraft(row: HmisDraft): Promise<void> {

@@ -18,7 +18,6 @@ import Hmis106A04Form from "../components/Hmis106A04";
 import Hmis108Form from "../components/Hmis108";
 import { Spinner } from "../components/spinner";
 import {
-    combineIsVerified,
     draftId,
     getHmisDraft,
     mergeDraftAndServer,
@@ -97,7 +96,7 @@ async function fetchServerVerified(
     orgUnit: string,
     period: string,
     attribution: string,
-): Promise<boolean | undefined> {
+): Promise<{ verified: boolean; verifiedAt?: string; verifiedBy?: string }> {
     try {
         const result = await engine.query({
             registrations: {
@@ -113,17 +112,24 @@ async function fetchServerVerified(
         const list: Array<{
             attributeOptionCombo?: string;
             completed?: boolean;
+            storedBy?: string;
+            date?: string;
         }> = result?.registrations?.completeDataSetRegistrations ?? [];
-        return list.some(
+        const match = list.find(
             (r) =>
                 r.attributeOptionCombo === attribution && r.completed === true,
         );
+        return {
+            verified: !!match,
+            verifiedAt: match?.date,
+            verifiedBy: match?.storedBy,
+        };
     } catch (err) {
         console.warn(
             "completeDataSetRegistrations read failed — treating verified state as unknown:",
             err,
         );
-        return undefined;
+        return { verified: false };
     }
 }
 
@@ -142,7 +148,13 @@ export const DataSetReportRoute = createRoute({
         const empty = {
             initialValues: new Map<string, string>(),
             isVerified: false,
+            verifiedAt: undefined as string | undefined,
+            verifiedBy: undefined as string | undefined,
             syncStatus: "draft" as HmisDraft["syncStatus"],
+            pendingVerificationAction: null as
+                | "verify"
+                | "revoke"
+                | null,
         };
         if (
             orgUnit === undefined ||
@@ -171,7 +183,13 @@ export const DataSetReportRoute = createRoute({
             return {
                 initialValues: serverValues,
                 isVerified: false,
+                verifiedAt: undefined as string | undefined,
+                verifiedBy: undefined as string | undefined,
                 syncStatus: "draft" as HmisDraft["syncStatus"],
+                pendingVerificationAction: null as
+                    | "verify"
+                    | "revoke"
+                    | null,
             };
         }
 
@@ -195,11 +213,12 @@ export const DataSetReportRoute = createRoute({
 
         return {
             initialValues: mergeDraftAndServer(draft, serverValues),
-            isVerified: combineIsVerified(
-                draft?.isVerified ?? false,
-                serverVerified,
-            ),
+            isVerified: serverVerified.verified,
+            verifiedAt: serverVerified.verifiedAt,
+            verifiedBy: serverVerified.verifiedBy,
             syncStatus: draft?.syncStatus ?? "draft",
+            pendingVerificationAction:
+                draft?.pendingVerificationAction ?? null,
         };
     },
 });
