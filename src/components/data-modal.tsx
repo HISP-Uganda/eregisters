@@ -128,7 +128,7 @@ function ModalContent<T extends FlattenedTrackedEntity | FlattenedEvent>({
                 confirmLoading={loading}
                 mask={{ closable: false }}
                 title={title}
-                width="95vw"
+                width="97vw"
                 footer={
                     <Flex
                         justify={isMobile ? "center" : "space-between"}
