@@ -1,13 +1,35 @@
 import { UserAddOutlined } from "@ant-design/icons";
 import type { FormInstance } from "antd";
-import { Button, Flex, Form, Grid, Modal, Spin, Typography } from "antd";
+import {
+    Button,
+    Flex,
+    Form,
+    Grid,
+    Modal,
+    Spin,
+    Tooltip,
+    Typography,
+} from "antd";
 import React, { useEffect, useState } from "react";
+import type { SaveBlock } from "../utils/save-block";
 import { SyncStatusComp } from "./sync-status-comp";
 import {
     FlattenedEnrollment,
     FlattenedEvent,
     FlattenedTrackedEntity,
 } from "../schemas";
+
+function renderBlockTooltip(block: SaveBlock): React.ReactNode {
+    const lines: string[] = [];
+    if (block.missing.length > 0) {
+        lines.push(`Fill: ${block.missing.map((m) => m.label).join(", ")}`);
+    }
+    if (block.errors.length > 0) {
+        lines.push(`Fix: ${block.errors.join("; ")}`);
+    }
+    if (lines.length === 0) return "";
+    return <div style={{ whiteSpace: "pre-line" }}>{lines.join("\n")}</div>;
+}
 
 interface DataModalProps<T extends FlattenedTrackedEntity | FlattenedEvent> {
     open: boolean;
@@ -24,7 +46,7 @@ interface DataModalProps<T extends FlattenedTrackedEntity | FlattenedEvent> {
     submitButtonText?: string;
     hasAddAnother?: boolean;
     status?: string;
-    requiredFields?: string[];
+    saveBlockFor?: (values: Record<string, unknown>) => SaveBlock;
 }
 
 const { Text } = Typography;
@@ -37,7 +59,7 @@ interface ModalContentProps<T extends FlattenedTrackedEntity | FlattenedEvent> {
     submitButtonText: string;
     hasAddAnother: boolean;
     status: string;
-    requiredFields?: string[];
+    saveBlockFor?: (values: Record<string, unknown>) => SaveBlock;
     title: React.ReactNode;
     open: boolean;
     onCancel: () => void;
@@ -53,7 +75,7 @@ function ModalContent<T extends FlattenedTrackedEntity | FlattenedEvent>({
     submitButtonText,
     hasAddAnother,
     status,
-    requiredFields,
+    saveBlockFor,
     title,
     open,
     onCancel,
@@ -63,8 +85,11 @@ function ModalContent<T extends FlattenedTrackedEntity | FlattenedEvent>({
     const [form] = Form.useForm<T>();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const watchedValues: Record<string, any> = Form.useWatch((values) => values, form) ?? {};
-    const isSubmitDisabled =
-        requiredFields?.some((f) => !watchedValues[f]) ?? false;
+    const block = saveBlockFor?.(watchedValues);
+    const blocked = Boolean(
+        block && (block.missing.length > 0 || block.errors.length > 0),
+    );
+    const tooltipTitle = blocked && block ? renderBlockTooltip(block) : "";
 
     const [contentReady, setContentReady] = useState(false);
 
@@ -128,63 +153,73 @@ function ModalContent<T extends FlattenedTrackedEntity | FlattenedEvent>({
                             >
                                 Cancel
                             </Button>
-                            <Button
-                                type="primary"
-                                onClick={() => handleOk()}
-                                loading={loading}
-                                disabled={isSubmitDisabled || loading}
-                                style={{
-                                    background:
-                                        "linear-gradient(135deg, #7c3aed 0%, #a78bfa 100%)",
-                                    borderColor: "#7c3aed",
-                                    borderRadius: 8,
-                                    fontWeight: 500,
-                                    ...(isMobile
-                                        ? {
-                                              width: "100%",
-                                              whiteSpace: "normal" as const,
-                                              wordBreak: "break-word" as const,
-                                              height: "auto",
-                                              padding: "8px 16px",
-                                          }
-                                        : {
-                                              paddingLeft: 32,
-                                              paddingRight: 32,
-                                          }),
-                                }}
-                            >
-                                {submitButtonText}
-                            </Button>
+                            <Tooltip title={tooltipTitle}>
+                                <span>
+                                    <Button
+                                        type="primary"
+                                        onClick={() => handleOk()}
+                                        loading={loading}
+                                        disabled={blocked || loading}
+                                        style={{
+                                            background:
+                                                "linear-gradient(135deg, #7c3aed 0%, #a78bfa 100%)",
+                                            borderColor: "#7c3aed",
+                                            borderRadius: 8,
+                                            fontWeight: 500,
+                                            ...(isMobile
+                                                ? {
+                                                      width: "100%",
+                                                      whiteSpace:
+                                                          "normal" as const,
+                                                      wordBreak:
+                                                          "break-word" as const,
+                                                      height: "auto",
+                                                      padding: "8px 16px",
+                                                  }
+                                                : {
+                                                      paddingLeft: 32,
+                                                      paddingRight: 32,
+                                                  }),
+                                        }}
+                                    >
+                                        {submitButtonText}
+                                    </Button>
+                                </span>
+                            </Tooltip>
                             {hasAddAnother && (
-                                <Button
-                                    type="primary"
-                                    style={{
-                                        background:
-                                            "linear-gradient(135deg, #7c3aed 0%, #a78bfa 100%)",
-                                        borderColor: "#7c3aed",
-                                        borderRadius: 8,
-                                        fontWeight: 500,
-                                        ...(isMobile
-                                            ? {
-                                                  width: "100%",
-                                                  whiteSpace:
-                                                      "normal" as const,
-                                                  wordBreak:
-                                                      "break-word" as const,
-                                                  height: "auto",
-                                                  padding: "8px 16px",
-                                              }
-                                            : {
-                                                  paddingLeft: 32,
-                                                  paddingRight: 32,
-                                              }),
-                                    }}
-                                    onClick={() => handleOk(true)}
-                                    loading={loading}
-                                    disabled={isSubmitDisabled || loading}
-                                >
-                                    {submitButtonText} & add another
-                                </Button>
+                                <Tooltip title={tooltipTitle}>
+                                    <span>
+                                        <Button
+                                            type="primary"
+                                            style={{
+                                                background:
+                                                    "linear-gradient(135deg, #7c3aed 0%, #a78bfa 100%)",
+                                                borderColor: "#7c3aed",
+                                                borderRadius: 8,
+                                                fontWeight: 500,
+                                                ...(isMobile
+                                                    ? {
+                                                          width: "100%",
+                                                          whiteSpace:
+                                                              "normal" as const,
+                                                          wordBreak:
+                                                              "break-word" as const,
+                                                          height: "auto",
+                                                          padding: "8px 16px",
+                                                      }
+                                                    : {
+                                                          paddingLeft: 32,
+                                                          paddingRight: 32,
+                                                      }),
+                                            }}
+                                            onClick={() => handleOk(true)}
+                                            loading={loading}
+                                            disabled={blocked || loading}
+                                        >
+                                            {submitButtonText} & add another
+                                        </Button>
+                                    </span>
+                                </Tooltip>
                             )}
                         </Flex>
                     </Flex>
@@ -226,7 +261,7 @@ export function DataModal<T extends FlattenedTrackedEntity | FlattenedEvent>({
     submitButtonText = "Save",
     hasAddAnother = false,
     status = "draft",
-    requiredFields,
+    saveBlockFor,
 }: DataModalProps<T>) {
     const screens = Grid.useBreakpoint();
     const isMobile = !screens.md;
@@ -278,7 +313,7 @@ export function DataModal<T extends FlattenedTrackedEntity | FlattenedEvent>({
             submitButtonText={submitButtonText}
             hasAddAnother={hasAddAnother}
             status={status}
-            requiredFields={requiredFields}
+            saveBlockFor={saveBlockFor}
             title={titleNode}
             loading={loading}
             setLoading={setLoading}
