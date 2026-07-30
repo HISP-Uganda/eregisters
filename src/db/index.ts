@@ -19,6 +19,7 @@ import {
     UIConfig,
 } from "../schemas";
 import type { HmisDraft } from "./hmis-drafts";
+import type { FormConfigDoc } from "../form-configs/v2-types";
 
 export interface SyncOperation {
     id: string;
@@ -111,6 +112,7 @@ class RegisterDatabase extends Dexie {
     dataSets!: Table<DataSet, string>;
     categoryOptionCombos!: Table<CategoryOptionCombo, string>;
     hmisDrafts!: Table<HmisDraft, string>;
+    hmisFormConfigs!: Table<{ id: "main"; doc: FormConfigDoc }, "main">;
 
     constructor() {
         super("MOHRegisterDB");
@@ -136,6 +138,9 @@ class RegisterDatabase extends Dexie {
         });
         this.version(3).stores({
             hmisDrafts: "id, dataSet, period, orgUnit, syncStatus",
+        });
+        this.version(4).stores({
+            hmisFormConfigs: "id",
         });
     }
 }

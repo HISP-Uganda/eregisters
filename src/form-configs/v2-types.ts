@@ -30,7 +30,7 @@ export type ColumnV2 = {
 
 export type RowV2 = {
     key: string;
-    type?: "data" | "label" | "subhead";
+    type?: "data" | "label" | "subhead" | "section";
     cells: Record<string, CellV2>;
 };
 
