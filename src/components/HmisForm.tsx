@@ -773,15 +773,12 @@ const InnerHmisForm: React.FC<HmisFormProps> = ({
                 const primaryLabel = isVerified
                     ? isRevokePending
                         ? "Revocation queued — retry"
-                        : "Verified"
+                        : "Verified — Re-submit to Update"
                     : isVerifyPending
                       ? "Verification queued — retry"
                       : periodBlocked && period
                         ? "Waiting for period to end"
                         : "Mark Report as Verified";
-
-                const primaryOnClick =
-                    isVerified && !isRevokePending ? undefined : handleSave;
 
                 const disabledVisibleStyle: React.CSSProperties = disabled
                     ? {
@@ -824,10 +821,8 @@ const InnerHmisForm: React.FC<HmisFormProps> = ({
                                     <CheckCircleOutlined />
                                 ) : undefined
                             }
-                            onClick={primaryOnClick}
-                            disabled={
-                                disabled || (isVerified && !isRevokePending)
-                            }
+                            onClick={handleSave}
+                            disabled={disabled}
                             loading={loading && !isRevokePending}
                             style={disabledVisibleStyle}
                             title={
