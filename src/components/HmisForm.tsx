@@ -5,6 +5,7 @@ import {
     Card,
     ConfigProvider,
     InputNumber,
+    Popconfirm,
     Tabs,
     Typography,
 } from "antd";
@@ -54,6 +55,10 @@ export interface HmisFormProps {
     attributeOptionCombo: string;
     isVerified?: boolean;
     syncStatus?: HmisDraft["syncStatus"];
+    onRevoke?: () => void | Promise<void>;
+    verifiedAt?: string | number;
+    verifiedBy?: string;
+    pendingVerificationAction?: "verify" | "revoke" | null;
 }
 
 function dataValueKey(
@@ -554,6 +559,10 @@ const InnerHmisForm: React.FC<HmisFormProps> = ({
     attributeOptionCombo,
     isVerified = false,
     syncStatus = "draft",
+    onRevoke,
+    verifiedAt,
+    verifiedBy,
+    pendingVerificationAction = null,
 }) => {
     // A verified report is not read-only — the user can still edit values
     // and re-submit. The button label communicates the current state.
@@ -602,6 +611,8 @@ const InnerHmisForm: React.FC<HmisFormProps> = ({
                     existing?.syncStatus === "synced"
                         ? "draft"
                         : existing?.syncStatus ?? "draft",
+                pendingVerificationAction:
+                    existing?.pendingVerificationAction ?? null,
             });
         },
         [draftKey, dataSet, period, orgUnit, attributeOptionCombo],
@@ -747,21 +758,31 @@ const InnerHmisForm: React.FC<HmisFormProps> = ({
                 </Title>
             }
             extra={(() => {
-                const periodFullyPast =
-                    period ? isPeriodFullyPast(period) : false;
+                const periodFullyPast = period
+                    ? isPeriodFullyPast(period)
+                    : false;
                 const periodBlocked = !period || !periodFullyPast;
                 const disabled = effectiveReadOnly || periodBlocked;
-                const label =
-                    isVerified && syncStatus === "synced"
-                        ? "Verified — Re-submit to Update"
-                        : isVerified && syncStatus === "pending"
-                          ? "Retry Verification"
-                          : periodBlocked && period
-                            ? "Waiting for period to end"
-                            : "Mark Report as Verified";
-                // Keep the label + button chrome fully readable even when
-                // disabled — antd's default disabled state fades everything
-                // to near-invisible on the teal header background.
+                const isRevokePending =
+                    pendingVerificationAction === "revoke";
+                const isVerifyPending =
+                    pendingVerificationAction === "verify";
+                const _keepSyncStatus = syncStatus; // reserved for future
+                void _keepSyncStatus;
+
+                const primaryLabel = isVerified
+                    ? isRevokePending
+                        ? "Revocation queued — retry"
+                        : "Verified"
+                    : isVerifyPending
+                      ? "Verification queued — retry"
+                      : periodBlocked && period
+                        ? "Waiting for period to end"
+                        : "Mark Report as Verified";
+
+                const primaryOnClick =
+                    isVerified && !isRevokePending ? undefined : handleSave;
+
                 const disabledVisibleStyle: React.CSSProperties = disabled
                     ? {
                           background: "#ffffff",
@@ -771,29 +792,66 @@ const InnerHmisForm: React.FC<HmisFormProps> = ({
                           cursor: "not-allowed",
                           fontWeight: 600,
                       }
-                    : {
-                          fontWeight: 600,
-                      };
+                    : { fontWeight: 600 };
+
                 return (
-                    <Button
-                        type="default"
-                        icon={
-                            isVerified && syncStatus === "synced" ? (
-                                <CheckCircleOutlined />
-                            ) : undefined
-                        }
-                        onClick={handleSave}
-                        disabled={disabled}
-                        loading={loading}
-                        style={disabledVisibleStyle}
-                        title={
-                            periodBlocked && period && !effectiveReadOnly
-                                ? "This period has not yet fully ended — verification will be enabled once the period is in the past."
-                                : undefined
-                        }
+                    <div
+                        style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 8,
+                        }}
                     >
-                        {label}
-                    </Button>
+                        {isVerified && (verifiedBy || verifiedAt) && (
+                            <span
+                                style={{
+                                    color: "#fff",
+                                    fontSize: 12,
+                                    opacity: 0.9,
+                                }}
+                            >
+                                {verifiedBy ? `by ${verifiedBy}` : ""}
+                                {verifiedBy && verifiedAt ? " · " : ""}
+                                {verifiedAt
+                                    ? new Date(verifiedAt).toLocaleString()
+                                    : ""}
+                            </span>
+                        )}
+                        <Button
+                            type="default"
+                            icon={
+                                isVerified && !isRevokePending ? (
+                                    <CheckCircleOutlined />
+                                ) : undefined
+                            }
+                            onClick={primaryOnClick}
+                            disabled={
+                                disabled || (isVerified && !isRevokePending)
+                            }
+                            loading={loading && !isRevokePending}
+                            style={disabledVisibleStyle}
+                            title={
+                                periodBlocked && period && !effectiveReadOnly
+                                    ? "This period has not yet fully ended — verification will be enabled once the period is in the past."
+                                    : undefined
+                            }
+                        >
+                            {primaryLabel}
+                        </Button>
+                        {isVerified && onRevoke && !effectiveReadOnly && (
+                            <Popconfirm
+                                title="Revoke verification?"
+                                description="This will mark the report as unverified for everyone. Continue?"
+                                okText="Revoke"
+                                okType="danger"
+                                onConfirm={() => onRevoke()}
+                            >
+                                <Button danger loading={isRevokePending}>
+                                    Revoke verification
+                                </Button>
+                            </Popconfirm>
+                        )}
+                    </div>
                 );
             })()}
         >
