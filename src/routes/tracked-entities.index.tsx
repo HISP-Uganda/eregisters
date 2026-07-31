@@ -75,7 +75,10 @@ function TrackedEntitiesSearch() {
         openModal,
         closeModal,
     } = useModalState<FlattenedTrackedEntity>();
-    const { saveBlockFor, onRuleResult } = useTrackedEntitySaveBlock();
+    const { saveBlockFor, onRuleResult } = useTrackedEntitySaveBlock({
+        ...(trackedEntity?.attributes ?? {}),
+        ...(enrollment?.attributes ?? {}),
+    });
     const { search } = TrackedEntitiesRoute.useSearch();
     const searchInitialAttributes = useMemo(
         () =>

@@ -50,7 +50,6 @@ const NoPatientsCard: React.FC<NoPatientsCardProps> = ({
         [],
     );
     const navigate = TrackedEntitiesRoute.useNavigate();
-    const { saveBlockFor, onRuleResult } = useTrackedEntitySaveBlock();
     const {
         enrollment,
         data: trackedEntity,
@@ -58,6 +57,10 @@ const NoPatientsCard: React.FC<NoPatientsCardProps> = ({
         openModal,
         closeModal,
     } = useModalState<FlattenedTrackedEntity>();
+    const { saveBlockFor, onRuleResult } = useTrackedEntitySaveBlock({
+        ...(trackedEntity?.attributes ?? {}),
+        ...(enrollment?.attributes ?? {}),
+    });
     const handleCreate = async () => {
         const newPatient: FlattenedTrackedEntity = createEmptyTrackedEntity({
             orgUnit,

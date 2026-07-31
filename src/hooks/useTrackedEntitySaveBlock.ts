@@ -3,7 +3,9 @@ import type { ProgramRuleResult } from "../schemas";
 import { computeSaveBlock, type SaveBlock } from "../utils/save-block";
 import { useMetadata } from "./useMetadata";
 
-export function useTrackedEntitySaveBlock() {
+export function useTrackedEntitySaveBlock(
+    seedValues?: Record<string, unknown>,
+) {
     const { program, trackedEntityAttributes } = useMetadata();
     const [ruleResult, setRuleResult] = useState<ProgramRuleResult | null>(
         null,
@@ -31,11 +33,11 @@ export function useTrackedEntitySaveBlock() {
                 metadataMandatoryIds,
                 ruleMandatoryIds: ruleResult?.mandatoryFields ?? [],
                 hiddenIds: ruleResult?.hiddenFields ?? [],
-                values,
+                values: { ...(seedValues ?? {}), ...values },
                 labels,
                 errors: (ruleResult?.errors ?? []).map((e) => e.content),
             }),
-        [metadataMandatoryIds, ruleResult, labels],
+        [metadataMandatoryIds, ruleResult, labels, seedValues],
     );
 
     return { saveBlockFor, onRuleResult: setRuleResult };

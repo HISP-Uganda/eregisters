@@ -170,7 +170,10 @@ export default function MainEventCapture({
         closeModal: closeChildModal,
     } = useModalState<FlattenedTrackedEntity>();
     const { saveBlockFor: childSaveBlockFor, onRuleResult: onChildRuleResult } =
-        useTrackedEntitySaveBlock();
+        useTrackedEntitySaveBlock({
+            ...(childData?.attributes ?? {}),
+            ...(childEnrollment?.attributes ?? {}),
+        });
     const { program, optionSets, programRuleVariables, programRules } =
         useMetadata();
     const uiConfig = useUIConfig();

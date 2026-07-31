@@ -1,46 +1,46 @@
 import {
-	ArrowLeftOutlined,
-	CalendarOutlined,
-	CaretRightOutlined,
-	DeleteOutlined,
-	EditOutlined,
-	PlusOutlined,
-	UserOutlined,
+    ArrowLeftOutlined,
+    CalendarOutlined,
+    CaretRightOutlined,
+    DeleteOutlined,
+    EditOutlined,
+    PlusOutlined,
+    UserOutlined,
 } from "@ant-design/icons";
 import { createRoute } from "@tanstack/react-router";
 import type { DescriptionsProps, TableProps } from "antd";
 
 import { and, eq, not, useLiveSuspenseQuery } from "@tanstack/react-db";
 import {
-	Button,
-	Card,
-	Collapse,
-	Descriptions,
-	Flex,
-	Form,
-	Grid,
-	Popconfirm,
-	Space,
-	Splitter,
-	Table,
-	Tag,
-	Typography,
+    Button,
+    Card,
+    Collapse,
+    Descriptions,
+    Flex,
+    Form,
+    Grid,
+    Popconfirm,
+    Space,
+    Splitter,
+    Table,
+    Tag,
+    Typography,
 } from "antd";
 import dayjs from "dayjs";
 import { Table as DexieTable } from "dexie";
 import { isEmpty } from "lodash";
 import React, {
-	useCallback,
-	useEffect,
-	useMemo,
-	useRef,
-	useState,
+    useCallback,
+    useEffect,
+    useMemo,
+    useRef,
+    useState,
 } from "react";
 import { z } from "zod";
 import {
-	enrollmentsCollection,
-	eventsCollection,
-	trackedEntitiesCollection,
+    enrollmentsCollection,
+    eventsCollection,
+    trackedEntitiesCollection,
 } from "../collections";
 import { DataModal } from "../components/data-modal";
 import MainEventCapture from "../components/main-event-capture";
@@ -56,17 +56,17 @@ import { useModalState } from "../hooks/useModalState";
 import { EventContext, TrackedEntityContext } from "../machines";
 import { SyncContext } from "../machines/sync";
 import {
-	FlattenedEnrollment,
-	FlattenedEvent,
-	FlattenedTrackedEntity,
-	ProgramRuleResult,
+    FlattenedEnrollment,
+    FlattenedEvent,
+    FlattenedTrackedEntity,
+    ProgramRuleResult,
 } from "../schemas";
 import { computeSaveBlock } from "../utils/save-block";
 import {
-	cancelDataModal,
-	createEmptyEvent,
-	deleteEventWithChildren,
-	deleteTrackedEntityWithChildren,
+    cancelDataModal,
+    createEmptyEvent,
+    deleteEventWithChildren,
+    deleteTrackedEntityWithChildren,
 } from "../utils/utils";
 import { RootRoute } from "./__root";
 
@@ -121,8 +121,9 @@ function TrackedEntityComponent() {
     } = useMetadata();
     const [eventRuleResult, setEventRuleResult] =
         useState<ProgramRuleResult | null>(null);
-    const [teRuleResult, setTeRuleResult] =
-        useState<ProgramRuleResult | null>(null);
+    const [teRuleResult, setTeRuleResult] = useState<ProgramRuleResult | null>(
+        null,
+    );
     const { trackedEntity: tei } = TrackedEntityRoute.useParams();
     const search = TrackedEntityRoute.useSearch();
     const navigate = TrackedEntityRoute.useNavigate();
@@ -731,7 +732,7 @@ function TrackedEntityComponent() {
                         ruleMandatoryIds:
                             eventRuleResult?.mandatoryFields ?? [],
                         hiddenIds: eventRuleResult?.hiddenFields ?? [],
-                        values,
+                        values: { ...(data?.dataValues ?? {}), ...values },
                         labels: new Map([
                             ...dataElementLabels,
                             ["occurredAt", "Visit Date"],
@@ -822,6 +823,7 @@ function TrackedEntityComponent() {
                                 enrollment.enrollment,
                                 (draft) => {
                                     draft.enrolledAt = enrolledAt;
+                                    draft.occurredAt = enrolledAt;
                                     draft.syncStatus = "pending";
                                     draft.attributes = {
                                         ...trackedEntityData.attributes,
@@ -838,10 +840,16 @@ function TrackedEntityComponent() {
                 saveBlockFor={(values) =>
                     computeSaveBlock({
                         metadataMandatoryIds: teaMandatoryIds,
-                        ruleMandatoryIds:
-                            teRuleResult?.mandatoryFields ?? [],
+                        ruleMandatoryIds: teRuleResult?.mandatoryFields ?? [],
                         hiddenIds: teRuleResult?.hiddenFields ?? [],
-                        values,
+                        values: {
+                            ...(trackedEntityData?.attributes ?? {}),
+                            ...(enrollment?.attributes ?? {}),
+                            ...(enrollment?.enrolledAt
+                                ? { enrolledAt: enrollment.enrolledAt }
+                                : {}),
+                            ...values,
+                        },
                         labels: teaLabels,
                         errors: (teRuleResult?.errors ?? []).map(
                             (e) => e.content,

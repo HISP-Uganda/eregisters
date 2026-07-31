@@ -1016,7 +1016,7 @@ export const ProgramStageCapture: React.FC<{
                             ruleMandatoryIds:
                                 stageRuleResult?.mandatoryFields ?? [],
                             hiddenIds: stageRuleResult?.hiddenFields ?? [],
-                            values,
+                            values: { ...(data?.dataValues ?? {}), ...values },
                             labels: stageLabels,
                             errors: (stageRuleResult?.errors ?? []).map(
                                 (e) => e.content,
