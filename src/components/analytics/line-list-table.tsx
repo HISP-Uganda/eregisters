@@ -27,42 +27,13 @@ export function LineListTable({
     );
 }
 
-function toTableColumns(columns: AnalyticsColumn[]): ColumnsType<AnalyticsRow> {
-    const root: GroupNode = { children: new Map(), columns: [] };
-    for (const column of columns) {
-        let node = root;
-        for (const segment of column.groupPath) {
-            const next =
-                node.children.get(segment) ?? {
-                    title: segment,
-                    children: new Map<string, GroupNode>(),
-                    columns: [],
-                };
-            node.children.set(segment, next);
-            node = next;
-        }
-        node.columns.push(column);
-    }
-    return flattenNode(root);
-}
-
-interface GroupNode {
-    title?: string;
-    children: Map<string, GroupNode>;
-    columns: AnalyticsColumn[];
-}
-
-function flattenNode(node: GroupNode): ColumnsType<AnalyticsRow> {
-    return [
-        ...[...node.children.values()].map((child) => ({
-            title: child.title,
-            children: flattenNode(child),
-        })),
-        ...node.columns.map((column) => ({
+export function toTableColumns(
+    columns: AnalyticsColumn[],
+): ColumnsType<AnalyticsRow> {
+    return columns.map((column) => ({
             title: column.label,
             dataIndex: ["values", column.key, "display"],
             key: column.key,
             width: 180,
-        })),
-    ];
+        }));
 }
