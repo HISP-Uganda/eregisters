@@ -1,6 +1,6 @@
 import { SettingOutlined } from "@ant-design/icons";
 import { Button, Checkbox, Drawer, Flex, Typography } from "antd";
-import { useState } from "react";
+import React, { useState } from "react";
 import type { AnalyticsColumn } from "../../analytics/types";
 
 const { Text } = Typography;

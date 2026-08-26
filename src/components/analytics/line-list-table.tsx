@@ -1,5 +1,6 @@
 import { Table } from "antd";
 import type { ColumnsType } from "antd/es/table";
+import React from "react";
 import type { AnalyticsColumn, AnalyticsRow } from "../../analytics/types";
 
 export function LineListTable({

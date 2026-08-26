@@ -3,7 +3,7 @@ import { and, eq, useLiveSuspenseQuery } from "@tanstack/react-db";
 import { createRoute } from "@tanstack/react-router";
 import { Button, Flex, Tabs, Typography } from "antd";
 import dayjs from "dayjs";
-import { useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { buildParentEventDataset } from "../analytics/parent-event-dataset";
 import { buildPivot } from "../analytics/pivot-engine";
 import {

@@ -1,6 +1,6 @@
 import { BarChartOutlined } from "@ant-design/icons";
 import { Button, Flex, Select, Table } from "antd";
-import { useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { buildPivot } from "../../analytics/pivot-engine";
 import type {
     AnalyticsColumn,
