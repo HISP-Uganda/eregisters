@@ -1,6 +1,7 @@
 import {
     CloudDownloadOutlined,
     CloudUploadOutlined,
+    BarChartOutlined,
     DownOutlined,
     ExclamationCircleOutlined,
     HomeOutlined,
@@ -753,6 +754,17 @@ function LayoutWithDrafts() {
                     idleLabel="Verify Reports"
                     loadingLabel="Pushing..."
                     lastTime={"View reports"}
+                    onClick={() => {}}
+                />
+            </Link>
+            <Link to="/analytics" onClick={() => setDrawerOpen(false)}>
+                <SyncButton
+                    tooltip="Analytics"
+                    icon={<BarChartOutlined />}
+                    isLoading={false}
+                    idleLabel="Analytics"
+                    loadingLabel="Loading..."
+                    lastTime={"Line list and pivot"}
                     onClick={() => {}}
                 />
             </Link>
