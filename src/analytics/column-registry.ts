@@ -129,8 +129,6 @@ export function buildColumnRegistry({
 
     for (const psde of parentStage.programStageDataElements ?? []) {
         const de = psde.dataElement;
-        const section =
-            findStageSection(parentStage, de.id) ?? "Ungrouped Parent Event";
         const valueKind = valueKindFromDhis2(de.valueType);
         columns.push(
             column({
@@ -140,7 +138,7 @@ export function buildColumnRegistry({
                 sourceFieldId: de.id,
                 valueKind,
                 optionSetId: de.optionSet?.id,
-                groupPath: ["Parent Event", parentStage.name, section],
+                groupPath: ["Parent Event"],
                 defaultVisible: true,
                 canMeasure: valueKind === "number",
             }),
@@ -218,7 +216,8 @@ function addSystemColumns(
                 source,
                 sourceFieldId: field,
                 valueKind: field.endsWith("At") ? "datetime" : "string",
-                groupPath: [groupName, "System"],
+                groupPath:
+                    source === "parentEvent" ? [groupName] : [groupName, "System"],
                 defaultVisible: source === "parentEvent" && field === "occurredAt",
             }),
         );

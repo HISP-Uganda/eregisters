@@ -118,7 +118,7 @@ const metadata = {
 } as unknown as AnalyticsMetadata;
 
 describe("buildColumnRegistry", () => {
-    it("includes system ids and section-grouped parent event data values", () => {
+    it("keeps parent event fields ungrouped while section-grouping tracked entity and child fields", () => {
         const columns = buildColumnRegistry({
             metadata,
             parentStageId: "visit000001",
@@ -133,10 +133,12 @@ describe("buildColumnRegistry", () => {
             .toEqual(["System IDs"]);
         expect(columns.find((c) => c.key === "te.attribute.firstName01")?.groupPath)
             .toEqual(["Tracked Entity", "Registration Details"]);
+        expect(columns.find((c) => c.key === "parentEvent.occurredAt")?.groupPath)
+            .toEqual(["Parent Event"]);
         expect(
             columns.find((c) => c.key === "parentEvent.dataValue.weightuid01")
                 ?.groupPath,
-        ).toEqual(["Parent Event", "Visit", "Triage"]);
+        ).toEqual(["Parent Event"]);
         expect(
             columns.find(
                 (c) =>
