@@ -43,7 +43,8 @@ function AnalyticsPage() {
     const defaultStage = program.programStages[0]?.id ?? "";
     const [filters, setFilters] = useState<AnalyticsFilters>({
         programId: program.id,
-        parentStageId: defaultStage,
+        mainStageId: defaultStage,
+        childStageIds: [],
         startDate: dayjs().startOf("month").format("YYYY-MM-DD"),
         endDate: dayjs().format("YYYY-MM-DD"),
     });
@@ -91,7 +92,8 @@ function AnalyticsPage() {
                 events,
                 orgUnit,
                 programId: filters.programId,
-                parentStageId: filters.parentStageId || defaultStage,
+                mainStageId: filters.mainStageId || defaultStage,
+                childStageIds: filters.childStageIds,
                 startDate: filters.startDate,
                 endDate: filters.endDate,
             }),
@@ -127,7 +129,7 @@ function AnalyticsPage() {
                         Analytics
                     </Title>
                     <Text type="secondary">
-                        {dataset.rows.length} parent events
+                        {dataset.rows.length} main events
                     </Text>
                 </Flex>
                 <AnalyticsFilterBar

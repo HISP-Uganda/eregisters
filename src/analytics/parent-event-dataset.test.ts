@@ -10,7 +10,8 @@ describe("buildParentEventDataset", () => {
             metadata,
             orgUnit: "ouuid000001",
             programId: "programuid1",
-            parentStageId: "visit000001",
+            mainStageId: "visit000001",
+            childStageIds: ["labstage001"],
             startDate: "2026-08-01",
             endDate: "2026-08-31",
             trackedEntities: [trackedEntity("teuid000001", { firstName01: "Jane" })],
@@ -59,12 +60,13 @@ describe("buildParentEventDataset", () => {
         ).toBe(true);
     });
 
-    it("excludes deleted parent events and parent events outside the date range", () => {
+    it("excludes deleted main events and main events outside the date range", () => {
         const dataset = buildParentEventDataset({
             metadata,
             orgUnit: "ouuid000001",
             programId: "programuid1",
-            parentStageId: "visit000001",
+            mainStageId: "visit000001",
+            childStageIds: [],
             startDate: "2026-08-01",
             endDate: "2026-08-31",
             trackedEntities: [trackedEntity("teuid000001", {})],
@@ -89,7 +91,8 @@ describe("buildParentEventDataset", () => {
             metadata,
             orgUnit: "ouuid000001",
             programId: "programuid1",
-            parentStageId: "visit000001",
+            mainStageId: "visit000001",
+            childStageIds: [],
             startDate: "2026-08-01",
             endDate: "2026-08-31",
             trackedEntities: [],
@@ -110,6 +113,37 @@ describe("buildParentEventDataset", () => {
         expect(
             dataset.rows[0].values["parentEvent.dataValue.weightuid01"].raw,
         ).toBe(51);
+    });
+
+    it("only adds child columns for selected child stages", () => {
+        const dataset = buildParentEventDataset({
+            metadata,
+            orgUnit: "ouuid000001",
+            programId: "programuid1",
+            mainStageId: "visit000001",
+            childStageIds: [],
+            startDate: "2026-08-01",
+            endDate: "2026-08-31",
+            trackedEntities: [trackedEntity("teuid000001", {})],
+            enrollments: [enrollment("enroll00001", "teuid000001")],
+            events: [
+                event("visit000001", "visit000001", "teuid000001", {
+                    enrollment: "enroll00001",
+                }),
+                event("lab00000001", "labstage001", "teuid000001", {
+                    enrollment: "enroll00001",
+                    parentEvent: "visit000001",
+                    dataValues: { resultuid01: "P" },
+                }),
+            ],
+        });
+
+        expect(
+            dataset.columns.some((column) =>
+                column.key.startsWith("childEvent.labstage001."),
+            ),
+        ).toBe(false);
+        expect(dataset.rows[0].childEventsByStage).toEqual({});
     });
 });
 

@@ -7,7 +7,8 @@ const { RangePicker } = DatePicker;
 
 export interface AnalyticsFilters {
     programId: string;
-    parentStageId: string;
+    mainStageId: string;
+    childStageIds: string[];
     startDate: string;
     endDate: string;
 }
@@ -31,13 +32,35 @@ export function AnalyticsFilterBar({
             />
             <Select
                 style={{ minWidth: 260 }}
-                value={filters.parentStageId}
+                value={filters.mainStageId}
+                placeholder="Main stage"
                 options={program.programStages.map((stage) => ({
                     value: stage.id,
                     label: stage.name,
                 }))}
-                onChange={(parentStageId) =>
-                    onChange({ ...filters, parentStageId })
+                onChange={(mainStageId) =>
+                    onChange({
+                        ...filters,
+                        mainStageId,
+                        childStageIds: filters.childStageIds.filter(
+                            (stageId) => stageId !== mainStageId,
+                        ),
+                    })
+                }
+            />
+            <Select
+                mode="multiple"
+                style={{ minWidth: 300 }}
+                value={filters.childStageIds}
+                placeholder="Child stages"
+                options={program.programStages
+                    .filter((stage) => stage.id !== filters.mainStageId)
+                    .map((stage) => ({
+                        value: stage.id,
+                        label: stage.name,
+                    }))}
+                onChange={(childStageIds) =>
+                    onChange({ ...filters, childStageIds })
                 }
             />
             <RangePicker

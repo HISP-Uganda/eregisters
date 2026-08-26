@@ -77,7 +77,8 @@ export interface AnalyticsDatasetInput {
     events: FlattenedEvent[];
     orgUnit: string;
     programId: string;
-    parentStageId: string;
+    mainStageId: string;
+    childStageIds: string[];
     startDate: string;
     endDate: string;
 }
@@ -85,7 +86,7 @@ export interface AnalyticsDatasetInput {
 export interface AnalyticsDataset {
     columns: AnalyticsColumn[];
     rows: AnalyticsRow[];
-    parentStage: ProgramStage;
+    mainStage: ProgramStage;
 }
 
 export type DateBucket = "exact" | "week" | "month" | "quarter" | "year";

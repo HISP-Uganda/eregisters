@@ -3,7 +3,7 @@ import { valueKindFromDhis2 } from "./value-format";
 
 interface RegistryInput {
     metadata: AnalyticsMetadata;
-    parentStageId: string;
+    mainStageId: string;
     childStageSlotCounts: Map<string, number>;
 }
 
@@ -25,14 +25,14 @@ function column(
 
 export function buildColumnRegistry({
     metadata,
-    parentStageId,
+    mainStageId,
     childStageSlotCounts,
 }: RegistryInput): AnalyticsColumn[] {
-    const parentStage = metadata.program.programStages.find(
-        (stage) => stage.id === parentStageId,
+    const mainStage = metadata.program.programStages.find(
+        (stage) => stage.id === mainStageId,
     );
-    if (!parentStage) {
-        throw new Error(`Parent stage ${parentStageId} was not found`);
+    if (!mainStage) {
+        throw new Error(`Main stage ${mainStageId} was not found`);
     }
 
     const columns: AnalyticsColumn[] = [
@@ -56,7 +56,7 @@ export function buildColumnRegistry({
         }),
         column({
             key: "parentEvent.event",
-            label: "Parent Event ID",
+            label: "Main Event ID",
             source: "parentEvent",
             sourceFieldId: "event",
             valueKind: "string",
@@ -135,8 +135,9 @@ export function buildColumnRegistry({
         );
     }
 
-    for (const psde of parentStage.programStageDataElements ?? []) {
+    for (const psde of mainStage.programStageDataElements ?? []) {
         const de = metadata.dataElements.get(psde.dataElement.id) ?? psde.dataElement;
+        const section = findStageSection(mainStage, de.id) ?? "Ungrouped";
         const valueKind = valueKindFromDhis2(de.valueType);
         columns.push(
             column({
@@ -146,7 +147,7 @@ export function buildColumnRegistry({
                 sourceFieldId: de.id,
                 valueKind,
                 optionSetId: de.optionSet?.id,
-                groupPath: ["Parent Event"],
+                groupPath: ["Main Event", mainStage.name, section],
                 defaultVisible: false,
                 canMeasure: valueKind === "number",
             }),
@@ -220,7 +221,7 @@ function addSystemColumns(
             ? "Tracked Entity"
             : source === "enrollment"
               ? "Enrollment"
-              : "Parent Event";
+              : "Main Event";
 
     for (const field of fields) {
         columns.push(
@@ -230,8 +231,7 @@ function addSystemColumns(
                 source,
                 sourceFieldId: field,
                 valueKind: field.endsWith("At") ? "datetime" : "string",
-                groupPath:
-                    source === "parentEvent" ? [groupName] : [groupName, "System"],
+                groupPath: [groupName, "System"],
                 defaultVisible: source === "parentEvent" && field === "occurredAt",
             }),
         );

@@ -18,12 +18,13 @@ type RecordWithDataValues = Record<string, unknown> & {
 export function buildParentEventDataset(
     input: AnalyticsDatasetInput,
 ): AnalyticsDataset {
-    const parentStage = input.metadata.program.programStages.find(
-        (stage) => stage.id === input.parentStageId,
+    const mainStage = input.metadata.program.programStages.find(
+        (stage) => stage.id === input.mainStageId,
     );
-    if (!parentStage) {
-        throw new Error(`Parent stage ${input.parentStageId} was not found`);
+    if (!mainStage) {
+        throw new Error(`Main stage ${input.mainStageId} was not found`);
     }
+    const selectedChildStageIds = new Set(input.childStageIds);
 
     const trackedEntityById = new Map(
         input.trackedEntities.map((te) => [te.trackedEntity, te]),
@@ -35,11 +36,11 @@ export function buildParentEventDataset(
         ]),
     );
 
-    const parentEvents = input.events.filter((event) => {
+    const mainEvents = input.events.filter((event) => {
         if (event.syncStatus === "deleted" || event.deleted) return false;
         if (event.orgUnit !== input.orgUnit) return false;
         if (event.program !== input.programId) return false;
-        if (event.programStage !== input.parentStageId) return false;
+        if (event.programStage !== input.mainStageId) return false;
         return isWithinDateRange(
             effectiveOccurredAt(event),
             input.startDate,
@@ -51,13 +52,14 @@ export function buildParentEventDataset(
     for (const event of input.events) {
         if (!event.parentEvent) continue;
         if (event.syncStatus === "deleted" || event.deleted) continue;
+        if (!selectedChildStageIds.has(event.programStage)) continue;
         const existing = childEventsByParent.get(event.parentEvent) ?? [];
         existing.push(event);
         childEventsByParent.set(event.parentEvent, existing);
     }
 
     const slotCounts = new Map<string, number>();
-    for (const parent of parentEvents) {
+    for (const parent of mainEvents) {
         const grouped = groupChildrenByStage(
             childEventsByParent.get(parent.event) ?? [],
         );
@@ -71,11 +73,11 @@ export function buildParentEventDataset(
 
     const columns = buildColumnRegistry({
         metadata: input.metadata,
-        parentStageId: input.parentStageId,
+        mainStageId: input.mainStageId,
         childStageSlotCounts: slotCounts,
     });
 
-    const rows = parentEvents.map((parentEvent) => {
+    const rows = mainEvents.map((parentEvent) => {
         const trackedEntity =
             trackedEntityById.get(parentEvent.trackedEntity) ??
             fallbackTrackedEntity(parentEvent);
@@ -103,7 +105,7 @@ export function buildParentEventDataset(
         };
     });
 
-    return { columns, rows, parentStage };
+    return { columns, rows, mainStage };
 }
 
 function fallbackTrackedEntity(parentEvent: {

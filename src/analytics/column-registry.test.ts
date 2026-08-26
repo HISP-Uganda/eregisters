@@ -157,10 +157,10 @@ const metadata = {
 } as unknown as AnalyticsMetadata;
 
 describe("buildColumnRegistry", () => {
-    it("keeps parent event fields ungrouped while section-grouping tracked entity and child fields", () => {
+    it("section-groups tracked entity, main stage, and selected child stage fields", () => {
         const columns = buildColumnRegistry({
             metadata,
-            parentStageId: "visit000001",
+            mainStageId: "visit000001",
             childStageSlotCounts: new Map([["followup001", 2]]),
         });
 
@@ -175,11 +175,11 @@ describe("buildColumnRegistry", () => {
         expect(columns.find((c) => c.key === "te.attribute.firstName01")?.label)
             .toBe("First name");
         expect(columns.find((c) => c.key === "parentEvent.occurredAt")?.groupPath)
-            .toEqual(["Parent Event"]);
+            .toEqual(["Main Event", "System"]);
         expect(
             columns.find((c) => c.key === "parentEvent.dataValue.weightuid01")
                 ?.groupPath,
-        ).toEqual(["Parent Event"]);
+        ).toEqual(["Main Event", "Visit", "Triage"]);
         expect(
             columns.find((c) => c.key === "parentEvent.dataValue.weightuid01")
                 ?.label,
