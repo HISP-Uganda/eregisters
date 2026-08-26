@@ -83,6 +83,34 @@ describe("buildParentEventDataset", () => {
 
         expect(dataset.rows).toEqual([]);
     });
+
+    it("keeps parent event rows when the referenced tracked entity is missing locally", () => {
+        const dataset = buildParentEventDataset({
+            metadata,
+            orgUnit: "ouuid000001",
+            programId: "programuid1",
+            parentStageId: "visit000001",
+            startDate: "2026-08-01",
+            endDate: "2026-08-31",
+            trackedEntities: [],
+            enrollments: [enrollment("enroll00001", "CoIKpA9MLV0")],
+            events: [
+                event("visit000001", "visit000001", "CoIKpA9MLV0", {
+                    enrollment: "enroll00001",
+                    dataValues: { weightuid01: 51 },
+                }),
+            ],
+        });
+
+        expect(dataset.rows).toHaveLength(1);
+        expect(dataset.rows[0].trackedEntity.trackedEntity).toBe("CoIKpA9MLV0");
+        expect(dataset.rows[0].values["trackedEntity.trackedEntity"].raw).toBe(
+            "CoIKpA9MLV0",
+        );
+        expect(
+            dataset.rows[0].values["parentEvent.dataValue.weightuid01"].raw,
+        ).toBe(51);
+    });
 });
 
 function makeMetadata(): AnalyticsMetadata {

@@ -76,12 +76,9 @@ export function buildParentEventDataset(
     });
 
     const rows = parentEvents.map((parentEvent) => {
-        const trackedEntity = trackedEntityById.get(parentEvent.trackedEntity);
-        if (!trackedEntity) {
-            throw new Error(
-                `Tracked entity ${parentEvent.trackedEntity} was not found`,
-            );
-        }
+        const trackedEntity =
+            trackedEntityById.get(parentEvent.trackedEntity) ??
+            fallbackTrackedEntity(parentEvent);
 
         const childEventsByStage = groupChildrenByStage(
             childEventsByParent.get(parentEvent.event) ?? [],
@@ -107,6 +104,28 @@ export function buildParentEventDataset(
     });
 
     return { columns, rows, parentStage };
+}
+
+function fallbackTrackedEntity(parentEvent: {
+    trackedEntity: string;
+    orgUnit: string;
+    createdAt: string;
+    updatedAt: string;
+}) {
+    return {
+        trackedEntity: parentEvent.trackedEntity,
+        trackedEntityType: "",
+        createdAt: parentEvent.createdAt,
+        updatedAt: parentEvent.updatedAt,
+        orgUnit: parentEvent.orgUnit,
+        inactive: false,
+        deleted: false,
+        potentialDuplicate: false,
+        attributes: {},
+        syncStatus: "synced" as const,
+        lastSynced: "",
+        version: 1,
+    };
 }
 
 function effectiveOccurredAt(event: {
