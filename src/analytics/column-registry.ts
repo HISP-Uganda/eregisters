@@ -108,14 +108,22 @@ export function buildColumnRegistry({
     }
 
     for (const ptea of metadata.program.programTrackedEntityAttributes ?? []) {
-        const tea = ptea.trackedEntityAttribute;
+        const tea =
+            metadata.trackedEntityAttributes.get(
+                ptea.trackedEntityAttribute.id,
+            ) ?? ptea.trackedEntityAttribute;
         const section =
             attributeSections.get(tea.id) ?? "Ungrouped Attributes";
         const valueKind = valueKindFromDhis2(tea.valueType);
         columns.push(
             column({
                 key: `te.attribute.${tea.id}`,
-                label: tea.formName || tea.displayFormName || tea.name,
+                label: labelFrom(
+                    tea.formName,
+                    tea.displayFormName,
+                    tea.name,
+                    tea.id,
+                ),
                 source: "trackedEntity",
                 sourceFieldId: tea.id,
                 valueKind,
@@ -128,12 +136,12 @@ export function buildColumnRegistry({
     }
 
     for (const psde of parentStage.programStageDataElements ?? []) {
-        const de = psde.dataElement;
+        const de = metadata.dataElements.get(psde.dataElement.id) ?? psde.dataElement;
         const valueKind = valueKindFromDhis2(de.valueType);
         columns.push(
             column({
                 key: `parentEvent.dataValue.${de.id}`,
-                label: de.formName || de.name,
+                label: labelFrom(de.formName, de.name, de.id),
                 source: "parentEvent",
                 sourceFieldId: de.id,
                 valueKind,
@@ -167,14 +175,20 @@ export function buildColumnRegistry({
             );
 
             for (const psde of stage.programStageDataElements ?? []) {
-                const de = psde.dataElement;
+                const de =
+                    metadata.dataElements.get(psde.dataElement.id) ??
+                    psde.dataElement;
                 const section =
                     findStageSection(stage, de.id) ?? "Ungrouped Child Event";
                 const valueKind = valueKindFromDhis2(de.valueType);
                 columns.push(
                     column({
                         key: `childEvent.${stageId}.${slot}.dataValue.${de.id}`,
-                        label: `${stage.name} ${slot} ${de.formName || de.name}`,
+                        label: `${stage.name} ${slot} ${labelFrom(
+                            de.formName,
+                            de.name,
+                            de.id,
+                        )}`,
                         source: "childEvent",
                         sourceFieldId: de.id,
                         valueKind,
@@ -234,4 +248,12 @@ function findStageSection(
         ),
     );
     return section ? section.displayName || section.name : undefined;
+}
+
+function labelFrom(...candidates: Array<string | undefined>): string {
+    for (const candidate of candidates) {
+        const label = candidate?.trim();
+        if (label) return label;
+    }
+    return "";
 }

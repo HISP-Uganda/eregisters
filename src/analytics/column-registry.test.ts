@@ -4,8 +4,8 @@ import type { AnalyticsMetadata } from "./types";
 
 const weight = {
     id: "weightuid01",
-    name: "Weight",
-    formName: "Weight",
+    name: "",
+    formName: "",
     code: "weight",
     valueType: "NUMBER",
     optionSetValue: false,
@@ -13,8 +13,8 @@ const weight = {
 
 const followUp = {
     id: "followup001",
-    name: "Follow up result",
-    formName: "Follow up result",
+    name: "",
+    formName: "",
     code: "follow_up_result",
     valueType: "TEXT",
     optionSetValue: false,
@@ -44,9 +44,9 @@ const metadata = {
                 allowFutureDate: false,
                 trackedEntityAttribute: {
                     id: "firstName01",
-                    name: "First name",
-                    displayFormName: "First name",
-                    formName: "First name",
+                    name: "",
+                    displayFormName: "",
+                    formName: "",
                     valueType: "TEXT",
                     confidential: false,
                     unique: false,
@@ -112,8 +112,47 @@ const metadata = {
             },
         ],
     },
-    trackedEntityAttributes: new Map(),
-    dataElements: new Map(),
+    trackedEntityAttributes: new Map([
+        [
+            "firstName01",
+            {
+                id: "firstName01",
+                name: "First name",
+                displayFormName: "First name",
+                formName: "First name",
+                valueType: "TEXT",
+                confidential: false,
+                unique: false,
+                generated: false,
+                pattern: "",
+                optionSetValue: false,
+            },
+        ],
+    ]),
+    dataElements: new Map([
+        [
+            "weightuid01",
+            {
+                id: "weightuid01",
+                name: "Weight",
+                formName: "Weight",
+                code: "weight",
+                valueType: "NUMBER",
+                optionSetValue: false,
+            },
+        ],
+        [
+            "followup001",
+            {
+                id: "followup001",
+                name: "Follow up result",
+                formName: "Follow up result",
+                code: "follow_up_result",
+                valueType: "TEXT",
+                optionSetValue: false,
+            },
+        ],
+    ]),
     optionSets: new Map(),
 } as unknown as AnalyticsMetadata;
 
@@ -133,12 +172,18 @@ describe("buildColumnRegistry", () => {
             .toEqual(["System IDs"]);
         expect(columns.find((c) => c.key === "te.attribute.firstName01")?.groupPath)
             .toEqual(["Tracked Entity", "Registration Details"]);
+        expect(columns.find((c) => c.key === "te.attribute.firstName01")?.label)
+            .toBe("First name");
         expect(columns.find((c) => c.key === "parentEvent.occurredAt")?.groupPath)
             .toEqual(["Parent Event"]);
         expect(
             columns.find((c) => c.key === "parentEvent.dataValue.weightuid01")
                 ?.groupPath,
         ).toEqual(["Parent Event"]);
+        expect(
+            columns.find((c) => c.key === "parentEvent.dataValue.weightuid01")
+                ?.label,
+        ).toBe("Weight");
         expect(
             columns.find(
                 (c) =>
@@ -152,5 +197,12 @@ describe("buildColumnRegistry", () => {
             columns.find((c) => c.key === "parentEvent.dataValue.weightuid01")
                 ?.pivot.canUseAsMeasure,
         ).toBe(true);
+        expect(
+            columns.find(
+                (c) =>
+                    c.key ===
+                    "childEvent.followup001.2.dataValue.followup001",
+            )?.label,
+        ).toBe("Follow Up 2 Follow up result");
     });
 });
