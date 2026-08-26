@@ -27,6 +27,7 @@
         "react": "19.2.6",
         "react-dom": "19.2.6",
         "tanstack-dexie-db-collection": "^0.1.4",
+        "xlsx": "^0.18.5",
         "xstate": "^5.31.1",
         "zod": "^4.4.3"
     },
