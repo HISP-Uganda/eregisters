@@ -192,11 +192,15 @@ describe("buildColumnRegistry", () => {
             )?.groupPath,
         ).toEqual(["Child Events", "Follow Up", "Slot 2", "Outcome"]);
         expect(columns.find((c) => c.key === "te.attribute.firstName01")?.defaultVisible)
-            .toBe(true);
+            .toBe(false);
         expect(
             columns.find((c) => c.key === "parentEvent.dataValue.weightuid01")
                 ?.pivot.canUseAsMeasure,
         ).toBe(true);
+        expect(
+            columns.find((c) => c.key === "parentEvent.dataValue.weightuid01")
+                ?.defaultVisible,
+        ).toBe(false);
         expect(
             columns.find(
                 (c) =>

@@ -129,7 +129,7 @@ export function buildColumnRegistry({
                 valueKind,
                 optionSetId: tea.optionSet?.id,
                 groupPath: ["Tracked Entity", section],
-                defaultVisible: Boolean(ptea.displayInList),
+                defaultVisible: false,
                 canMeasure: valueKind === "number",
             }),
         );
@@ -147,7 +147,7 @@ export function buildColumnRegistry({
                 valueKind,
                 optionSetId: de.optionSet?.id,
                 groupPath: ["Parent Event"],
-                defaultVisible: true,
+                defaultVisible: false,
                 canMeasure: valueKind === "number",
             }),
         );
