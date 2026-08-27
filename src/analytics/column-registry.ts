@@ -52,7 +52,7 @@ export function buildColumnRegistry({
             sourceFieldId: "enrollment",
             valueKind: "string",
             groupPath: ["System IDs"],
-            defaultVisible: true,
+            defaultVisible: false,
         }),
         column({
             key: "parentEvent.event",
@@ -119,9 +119,9 @@ export function buildColumnRegistry({
             column({
                 key: `te.attribute.${tea.id}`,
                 label: labelFrom(
+                    tea.name,
                     tea.formName,
                     tea.displayFormName,
-                    tea.name,
                     tea.id,
                 ),
                 source: "trackedEntity",
@@ -142,7 +142,7 @@ export function buildColumnRegistry({
         columns.push(
             column({
                 key: `parentEvent.dataValue.${de.id}`,
-                label: labelFrom(de.formName, de.name, de.id),
+                label: labelFrom(de.name, de.formName, de.id),
                 source: "parentEvent",
                 sourceFieldId: de.id,
                 valueKind,
@@ -161,17 +161,14 @@ export function buildColumnRegistry({
             columns.push(
                 column({
                     key: `childEvent.${stageId}.${slot}.event`,
-                    label: `${stage.name} ${slot} Event ID`,
+                    label: `Event ID (${slot})`,
                     source: "childEvent",
                     sourceFieldId: "event",
                     valueKind: "string",
-                    groupPath: [
-                        "Child Events",
-                        stage.name,
-                        `Slot ${slot}`,
-                        "System",
-                    ],
+                    groupPath: ["Child Events", stage.name, "System"],
                     defaultVisible: false,
+                    chooserKey: `childEvent.${stageId}.event`,
+                    chooserLabel: "Event ID",
                 }),
             );
 
@@ -182,26 +179,20 @@ export function buildColumnRegistry({
                 const section =
                     findStageSection(stage, de.id) ?? "Ungrouped Child Event";
                 const valueKind = valueKindFromDhis2(de.valueType);
+                const deLabel = labelFrom(de.name, de.formName, de.id);
                 columns.push(
                     column({
                         key: `childEvent.${stageId}.${slot}.dataValue.${de.id}`,
-                        label: `${stage.name} ${slot} ${labelFrom(
-                            de.formName,
-                            de.name,
-                            de.id,
-                        )}`,
+                        label: `${deLabel} (${slot})`,
                         source: "childEvent",
                         sourceFieldId: de.id,
                         valueKind,
                         optionSetId: de.optionSet?.id,
-                        groupPath: [
-                            "Child Events",
-                            stage.name,
-                            `Slot ${slot}`,
-                            section,
-                        ],
+                        groupPath: ["Child Events", stage.name, section],
                         defaultVisible: false,
                         canMeasure: valueKind === "number",
+                        chooserKey: `childEvent.${stageId}.dataValue.${de.id}`,
+                        chooserLabel: deLabel,
                     }),
                 );
             }

@@ -1,6 +1,7 @@
 import { BarChartOutlined } from "@ant-design/icons";
 import { Button, Flex, Select, Table } from "antd";
-import React, { useMemo, useState } from "react";
+import type { ColumnsType } from "antd/es/table";
+import React, { useEffect, useMemo, useState } from "react";
 import { buildPivot } from "../../analytics/pivot-engine";
 import type {
     AnalyticsColumn,
@@ -8,16 +9,31 @@ import type {
     DateBucket,
     PivotConfig,
     PivotMeasure,
+    PivotResult,
 } from "../../analytics/types";
+import { useIsMobile } from "../../hooks/useIsMobile";
+import { useTableScrollHeight } from "../../hooks/useTableScrollHeight";
 
 const dateBuckets: DateBucket[] = ["exact", "week", "month", "quarter", "year"];
+
+export interface PivotExportInfo {
+    result: PivotResult;
+    measures: PivotMeasure[];
+}
 
 export function PivotBuilder({
     columns,
     rows,
+    onResultChange,
 }: {
     columns: AnalyticsColumn[];
     rows: AnalyticsRow[];
+    /**
+     * Fired whenever the on-screen pivot (dimensions, measures, or the
+     * underlying rows) changes, so an export button outside this component
+     * can download exactly what's currently displayed.
+     */
+    onResultChange?: (info: PivotExportInfo) => void;
 }) {
     const dimensionOptions = columns
         .filter((column) => column.pivot.canUseAsDimension)
@@ -42,10 +58,49 @@ export function PivotBuilder({
         columns: [],
         measures: [{ id: "count", label: "Count", aggregation: "count" }],
     });
+
+    // Pivot dimensions/measures are drawn from the Line List's selected
+    // columns. If the user deselects a column that's in use here, drop it
+    // from the pivot too instead of leaving a dangling, unlabelled choice.
+    useEffect(() => {
+        const columnKeys = new Set(columns.map((column) => column.key));
+        setConfig((prev) => {
+            const rows = prev.rows.filter((dimension) =>
+                columnKeys.has(dimension.columnKey),
+            );
+            const columnDimensions = prev.columns.filter((dimension) =>
+                columnKeys.has(dimension.columnKey),
+            );
+            const measures = prev.measures.filter(
+                (measure) =>
+                    measure.aggregation === "count" ||
+                    (measure.columnKey && columnKeys.has(measure.columnKey)),
+            );
+            const nextMeasures =
+                measures.length > 0
+                    ? measures
+                    : [{ id: "count", label: "Count", aggregation: "count" as const }];
+            if (
+                rows.length === prev.rows.length &&
+                columnDimensions.length === prev.columns.length &&
+                nextMeasures.length === prev.measures.length &&
+                nextMeasures.every(
+                    (measure, index) => measure.id === prev.measures[index]?.id,
+                )
+            ) {
+                return prev;
+            }
+            return { rows, columns: columnDimensions, measures: nextMeasures };
+        });
+    }, [columns]);
+
     const result = useMemo(
         () => buildPivot({ rows, columns, config }),
         [rows, columns, config],
     );
+    useEffect(() => {
+        onResultChange?.({ result, measures: config.measures });
+    }, [result, config.measures, onResultChange]);
     const tableRows = result.rowKeys.map((rowKey) => {
         const record: Record<string, string | number> = {
             key: rowKey.join("||"),
@@ -65,13 +120,26 @@ export function PivotBuilder({
         return record;
     });
 
+    const rowSpans = useMemo(
+        () => computeSpans(result.rowKeys, result.rowHeaders.length),
+        [result.rowKeys, result.rowHeaders.length],
+    );
+    const { containerRef, scrollY } = useTableScrollHeight();
+    const isMobile = useIsMobile();
+    const fieldStyle = isMobile ? { width: "100%" } : undefined;
+
     return (
-        <Flex vertical gap="middle">
-            <Flex gap="middle" wrap>
+        <Flex vertical gap="middle" style={{ height: "100%", minHeight: 0 }}>
+            <Flex
+                gap="middle"
+                wrap
+                vertical={isMobile}
+                align={isMobile ? "stretch" : undefined}
+            >
                 <Select
                     mode="multiple"
                     placeholder="Row dimensions"
-                    style={{ minWidth: 260 }}
+                    style={fieldStyle ?? { minWidth: 260 }}
                     options={dimensionOptions}
                     value={config.rows.map((dimension) => dimension.columnKey)}
                     onChange={(keys) =>
@@ -84,7 +152,7 @@ export function PivotBuilder({
                 <Select
                     mode="multiple"
                     placeholder="Column dimensions"
-                    style={{ minWidth: 260 }}
+                    style={fieldStyle ?? { minWidth: 260 }}
                     options={dimensionOptions}
                     value={config.columns.map(
                         (dimension) => dimension.columnKey,
@@ -98,7 +166,7 @@ export function PivotBuilder({
                 />
                 <Select
                     placeholder="Date bucket"
-                    style={{ minWidth: 180 }}
+                    style={fieldStyle ?? { minWidth: 180 }}
                     options={dateBuckets.map((bucket) => ({
                         value: bucket,
                         label: bucket,
@@ -120,7 +188,7 @@ export function PivotBuilder({
                 <Select
                     mode="multiple"
                     placeholder="Measures"
-                    style={{ minWidth: 260 }}
+                    style={fieldStyle ?? { minWidth: 260 }}
                     options={measureOptions}
                     value={config.measures.map((measure) =>
                         measure.aggregation === "count"
@@ -136,31 +204,111 @@ export function PivotBuilder({
                 />
                 <Button icon={<BarChartOutlined />}>{rows.length}</Button>
             </Flex>
-            <Table
-                bordered
-                size="small"
-                rowKey="key"
-                scroll={{ x: "max-content" }}
-                dataSource={tableRows}
-                columns={[
-                    ...result.rowHeaders.map((header, index) => ({
-                        title: header,
-                        dataIndex: `row_${index}`,
-                        key: `row_${index}`,
-                        width: 180,
-                    })),
-                    ...result.columnKeys.flatMap((columnKey) =>
-                        config.measures.map((measure) => ({
-                            title: [...columnKey, measure.label].join(" / "),
-                            dataIndex: [...columnKey, measure.id].join("||"),
-                            key: [...columnKey, measure.id].join("||"),
-                            width: 160,
+            <div ref={containerRef} style={{ flex: 1, minHeight: 0 }}>
+                <Table
+                    bordered
+                    size="small"
+                    rowKey="key"
+                    pagination={false}
+                    scroll={{ x: "max-content", y: scrollY }}
+                    dataSource={tableRows}
+                    columns={[
+                        ...result.rowHeaders.map((header, index) => ({
+                            title: header,
+                            dataIndex: `row_${index}`,
+                            key: `row_${index}`,
+                            onCell: (
+                                _record: Record<string, string | number>,
+                                rowIndex?: number,
+                            ) => ({
+                                rowSpan: rowSpans[rowIndex ?? 0]?.[index] ?? 1,
+                            }),
                         })),
-                    ),
-                ]}
-            />
+                        ...buildColumnGroups(result.columnKeys, config.measures),
+                    ]}
+                />
+            </div>
         </Flex>
     );
+}
+
+/**
+ * For each row and each dimension level, computes the antd rowSpan needed
+ * to merge consecutive rows that share the same values through that level
+ * (0 means "covered by a preceding merged cell, don't render").
+ */
+function computeSpans(
+    keys: string[][],
+    levelCount: number,
+): number[][] {
+    const spans: number[][] = keys.map(() => new Array(levelCount).fill(1));
+    for (let level = 0; level < levelCount; level++) {
+        let start = 0;
+        while (start < keys.length) {
+            let end = start + 1;
+            while (
+                end < keys.length &&
+                sharesPrefix(keys[end], keys[start], level)
+            ) {
+                end++;
+            }
+            spans[start][level] = end - start;
+            for (let i = start + 1; i < end; i++) spans[i][level] = 0;
+            start = end;
+        }
+    }
+    return spans;
+}
+
+function sharesPrefix(a: string[], b: string[], level: number): boolean {
+    for (let i = 0; i <= level; i++) {
+        if (a[i] !== b[i]) return false;
+    }
+    return true;
+}
+
+/**
+ * Builds antd's nested `children` column tree from the (already sorted)
+ * column-dimension key tuples, so repeated dimension values at each level
+ * render as a single grouped header instead of a flat, slash-joined title.
+ */
+function buildColumnGroups(
+    columnKeys: string[][],
+    measures: PivotMeasure[],
+): ColumnsType<Record<string, string | number>> {
+    return buildColumnLevel(columnKeys, 0, []);
+
+    function buildColumnLevel(
+        keys: string[][],
+        level: number,
+        prefix: string[],
+    ): ColumnsType<Record<string, string | number>> {
+        if (level >= (keys[0]?.length ?? 0)) {
+            return measures.map((measure) => ({
+                title: measure.label,
+                dataIndex: [...prefix, measure.id].join("||"),
+                key: [...prefix, measure.id].join("||"),
+            }));
+        }
+        const groups: { value: string; keys: string[][] }[] = [];
+        for (const key of keys) {
+            const value = key[level];
+            const current = groups[groups.length - 1];
+            if (current && current.value === value) {
+                current.keys.push(key);
+            } else {
+                groups.push({ value, keys: [key] });
+            }
+        }
+        return groups.map((group) => ({
+            title: group.value,
+            key: [...prefix, group.value, `level_${level}`].join("||"),
+            children: buildColumnLevel(group.keys, level + 1, [
+                ...prefix,
+                group.value,
+            ]),
+        }));
+    }
 }
 
 function toMeasures(

@@ -5,12 +5,25 @@ import type { AnalyticsColumn, AnalyticsRow } from "../../analytics/types";
 import { optionTokens, type OptionSets } from "../../analytics/value-format";
 import { useTableScrollHeight } from "../../hooks/useTableScrollHeight";
 
+/** Column keys for the two system IDs that, when linked, jump into the record. */
+const TRACKED_ENTITY_ID_KEY = "trackedEntity.trackedEntity";
+const MAIN_EVENT_ID_KEY = "parentEvent.event";
+
+export interface LineListLinks {
+    /** Same destination as the sync-error-fixing flow: opens the client editor. */
+    onOpenTrackedEntity?: (trackedEntity: string) => void;
+    /** Same destination as the sync-error-fixing flow: opens that event. */
+    onOpenEvent?: (trackedEntity: string, event: string) => void;
+}
+
 export function LineListTable({
     columns,
     rows,
     visibleColumnKeys,
     optionSets = new Map(),
     onFilteredRowsChange,
+    onOpenTrackedEntity,
+    onOpenEvent,
 }: {
     columns: AnalyticsColumn[];
     rows: AnalyticsRow[];
@@ -22,7 +35,7 @@ export function LineListTable({
      * the same rows can stay in sync with what's on screen.
      */
     onFilteredRowsChange?: (rows: AnalyticsRow[]) => void;
-}) {
+} & LineListLinks) {
     const visible = columns.filter((column) =>
         visibleColumnKeys.includes(column.key),
     );
@@ -35,6 +48,16 @@ export function LineListTable({
                     overflow: hidden;
                     text-overflow: ellipsis;
                 }
+                /* Below the app's mobile breakpoint (<992px), give the
+                   filter/sort trigger icons a bigger touch target — antd's
+                   default is comfortable for a mouse pointer but cramped
+                   for a finger. */
+                @media (max-width: 991px) {
+                    .line-list-table .ant-table-filter-trigger,
+                    .line-list-table .ant-table-column-sorters {
+                        padding: 6px;
+                    }
+                }
             `}</style>
             <Table
                 className="line-list-table"
@@ -45,7 +68,10 @@ export function LineListTable({
                 pagination={false}
                 scroll={{ x: "max-content", y: scrollY }}
                 dataSource={rows}
-                columns={toTableColumns(visible, rows, optionSets)}
+                columns={toTableColumns(visible, rows, optionSets, {
+                    onOpenTrackedEntity,
+                    onOpenEvent,
+                })}
                 onChange={(_pagination, _filters, _sorter, extra) =>
                     onFilteredRowsChange?.(
                         extra.currentDataSource as AnalyticsRow[],
@@ -88,6 +114,7 @@ export function toTableColumns(
     columns: AnalyticsColumn[],
     rows: AnalyticsRow[] = [],
     optionSets: OptionSets = new Map(),
+    links: LineListLinks = {},
 ): ColumnsType<AnalyticsRow> {
     return columns.map((column) => ({
         title: column.label,
@@ -95,8 +122,63 @@ export function toTableColumns(
         key: column.key,
         ellipsis: true,
         width: estimateColumnWidth(column.label, column.key, rows),
+        // Computed columns keep their matched range's numeric value as
+        // `raw`, so sorting orders by range rather than alphabetically by
+        // the displayed label (e.g. "5-17" before "18+").
+        ...(column.isComputed
+            ? {
+                  sorter: (a: AnalyticsRow, b: AnalyticsRow) => {
+                      const left = a.values[column.key]?.raw;
+                      const right = b.values[column.key]?.raw;
+                      return (
+                          (typeof left === "number" ? left : -Infinity) -
+                          (typeof right === "number" ? right : -Infinity)
+                      );
+                  },
+              }
+            : {}),
+        ...linkRenderer(column, links),
         ...buildColumnFilter(column, rows, optionSets),
     }));
+}
+
+/**
+ * Same navigation as the sync-error-fixing flow: the Tracked Entity ID and
+ * Main Event ID columns become clickable, jumping straight into that
+ * record instead of just displaying its id.
+ */
+function linkRenderer(
+    column: AnalyticsColumn,
+    links: LineListLinks,
+): Partial<ColumnType<AnalyticsRow>> {
+    if (column.key === TRACKED_ENTITY_ID_KEY && links.onOpenTrackedEntity) {
+        const onOpen = links.onOpenTrackedEntity;
+        return {
+            render: (_value, record) => (
+                <a onClick={() => onOpen(record.trackedEntity.trackedEntity)}>
+                    {record.values[column.key]?.display}
+                </a>
+            ),
+        };
+    }
+    if (column.key === MAIN_EVENT_ID_KEY && links.onOpenEvent) {
+        const onOpen = links.onOpenEvent;
+        return {
+            render: (_value, record) => (
+                <a
+                    onClick={() =>
+                        onOpen(
+                            record.trackedEntity.trackedEntity,
+                            record.parentEvent.event,
+                        )
+                    }
+                >
+                    {record.values[column.key]?.display}
+                </a>
+            ),
+        };
+    }
+    return {};
 }
 
 /**

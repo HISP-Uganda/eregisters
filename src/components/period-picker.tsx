@@ -46,8 +46,11 @@ export default function PeriodPicker({
 
     const periods = useMemo<Period[]>(() => {
         if (!normalizedType || normalizedType === "Daily") return [];
-        return enumeratePeriods(normalizedType, targetYear);
-    }, [normalizedType, targetYear]);
+        const all = enumeratePeriods(normalizedType, targetYear);
+        if (allowFuture) return all;
+        const today = dayjs();
+        return all.filter((p) => !p.start.isAfter(today, "day"));
+    }, [normalizedType, targetYear, allowFuture]);
 
     const selectedLabel = useMemo(() => {
         if (!value) return "";
@@ -95,7 +98,6 @@ export default function PeriodPicker({
         );
     }
 
-    const today = dayjs();
     const nextYearBlocked = !allowFuture && targetYear >= currentYear;
 
     const overlay = (
@@ -140,14 +142,11 @@ export default function PeriodPicker({
                     />
                 ) : (
                     periods.map((p) => {
-                        const isFuture =
-                            !allowFuture && p.start.isAfter(today, "day");
                         const isSelected = p.id === value;
                         return (
                             <PeriodRow
                                 key={p.id}
                                 period={p}
-                                isFuture={isFuture}
                                 isSelected={isSelected}
                                 onSelect={() => {
                                     onChange(p.id);
@@ -198,34 +197,28 @@ export default function PeriodPicker({
 
 function PeriodRow({
     period,
-    isFuture,
     isSelected,
     onSelect,
 }: {
     period: Period;
-    isFuture: boolean;
     isSelected: boolean;
     onSelect: () => void;
 }) {
     const [hover, setHover] = useState(false);
     const background = isSelected
         ? "rgba(22, 119, 255, 0.08)"
-        : hover && !isFuture
+        : hover
           ? "rgba(0, 0, 0, 0.04)"
           : undefined;
     return (
         <div
             role="button"
-            aria-disabled={isFuture}
-            onClick={() => {
-                if (!isFuture) onSelect();
-            }}
+            onClick={onSelect}
             onMouseEnter={() => setHover(true)}
             onMouseLeave={() => setHover(false)}
             style={{
                 padding: "6px 12px",
-                cursor: isFuture ? "not-allowed" : "pointer",
-                color: isFuture ? "rgba(0, 0, 0, 0.25)" : undefined,
+                cursor: "pointer",
                 background,
                 fontWeight: isSelected ? 500 : undefined,
                 fontSize: 13,

@@ -61,10 +61,24 @@ export function buildPivot({
         columnHeaders: config.columns.map(
             (dimension) => columnByKey.get(dimension.columnKey)?.label ?? dimension.columnKey,
         ),
-        rowKeys: [...rowKeyMap.values()],
-        columnKeys: [...columnKeyMap.values()],
+        rowKeys: [...rowKeyMap.values()].sort(compareDimensionKeys),
+        columnKeys: [...columnKeyMap.values()].sort(compareDimensionKeys),
         cells,
     };
+}
+
+/**
+ * Sorts dimension key tuples level-by-level so identical values at each
+ * level sit next to each other — required for the table to merge (rowSpan)
+ * or group (nested column headers) repeated dimension values.
+ */
+function compareDimensionKeys(a: string[], b: string[]): number {
+    const length = Math.max(a.length, b.length);
+    for (let level = 0; level < length; level++) {
+        const cmp = (a[level] ?? "").localeCompare(b[level] ?? "");
+        if (cmp !== 0) return cmp;
+    }
+    return 0;
 }
 
 function dimensionKey(

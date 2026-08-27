@@ -356,6 +356,39 @@ export function parsePeriodId(
     return null;
 }
 
+/** Resolves a DHIS2 period id to its start/end dates, or `undefined` if unrecognized. */
+export function periodBounds(
+    periodId: string,
+): { start: Dayjs; end: Dayjs } | undefined {
+    const parsed = parsePeriodId(periodId);
+    if (!parsed) return undefined;
+    const period = enumeratePeriods(parsed.type, parsed.year).find(
+        (p) => p.id === periodId,
+    );
+    return period ? { start: period.start, end: period.end } : undefined;
+}
+
+/**
+ * The id of the period of `type` that `now` falls within — e.g. the current
+ * month's id for `"Monthly"`. Falls back to the first period of `now`'s year
+ * if none matches (only possible for a Weekly period spanning a year
+ * boundary), so this always returns a usable id.
+ */
+export function currentPeriodId(
+    type: DhisPeriodType,
+    now: Dayjs = dayjs(),
+): string {
+    const inThisYear = enumeratePeriods(type, now.year());
+    const match =
+        inThisYear.find(
+            (p) => !now.isBefore(p.start, "day") && !now.isAfter(p.end, "day"),
+        ) ??
+        enumeratePeriods(type, now.year() - 1).find(
+            (p) => !now.isBefore(p.start, "day") && !now.isAfter(p.end, "day"),
+        );
+    return match?.id ?? inThisYear[0]?.id ?? `${now.year()}`;
+}
+
 /**
  * True when the given DHIS2 period is entirely in the past — i.e. the period's
  * end date, compared at the same granularity as the period itself (`month`,

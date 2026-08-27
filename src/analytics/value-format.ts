@@ -1,16 +1,15 @@
 import type { AnalyticsValueKind } from "./types";
 
-type OptionSets = Map<
-    string,
-    Array<{
-        id: string;
-        name: string;
-        code: string;
-        optionSet: string;
-        optionSetName?: string;
-        sortOrder: number;
-    }>
->;
+export interface AnalyticsOption {
+    id: string;
+    name: string;
+    code: string;
+    optionSet: string;
+    optionSetName?: string;
+    sortOrder: number;
+}
+
+export type OptionSets = Map<string, AnalyticsOption[]>;
 
 export function valueKindFromDhis2(
     valueType: string | undefined,
@@ -68,6 +67,18 @@ export function displayValue(
         .filter(Boolean)
         .map((part) => byIdOrCode.get(part) ?? part)
         .join(", ");
+}
+
+/**
+ * Splits a (possibly multi-select) option-set raw value into its
+ * individual option tokens (ids or codes — DHIS2 stores either).
+ */
+export function optionTokens(raw: unknown): string[] {
+    if (raw === undefined || raw === null || raw === "") return [];
+    return String(raw)
+        .split(",")
+        .map((part) => part.trim())
+        .filter(Boolean);
 }
 
 export function numericValue(raw: unknown): number | undefined {

@@ -12,7 +12,8 @@ export type AnalyticsSource =
     | "trackedEntity"
     | "enrollment"
     | "parentEvent"
-    | "childEvent";
+    | "childEvent"
+    | "computed";
 
 export type AnalyticsValueKind =
     | "string"
@@ -46,6 +47,20 @@ export interface AnalyticsColumn {
     groupPath: string[];
     optionSetId?: string;
     defaultVisible: boolean;
+    /**
+     * When set, columns sharing the same chooserKey are collapsed into a
+     * single checkbox in the column chooser (used for child-event data
+     * elements that repeat per slot) instead of one checkbox per column.
+     */
+    chooserKey?: string;
+    /** Label to show for the collapsed chooser checkbox; falls back to `label`. */
+    chooserLabel?: string;
+    /**
+     * Set on columns synthesized by a computed-column definition (see
+     * `computed-columns.ts`) rather than derived from program metadata.
+     * Excluded from xlsx export; never usable as a Pivot dimension/measure.
+     */
+    isComputed?: boolean;
     pivot: {
         canUseAsDimension: boolean;
         canUseAsMeasure: boolean;

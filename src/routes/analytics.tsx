@@ -1,9 +1,14 @@
 import { DownloadOutlined } from "@ant-design/icons";
 import { and, eq, useLiveSuspenseQuery } from "@tanstack/react-db";
-import { createRoute } from "@tanstack/react-router";
+import { createRoute, useNavigate } from "@tanstack/react-router";
 import { Button, Flex, Tabs, Typography } from "antd";
 import dayjs from "dayjs";
 import React, { useEffect, useMemo, useState } from "react";
+import {
+    applyComputedColumns,
+    computedColumnKey,
+} from "../analytics/computed-columns";
+import type { ComputedColumnDefinition } from "../analytics/computed-columns";
 import { buildParentEventDataset } from "../analytics/parent-event-dataset";
 import type { AnalyticsRow } from "../analytics/types";
 import {
@@ -14,6 +19,7 @@ import {
 import { AnalyticsFilterBar } from "../components/analytics/analytics-filter-bar";
 import type { AnalyticsFilters } from "../components/analytics/analytics-filter-bar";
 import { ColumnChooser } from "../components/analytics/column-chooser";
+import { ComputedColumnModal } from "../components/analytics/computed-column-modal";
 import { LineListTable } from "../components/analytics/line-list-table";
 import { PivotBuilder } from "../components/analytics/pivot-builder";
 import type { PivotExportInfo } from "../components/analytics/pivot-builder";
@@ -22,6 +28,8 @@ import {
     eventsCollection,
     trackedEntitiesCollection,
 } from "../collections";
+import { useComputedColumns } from "../hooks/useComputedColumns";
+import { useIsMobile } from "../hooks/useIsMobile";
 import { useMetadata } from "../hooks/useMetadata";
 import { RootRoute } from "./__root";
 
@@ -34,6 +42,7 @@ export const AnalyticsRoute = createRoute({
 });
 
 function AnalyticsPage() {
+    const isMobile = useIsMobile();
     const {
         program,
         orgUnit,
@@ -48,6 +57,7 @@ function AnalyticsPage() {
         childStageIds: [],
         startDate: dayjs().startOf("month").format("YYYY-MM-DD"),
         endDate: dayjs().format("YYYY-MM-DD"),
+        rangeType: "custom",
     });
 
     const { data: trackedEntities } = useLiveSuspenseQuery(
@@ -111,25 +121,76 @@ function AnalyticsPage() {
             trackedEntityAttributes,
         ],
     );
-    const [visibleColumnKeys, setVisibleColumnKeys] = useState<string[]>([]);
+    const { definitions: computedColumnDefinitions, save: saveComputedColumn, remove: removeComputedColumn } =
+        useComputedColumns(filters.programId);
+    const numericSourceColumns = useMemo(
+        () => dataset.columns.filter((column) => column.valueKind === "number"),
+        [dataset.columns],
+    );
+    const { columns: columnsWithComputed, rows: computedRows } = useMemo(
+        () =>
+            applyComputedColumns(
+                dataset.columns,
+                dataset.rows,
+                computedColumnDefinitions,
+            ),
+        [dataset.columns, dataset.rows, computedColumnDefinitions],
+    );
+
+    const [visibleColumnKeys, setVisibleColumnKeys] = useState<string[]>(() =>
+        columnsWithComputed
+            .filter((column) => column.defaultVisible)
+            .map((column) => column.key),
+    );
     const effectiveVisibleColumnKeys = visibleColumnKeys;
     const visibleColumns = useMemo(
         () =>
-            dataset.columns.filter((column) =>
+            columnsWithComputed.filter((column) =>
                 effectiveVisibleColumnKeys.includes(column.key),
             ),
-        [dataset.columns, effectiveVisibleColumnKeys],
+        [columnsWithComputed, effectiveVisibleColumnKeys],
+    );
+    const exportableVisibleColumns = useMemo(
+        () => visibleColumns.filter((column) => !column.isComputed),
+        [visibleColumns],
     );
 
     // The rows currently on screen in the Line List after the user's column
     // filters/sort are applied. The Pivot tab and both exports are driven
     // from this instead of the raw dataset so they reflect what's filtered.
     const [filteredRows, setFilteredRows] = useState<AnalyticsRow[]>(
-        dataset.rows,
+        computedRows,
     );
     useEffect(() => {
-        setFilteredRows(dataset.rows);
-    }, [dataset.rows]);
+        setFilteredRows(computedRows);
+    }, [computedRows]);
+
+    const handleSaveComputedColumn = (definition: ComputedColumnDefinition) => {
+        saveComputedColumn(definition);
+        const key = computedColumnKey(definition.id);
+        setVisibleColumnKeys((prev) =>
+            prev.includes(key) ? prev : [...prev, key],
+        );
+    };
+
+    // Same navigation as the sync-error-fixing flow (sync-failures-modal.tsx):
+    // both the tracked entity and the event views live on the tracked entity
+    // route, an event just also opens that specific event within it.
+    const navigate = useNavigate();
+    const openTrackedEntity = (trackedEntity: string) => {
+        navigate({
+            to: "/tracked-entity/$trackedEntity",
+            params: { trackedEntity },
+            search: { edit: "client" },
+        });
+    };
+    const openEvent = (trackedEntity: string, event: string) => {
+        navigate({
+            to: "/tracked-entity/$trackedEntity",
+            params: { trackedEntity },
+            search: { event },
+        });
+    };
 
     const [pivotExportInfo, setPivotExportInfo] = useState<PivotExportInfo>({
         result: { rowHeaders: [], columnHeaders: [], rowKeys: [], columnKeys: [], cells: {} },
@@ -140,7 +201,11 @@ function AnalyticsPage() {
         <Flex
             vertical
             gap="middle"
-            style={{ height: "calc(100vh - 48px - 64px)", padding: 16, minHeight: 0 }}
+            style={{
+                height: "calc(100vh - 48px - 64px)",
+                padding: isMobile ? 12 : 16,
+                minHeight: 0,
+            }}
         >
             <style>{`
                 .analytics-tabs.ant-tabs {
@@ -159,13 +224,19 @@ function AnalyticsPage() {
                     display: none;
                 }
             `}</style>
-            <Flex align="center" justify="space-between" wrap gap="middle">
+            <Flex
+                align={isMobile ? "stretch" : "center"}
+                justify="space-between"
+                wrap
+                vertical={isMobile}
+                gap="middle"
+            >
                 <Flex vertical gap={0}>
-                    <Title level={3} style={{ margin: 0 }}>
+                    <Title level={isMobile ? 4 : 3} style={{ margin: 0 }}>
                         Analytics
                     </Title>
                     <Text type="secondary">
-                        {dataset.rows.length} main events
+                        {filteredRows.length} main events
                     </Text>
                 </Flex>
                 <AnalyticsFilterBar
@@ -187,20 +258,27 @@ function AnalyticsPage() {
                                 gap="middle"
                                 style={{ height: "100%", minHeight: 0 }}
                             >
-                                <Flex gap="middle" justify="flex-end">
+                                <Flex gap="middle" wrap justify="flex-end">
                                     <ColumnChooser
-                                        columns={dataset.columns}
+                                        columns={columnsWithComputed}
                                         visibleColumnKeys={
                                             effectiveVisibleColumnKeys
                                         }
                                         onChange={setVisibleColumnKeys}
+                                    />
+                                    <ComputedColumnModal
+                                        programId={filters.programId}
+                                        numericColumns={numericSourceColumns}
+                                        definitions={computedColumnDefinitions}
+                                        onSave={handleSaveComputedColumn}
+                                        onDelete={removeComputedColumn}
                                     />
                                     <Button
                                         icon={<DownloadOutlined />}
                                         onClick={() =>
                                             writeWorkbookFile(
                                                 exportLineListWorkbook({
-                                                    columns: visibleColumns,
+                                                    columns: exportableVisibleColumns,
                                                     rows: filteredRows,
                                                 }),
                                                 "analytics-line-list.xlsx",
@@ -211,13 +289,15 @@ function AnalyticsPage() {
                                     </Button>
                                 </Flex>
                                 <LineListTable
-                                    columns={dataset.columns}
-                                    rows={dataset.rows}
+                                    columns={columnsWithComputed}
+                                    rows={computedRows}
                                     visibleColumnKeys={
                                         effectiveVisibleColumnKeys
                                     }
                                     optionSets={optionSets}
                                     onFilteredRowsChange={setFilteredRows}
+                                    onOpenTrackedEntity={openTrackedEntity}
+                                    onOpenEvent={openEvent}
                                 />
                             </Flex>
                         ),

@@ -190,7 +190,14 @@ describe("buildColumnRegistry", () => {
                     c.key ===
                     "childEvent.followup001.2.dataValue.followup001",
             )?.groupPath,
-        ).toEqual(["Child Events", "Follow Up", "Slot 2", "Outcome"]);
+        ).toEqual(["Child Events", "Follow Up", "Outcome"]);
+        expect(
+            columns.find(
+                (c) =>
+                    c.key ===
+                    "childEvent.followup001.2.dataValue.followup001",
+            )?.chooserKey,
+        ).toBe("childEvent.followup001.dataValue.followup001");
         expect(columns.find((c) => c.key === "te.attribute.firstName01")?.defaultVisible)
             .toBe(false);
         expect(
@@ -207,6 +214,75 @@ describe("buildColumnRegistry", () => {
                     c.key ===
                     "childEvent.followup001.2.dataValue.followup001",
             )?.label,
-        ).toBe("Follow Up 2 Follow up result");
+        ).toBe("Follow up result (2)");
+    });
+
+    it("prefers name over formName so colliding form names don't produce identical column labels", () => {
+        const collidingMetadata = {
+            ...metadata,
+            trackedEntityAttributes: new Map([
+                [
+                    "firstName01",
+                    {
+                        id: "firstName01",
+                        name: "Client first name",
+                        displayFormName: "Name",
+                        formName: "Name",
+                        valueType: "TEXT",
+                        confidential: false,
+                        unique: false,
+                        generated: false,
+                        pattern: "",
+                        optionSetValue: false,
+                    },
+                ],
+            ]),
+            dataElements: new Map([
+                [
+                    "weightuid01",
+                    {
+                        id: "weightuid01",
+                        name: "Weight in kg",
+                        formName: "Result",
+                        code: "weight",
+                        valueType: "NUMBER",
+                        optionSetValue: false,
+                    },
+                ],
+                [
+                    "followup001",
+                    {
+                        id: "followup001",
+                        name: "Follow-up result",
+                        formName: "Result",
+                        code: "follow_up_result",
+                        valueType: "TEXT",
+                        optionSetValue: false,
+                    },
+                ],
+            ]),
+        } as unknown as AnalyticsMetadata;
+
+        const columns = buildColumnRegistry({
+            metadata: collidingMetadata,
+            mainStageId: "visit000001",
+            childStageSlotCounts: new Map([["followup001", 1]]),
+        });
+
+        expect(
+            columns.find((c) => c.key === "te.attribute.firstName01")?.label,
+        ).toBe("Client first name");
+        expect(
+            columns.find(
+                (c) => c.key === "parentEvent.dataValue.weightuid01",
+            )?.label,
+        ).toBe("Weight in kg");
+        expect(
+            columns.find(
+                (c) =>
+                    c.key ===
+                    "childEvent.followup001.1.dataValue.followup001",
+            )?.label,
+        ).toBe("Follow-up result (1)");
     });
 });
