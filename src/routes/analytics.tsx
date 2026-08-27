@@ -3,9 +3,9 @@ import { and, eq, useLiveSuspenseQuery } from "@tanstack/react-db";
 import { createRoute } from "@tanstack/react-router";
 import { Button, Flex, Tabs, Typography } from "antd";
 import dayjs from "dayjs";
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { buildParentEventDataset } from "../analytics/parent-event-dataset";
-import { buildPivot } from "../analytics/pivot-engine";
+import type { AnalyticsRow } from "../analytics/types";
 import {
     exportLineListWorkbook,
     exportPivotWorkbook,
@@ -16,6 +16,7 @@ import type { AnalyticsFilters } from "../components/analytics/analytics-filter-
 import { ColumnChooser } from "../components/analytics/column-chooser";
 import { LineListTable } from "../components/analytics/line-list-table";
 import { PivotBuilder } from "../components/analytics/pivot-builder";
+import type { PivotExportInfo } from "../components/analytics/pivot-builder";
 import {
     enrollmentsCollection,
     eventsCollection,
@@ -111,18 +112,53 @@ function AnalyticsPage() {
         ],
     );
     const [visibleColumnKeys, setVisibleColumnKeys] = useState<string[]>([]);
-    const effectiveVisibleColumnKeys =
-        visibleColumnKeys.length > 0
-            ? visibleColumnKeys
-            : dataset.columns
-                  .filter((column) => column.defaultVisible)
-                  .map((column) => column.key);
-    const visibleColumns = dataset.columns.filter((column) =>
-        effectiveVisibleColumnKeys.includes(column.key),
+    const effectiveVisibleColumnKeys = visibleColumnKeys;
+    const visibleColumns = useMemo(
+        () =>
+            dataset.columns.filter((column) =>
+                effectiveVisibleColumnKeys.includes(column.key),
+            ),
+        [dataset.columns, effectiveVisibleColumnKeys],
     );
 
+    // The rows currently on screen in the Line List after the user's column
+    // filters/sort are applied. The Pivot tab and both exports are driven
+    // from this instead of the raw dataset so they reflect what's filtered.
+    const [filteredRows, setFilteredRows] = useState<AnalyticsRow[]>(
+        dataset.rows,
+    );
+    useEffect(() => {
+        setFilteredRows(dataset.rows);
+    }, [dataset.rows]);
+
+    const [pivotExportInfo, setPivotExportInfo] = useState<PivotExportInfo>({
+        result: { rowHeaders: [], columnHeaders: [], rowKeys: [], columnKeys: [], cells: {} },
+        measures: [{ id: "count", label: "Count", aggregation: "count" }],
+    });
+
     return (
-        <Flex vertical gap="middle" style={{ padding: 16 }}>
+        <Flex
+            vertical
+            gap="middle"
+            style={{ height: "calc(100vh - 48px - 64px)", padding: 16, minHeight: 0 }}
+        >
+            <style>{`
+                .analytics-tabs.ant-tabs {
+                    flex: 1;
+                    min-height: 0;
+                }
+                .analytics-tabs .ant-tabs-content-holder,
+                .analytics-tabs .ant-tabs-content,
+                .analytics-tabs .ant-tabs-tabpane {
+                    display: flex;
+                    flex: 1;
+                    flex-direction: column;
+                    min-height: 0;
+                }
+                .analytics-tabs .ant-tabs-tabpane.ant-tabs-tabpane-hidden {
+                    display: none;
+                }
+            `}</style>
             <Flex align="center" justify="space-between" wrap gap="middle">
                 <Flex vertical gap={0}>
                     <Title level={3} style={{ margin: 0 }}>
@@ -139,12 +175,18 @@ function AnalyticsPage() {
                 />
             </Flex>
             <Tabs
+                className="analytics-tabs"
+                style={{ minHeight: 0 }}
                 items={[
                     {
                         key: "line-list",
                         label: "Line List",
                         children: (
-                            <Flex vertical gap="middle">
+                            <Flex
+                                vertical
+                                gap="middle"
+                                style={{ height: "100%", minHeight: 0 }}
+                            >
                                 <Flex gap="middle" justify="flex-end">
                                     <ColumnChooser
                                         columns={dataset.columns}
@@ -159,7 +201,7 @@ function AnalyticsPage() {
                                             writeWorkbookFile(
                                                 exportLineListWorkbook({
                                                     columns: visibleColumns,
-                                                    rows: dataset.rows,
+                                                    rows: filteredRows,
                                                 }),
                                                 "analytics-line-list.xlsx",
                                             )
@@ -174,6 +216,8 @@ function AnalyticsPage() {
                                     visibleColumnKeys={
                                         effectiveVisibleColumnKeys
                                     }
+                                    optionSets={optionSets}
+                                    onFilteredRowsChange={setFilteredRows}
                                 />
                             </Flex>
                         ),
@@ -182,49 +226,30 @@ function AnalyticsPage() {
                         key: "pivot",
                         label: "Pivot",
                         children: (
-                            <Flex vertical gap="middle">
+                            <Flex
+                                vertical
+                                gap="middle"
+                                style={{ height: "100%", minHeight: 0 }}
+                            >
                                 <Flex justify="flex-end">
                                     <Button
                                         icon={<DownloadOutlined />}
-                                        onClick={() => {
-                                            const result = buildPivot({
-                                                rows: dataset.rows,
-                                                columns: dataset.columns,
-                                                config: {
-                                                    rows: [],
-                                                    columns: [],
-                                                    measures: [
-                                                        {
-                                                            id: "count",
-                                                            label: "Count",
-                                                            aggregation:
-                                                                "count",
-                                                        },
-                                                    ],
-                                                },
-                                            });
+                                        onClick={() =>
                                             writeWorkbookFile(
-                                                exportPivotWorkbook({
-                                                    result,
-                                                    measures: [
-                                                        {
-                                                            id: "count",
-                                                            label: "Count",
-                                                            aggregation:
-                                                                "count",
-                                                        },
-                                                    ],
-                                                }),
+                                                exportPivotWorkbook(
+                                                    pivotExportInfo,
+                                                ),
                                                 "analytics-pivot.xlsx",
-                                            );
-                                        }}
+                                            )
+                                        }
                                     >
                                         Export
                                     </Button>
                                 </Flex>
                                 <PivotBuilder
-                                    columns={dataset.columns}
-                                    rows={dataset.rows}
+                                    columns={visibleColumns}
+                                    rows={filteredRows}
+                                    onResultChange={setPivotExportInfo}
                                 />
                             </Flex>
                         ),
