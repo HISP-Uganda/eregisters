@@ -16,9 +16,25 @@ import type {
  * Converts flat attributes object to array of {attribute, value} objects
  * Handles parent entity relationship via FhyNxUVOpjh attribute
  */
+/**
+ * A value passes optionSet validation when the field has no registered
+ * optionSet (nothing to check against), or every code in the value matches
+ * one of the optionSet's option codes.
+ */
+function hasValidOptionCodes(
+    fieldId: string,
+    value: string,
+    optionCodesByField?: Map<string, Set<string>>,
+): boolean {
+    const validCodes = optionCodesByField?.get(fieldId);
+    if (!validCodes) return true;
+    return value.split(",").every((code) => validCodes.has(code));
+}
+
 export function transformTrackedEntity(
     te: FlattenedTrackedEntity,
     validAttributeIds?: Set<string>,
+    optionCodesByAttribute?: Map<string, Set<string>>,
 ) {
     const { attributes, ...rest } = te;
     const { enrolledAt, ...teAttributes } = attributes;
@@ -34,7 +50,16 @@ export function transformTrackedEntity(
                 if (validAttributeIds?.size && !validAttributeIds.has(attribute))
                     return [];
                 if (value !== undefined && value !== null && value !== "") {
-                    return { attribute, value: String(value) };
+                    const stringValue = String(value);
+                    if (
+                        !hasValidOptionCodes(
+                            attribute,
+                            stringValue,
+                            optionCodesByAttribute,
+                        )
+                    )
+                        return [];
+                    return { attribute, value: stringValue };
                 }
                 return [];
             },
@@ -44,6 +69,7 @@ export function transformTrackedEntity(
 export function transformEnrollment(
     enrollment: FlattenedEnrollment,
     validAttributeIds?: Set<string>,
+    optionCodesByAttribute?: Map<string, Set<string>>,
 ) {
     const { attributes, ...rest } = enrollment;
     const { enrolledAt, ...enrollmentAttributes } = attributes;
@@ -56,7 +82,16 @@ export function transformEnrollment(
                 if (validAttributeIds?.size && !validAttributeIds.has(attribute))
                     return [];
                 if (value !== undefined && value !== null && value !== "") {
-                    return { attribute, value: String(value) };
+                    const stringValue = String(value);
+                    if (
+                        !hasValidOptionCodes(
+                            attribute,
+                            stringValue,
+                            optionCodesByAttribute,
+                        )
+                    )
+                        return [];
+                    return { attribute, value: stringValue };
                 }
                 return [];
             },
@@ -67,6 +102,7 @@ export function transformEnrollment(
 export function transformEvent(
     event: FlattenedEvent,
     validDataElementIds?: Set<string>,
+    optionCodesByDataElement?: Map<string, Set<string>>,
 ) {
     const { dataValues, ...eventRest } = event;
     const { occurredAt, ...otherDataElements } = dataValues;
@@ -87,10 +123,18 @@ export function transformEvent(
                 if (validDataElementIds?.size && !validDataElementIds.has(dataElement))
                     return [];
                 if (value !== undefined && value !== null && value !== "") {
-                    if (Array.isArray(value)) {
-                        return { dataElement, value: value.join(",") };
-                    }
-                    return { dataElement, value };
+                    const outValue = Array.isArray(value)
+                        ? value.join(",")
+                        : value;
+                    if (
+                        !hasValidOptionCodes(
+                            dataElement,
+                            String(outValue),
+                            optionCodesByDataElement,
+                        )
+                    )
+                        return [];
+                    return { dataElement, value: outValue };
                 }
                 return [];
             },

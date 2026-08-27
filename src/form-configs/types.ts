@@ -22,6 +22,9 @@ export interface HmisCellConfig {
     categoryOptionCombo?: string;
     attributeOptionCombo?: string;
     inputId?: string;
+    inputName?: string;
+    fieldType?: string;
+    indicatorId?: string;
     disabled?: boolean;
     total?: boolean;
     colSpan?: number;
@@ -30,7 +33,9 @@ export interface HmisCellConfig {
         align?: string;
         background?: string;
         width?: string;
-        verticalAlign?: "top" | "middle" | "bottom";
+        verticalAlign?: string;
+        whiteSpace?: string;
+        transform?: string;
     };
 }
 

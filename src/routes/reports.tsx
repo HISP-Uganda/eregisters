@@ -31,18 +31,34 @@ function Reports() {
         ReportsRoute.useSearch();
 
     const [expanded, setExpanded] = useState<SafeKey[]>([]);
+    const [orgUnitSearch, setOrgUnitSearch] = useState("");
 
     const orgUnitSearchIndex = useMemo(
         () => buildOrgUnitSearchIndex(organisationUnits),
         [organisationUnits],
     );
 
+    const orgUnitTreeData = useMemo(
+        () =>
+            orderBy(organisationUnits, "name", "asc").map((a) => ({
+                title: a.name,
+                id: a.id,
+                value: a.id,
+                pId: a.parent?.id,
+            })),
+        [organisationUnits],
+    );
+
     useEffect(() => {
         const search = organisationUnits.find(({ id }) => id === orgUnit);
-        if (search) {
-            setExpanded(() => search.path.split("/").slice(1));
-        }
-    }, [orgUnit]);
+        if (!search) return;
+        const lineage = search.path.split("/").slice(1, -1);
+        setExpanded((prev) => {
+            const next = new Set<SafeKey>(prev);
+            for (const id of lineage) next.add(id);
+            return Array.from(next);
+        });
+    }, [orgUnit, organisationUnits]);
 
     return (
         <Flex vertical style={{ padding: 5 }}>
@@ -72,21 +88,28 @@ function Reports() {
                 <Form.Item label="Organisation">
                     <TreeSelect
                         treeDataSimpleMode
-                        treeData={orderBy(organisationUnits, "name", "asc").map(
-                            (a) => ({
-                                title: a.name,
-                                id: a.id,
-                                value: a.id,
-                                pId: a.parent?.id,
-                            }),
-                        )}
+                        showSearch
+                        allowClear
+                        placeholder="Search organisation…"
+                        treeNodeFilterProp="title"
+                        treeData={orgUnitTreeData}
                         style={{ width: 400 }}
                         filterTreeNode={(input, node) =>
-                            matchOrgUnit(orgUnitSearchIndex, node.id as string, input)
+                            matchOrgUnit(
+                                orgUnitSearchIndex,
+                                node.id as string,
+                                input,
+                            )
                         }
-
                         value={orgUnit}
-												treeDefaultExpandedKeys={expanded}
+                        searchValue={orgUnitSearch}
+                        onSearch={setOrgUnitSearch}
+                        {...(orgUnitSearch.trim()
+                            ? {}
+                            : {
+                                  treeExpandedKeys: expanded,
+                                  onTreeExpand: setExpanded,
+                              })}
                         onChange={(value) => {
                             navigate({
                                 to: "/reports/hmis",

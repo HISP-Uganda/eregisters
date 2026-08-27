@@ -652,6 +652,10 @@ export const ProgramStageCapture: React.FC<{
                 (child.dataValues?.["occurredAt"] as string | undefined) ||
                 child.occurredAt;
             if (childDate === parentVisitDate) continue;
+            // Skip rows not yet committed to the collection — a live-query
+            // result can briefly include an optimistic row before Dexie's
+            // write lands. The effect will re-run once the row is persisted.
+            if (!eventsCollection.has(child.event)) continue;
             void eventsCollection
                 .update(child.event, (draft) => {
                     draft.occurredAt = parentVisitDate;
@@ -661,6 +665,11 @@ export const ProgramStageCapture: React.FC<{
                     }
                 })
                 .isPersisted.promise.catch((err) => {
+                    const message =
+                        err instanceof Error ? err.message : String(err);
+                    if (message.includes("not found in the collection")) {
+                        return;
+                    }
                     console.error(
                         "Failed to cascade visit date to child event",
                         child.event,

@@ -9,7 +9,7 @@ export const trackedEntitiesCollection = createCollection(
         dbName: "MOHRegister_TrackedEntities",
         tableName: "trackedEntities",
         getKey: (trackedEntity) => trackedEntity.trackedEntity,
-        awaitPersistence: false,
+        awaitPersistence: true,
         swallowPersistenceErrors: true,
     }),
 );

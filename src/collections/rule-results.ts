@@ -8,7 +8,7 @@ const ruleResultsCollection = createCollection(
         dbName: "MOHRegister_RuleResults",
         tableName: "ruleResults",
         schema: RuleResultSchema,
-        awaitPersistence: false,
+        awaitPersistence: true,
         swallowPersistenceErrors: true,
         getKey: (result) => result.id,
     }),

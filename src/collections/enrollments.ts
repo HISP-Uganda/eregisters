@@ -8,7 +8,7 @@ export const enrollmentsCollection = createCollection(
         dbName: "MOHRegister_Enrollments",
         tableName: "enrollments",
         schema: FlattenedEnrollmentSchema,
-        awaitPersistence: false,
+        awaitPersistence: true,
         swallowPersistenceErrors: true,
         getKey: (enrollment) => enrollment.enrollment,
     }),

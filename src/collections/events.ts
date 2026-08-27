@@ -8,7 +8,7 @@ export const eventsCollection = createCollection(
         dbName: "MOHRegister_Events",
         tableName: "events",
         schema: FlattenedEventSchema,
-        awaitPersistence: false,
+        awaitPersistence: true,
         swallowPersistenceErrors: true,
         getKey: (event) => event.event,
     }),

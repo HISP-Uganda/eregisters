@@ -6,9 +6,11 @@ import {
     ConfigProvider,
     InputNumber,
     Popconfirm,
+    Table,
     Tabs,
     Typography,
 } from "antd";
+import type { ColumnType } from "antd/es/table";
 import React, { useState } from "react";
 import {
     draftId,
@@ -34,6 +36,8 @@ const { Title } = Typography;
 const TEAL = "#66a5ad";
 const LIGHT_BLUE = "#c4dfe6";
 const COC_SEPARATOR = "_";
+
+const USE_ANTD_TABLE_PROTOTYPE = false;
 
 export interface HmisFormProps {
     period?: string;
@@ -74,17 +78,23 @@ function cleanNumericValue(raw: unknown) {
     return String(raw).replace(/[^\d]/g, "");
 }
 
-function isRowEditable(
-    row: HmisRowConfig,
+function formatVerifiedAt(verifiedAt: string | number): string {
+    const d = new Date(verifiedAt);
+    if (Number.isNaN(d.getTime())) return String(verifiedAt);
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd}`;
+}
+
+function isCellEditable(
+    cell: HmisCellConfig,
     scope: HmisEditableScope | undefined,
 ): boolean {
     if (!scope || scope.mode === "all") return true;
     if (scope.mode === "none") return false;
-    const identifying = row.cells.find(
-        (c) => typeof c.title === "string" && c.title.length > 0,
-    );
-    if (!identifying?.title) return false;
-    return scope.allow.some((re) => re.test(identifying.title!));
+    if (typeof cell.title !== "string" || cell.title.length === 0) return false;
+    return scope.allow.some((re) => re.test(cell.title!));
 }
 
 function getRowClassName(row: HmisRowConfig) {
@@ -309,14 +319,14 @@ const FieldCell: React.FC<{
     readOnly: boolean;
     setValue: setValue;
     attributeOptionCombo: string;
-    rowEditable: boolean;
+    editableScope: HmisEditableScope | undefined;
 }> = ({
     cell,
     values,
     readOnly,
     setValue,
     attributeOptionCombo,
-    rowEditable,
+    editableScope,
 }) => {
     if (!cell.dataElement || !cell.categoryOptionCombo) {
         return (
@@ -340,7 +350,11 @@ const FieldCell: React.FC<{
             inputMode="numeric"
             title={cell.title ?? key}
             value={values.getOrInsert(key, "")}
-            disabled={readOnly || !!cell.disabled || !rowEditable}
+            disabled={
+                readOnly ||
+                !!cell.disabled ||
+                !isCellEditable(cell, editableScope)
+            }
             style={{ width: "100%" }}
             onChange={(value) => {
                 setValue({
@@ -363,7 +377,7 @@ const RenderCell: React.FC<{
     setValue: setValue;
     attributeOptionCombo: string;
     stickyLeft?: number;
-    rowEditable: boolean;
+    editableScope: HmisEditableScope | undefined;
 }> = ({
     cell,
     values,
@@ -371,7 +385,7 @@ const RenderCell: React.FC<{
     setValue,
     attributeOptionCombo,
     stickyLeft,
-    rowEditable,
+    editableScope,
 }) => {
     const stickyStyle: React.CSSProperties =
         stickyLeft !== undefined ? { left: stickyLeft } : {};
@@ -397,7 +411,7 @@ const RenderCell: React.FC<{
                     readOnly={readOnly}
                     setValue={setValue}
                     attributeOptionCombo={attributeOptionCombo}
-                    rowEditable={rowEditable}
+                    editableScope={editableScope}
                 />
             </td>
         );
@@ -428,7 +442,7 @@ const renderRow = (
     setValue: setValue,
     attributeOptionCombo: string,
     carry: RowSpanCarry,
-    rowEditable: boolean,
+    editableScope: HmisEditableScope | undefined,
 ) => {
     let cursor = 0;
     const advancePastCarry = () => {
@@ -459,7 +473,7 @@ const renderRow = (
                 setValue={setValue}
                 attributeOptionCombo={attributeOptionCombo}
                 stickyLeft={stickyLeft}
-                rowEditable={rowEditable}
+                editableScope={editableScope}
             />
         );
     });
@@ -526,7 +540,7 @@ const SectionTable: React.FC<{
                         setValue,
                         attributeOptionCombo,
                         carry,
-                        true,
+                        { mode: "all" },
                     ),
                 )}
             </thead>
@@ -540,11 +554,172 @@ const SectionTable: React.FC<{
                         setValue,
                         attributeOptionCombo,
                         carry,
-                        isRowEditable(row, editableScope),
+                        editableScope,
                     ),
                 )}
             </tbody>
         </table>
+    );
+};
+
+// ─────────────────────────────────────────────────────────────
+// Prototype: antd <Table>-based renderer (toggle above)
+// ─────────────────────────────────────────────────────────────
+
+type CellSlot =
+    | {
+          kind: "primary";
+          cell: HmisCellConfig;
+          colSpan: number;
+          rowSpan: number;
+      }
+    | { kind: "colHidden" }
+    | { kind: "rowHidden" }
+    | { kind: "empty" };
+
+function buildSectionGrid(
+    rows: HmisRowConfig[],
+    columnCount: number,
+): CellSlot[][] {
+    const grid: CellSlot[][] = rows.map(() =>
+        Array.from(
+            { length: columnCount },
+            () => ({ kind: "empty" }) as CellSlot,
+        ),
+    );
+
+    for (let r = 0; r < rows.length; r++) {
+        let cursor = 0;
+        const skipRowHidden = () => {
+            while (
+                cursor < columnCount &&
+                grid[r][cursor].kind === "rowHidden"
+            ) {
+                cursor++;
+            }
+        };
+        skipRowHidden();
+        for (const cell of rows[r].cells) {
+            if (cursor >= columnCount) break;
+            const colSpan = Math.max(1, cell.colSpan ?? 1);
+            const rowSpan = Math.max(1, cell.rowSpan ?? 1);
+            grid[r][cursor] = {
+                kind: "primary",
+                cell,
+                colSpan,
+                rowSpan,
+            };
+            for (let c = 1; c < colSpan && cursor + c < columnCount; c++) {
+                grid[r][cursor + c] = { kind: "colHidden" };
+            }
+            for (let rr = 1; rr < rowSpan && r + rr < rows.length; rr++) {
+                for (let c = 0; c < colSpan && cursor + c < columnCount; c++) {
+                    grid[r + rr][cursor + c] = { kind: "rowHidden" };
+                }
+            }
+            cursor += colSpan;
+            skipRowHidden();
+        }
+    }
+
+    return grid;
+}
+
+type AntdRowRecord = {
+    key: string;
+    row: HmisRowConfig;
+    rowIndex: number;
+};
+
+const SectionTableAntd: React.FC<{
+    section: HmisSectionConfig;
+    values: HmisFormValues;
+    readOnly: boolean;
+    setValue: setValue;
+    attributeOptionCombo: string;
+    editableScope: HmisEditableScope | undefined;
+}> = ({
+    section,
+    values,
+    readOnly,
+    setValue,
+    attributeOptionCombo,
+    editableScope,
+}) => {
+    const frozenColumns = section.frozenColumns ?? 1;
+    const grid = React.useMemo(
+        () => buildSectionGrid(section.rows, section.columnCount),
+        [section.rows, section.columnCount],
+    );
+
+    const dataSource: AntdRowRecord[] = section.rows.map((row, rowIndex) => ({
+        key: row.key,
+        row,
+        rowIndex,
+    }));
+
+    const columns: ColumnType<AntdRowRecord>[] = Array.from(
+        { length: section.columnCount },
+        (_, colIdx) => {
+            const configuredWidth = section.columns?.[colIdx]?.width;
+            return {
+                key: `col-${colIdx}`,
+                dataIndex: `col-${colIdx}`,
+                width: configuredWidth,
+                fixed: colIdx < frozenColumns ? ("left" as const) : undefined,
+                onCell: (record) => {
+                    const slot = grid[record.rowIndex][colIdx];
+                    if (slot.kind === "primary") {
+                        return {
+                            colSpan: slot.colSpan,
+                            rowSpan: slot.rowSpan,
+                            style: getCellStyle(slot.cell),
+                        };
+                    }
+                    if (slot.kind === "colHidden") return { colSpan: 0 };
+                    if (slot.kind === "rowHidden") return { rowSpan: 0 };
+                    return {};
+                },
+                render: (_: unknown, record) => {
+                    const slot = grid[record.rowIndex][colIdx];
+                    if (slot.kind !== "primary") return null;
+                    const { cell } = slot;
+                    if (cell.kind === "field") {
+                        // Head rows (rendered above the body via row.type === "subhead")
+                        // stay fully editable-agnostic; scope only gates data rows.
+                        const scope: HmisEditableScope | undefined =
+                            record.row.type === "subhead"
+                                ? { mode: "all" }
+                                : editableScope;
+                        return (
+                            <FieldCell
+                                cell={cell}
+                                values={values}
+                                readOnly={readOnly}
+                                setValue={setValue}
+                                attributeOptionCombo={attributeOptionCombo}
+                                editableScope={scope}
+                            />
+                        );
+                    }
+                    return cell.text;
+                },
+            };
+        },
+    );
+
+    return (
+        <Table<AntdRowRecord>
+            title={() => section.title}
+            columns={columns}
+            dataSource={dataSource}
+            pagination={false}
+            bordered
+            size="small"
+            showHeader={false}
+            rowClassName={(record) => getRowClassName(record.row)}
+            scroll={{ x: "max-content" }}
+        />
     );
 };
 
@@ -723,17 +898,22 @@ const InnerHmisForm: React.FC<HmisFormProps> = ({
                     outline: "none",
                 }}
             >
-                {tab.sections.map((section) => (
-                    <SectionTable
-                        key={section.key}
-                        section={section}
-                        values={values}
-                        readOnly={effectiveReadOnly}
-                        setValue={setValue}
-                        attributeOptionCombo={attributeOptionCombo}
-                        editableScope={config.editableScope}
-                    />
-                ))}
+                {tab.sections.map((section) => {
+                    const SectionRenderer = USE_ANTD_TABLE_PROTOTYPE
+                        ? SectionTableAntd
+                        : SectionTable;
+                    return (
+                        <SectionRenderer
+                            key={section.key}
+                            section={section}
+                            values={values}
+                            readOnly={effectiveReadOnly}
+                            setValue={setValue}
+                            attributeOptionCombo={attributeOptionCombo}
+                            editableScope={config.editableScope}
+                        />
+                    );
+                })}
             </div>
         ),
     }));
@@ -810,7 +990,7 @@ const InnerHmisForm: React.FC<HmisFormProps> = ({
                                 {verifiedBy ? `by ${verifiedBy}` : ""}
                                 {verifiedBy && verifiedAt ? " · " : ""}
                                 {verifiedAt
-                                    ? new Date(verifiedAt).toLocaleString()
+                                    ? formatVerifiedAt(verifiedAt)
                                     : ""}
                             </span>
                         )}

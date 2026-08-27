@@ -61,6 +61,7 @@ import {
     FlattenedTrackedEntity,
     ProgramRuleResult,
 } from "../schemas";
+import { collectParentSaveCascade } from "../utils/parent-save-cascade";
 import { computeSaveBlock } from "../utils/save-block";
 import {
     cancelDataModal,
@@ -646,29 +647,48 @@ function TrackedEntityComponent() {
                                 string
                             >;
 
-                        const allRelatedEvents = await eventTable
-                            .filter((a) => a.parentEvent === data.event)
-                            .toArray();
-                        const relatedEvents = allRelatedEvents.filter(
-                            (a) => a.syncStatus !== "synced",
-                        );
-
-                        const relatedTrackedEntities = await trackedEntityTable
+                        const candidateTrackedEntities = await trackedEntityTable
                             .filter(
                                 (te) =>
                                     te.parentEntity ===
-                                        trackedEntity.trackedEntity &&
-                                    te.syncStatus !== "synced",
+                                    trackedEntity.trackedEntity,
                             )
                             .toArray();
 
-                        const relatedEnrollments = await enrollmentTable
-                            .filter((e) =>
-                                relatedTrackedEntities
-                                    .map((rt) => rt.trackedEntity)
-                                    .includes(e.trackedEntity),
+                        const candidateChildTrackedEntityIds =
+                            candidateTrackedEntities.map(
+                                (te) => te.trackedEntity,
+                            );
+
+                        const candidateEvents = await eventTable
+                            .filter(
+                                (event) =>
+                                    event.parentEvent === data.event ||
+                                    candidateChildTrackedEntityIds.includes(
+                                        event.trackedEntity,
+                                    ),
                             )
                             .toArray();
+
+                        const candidateEnrollments = await enrollmentTable
+                            .filter((e) =>
+                                candidateChildTrackedEntityIds.includes(
+                                    e.trackedEntity,
+                                ),
+                            )
+                            .toArray();
+
+                        const {
+                            events: relatedEvents,
+                            trackedEntities: relatedTrackedEntities,
+                            enrollments: relatedEnrollments,
+                        } = collectParentSaveCascade({
+                            parentEvent: data,
+                            parentTrackedEntity: trackedEntity,
+                            events: candidateEvents,
+                            trackedEntities: candidateTrackedEntities,
+                            enrollments: candidateEnrollments,
+                        });
 
                         const entities: Array<
                             | FlattenedEvent

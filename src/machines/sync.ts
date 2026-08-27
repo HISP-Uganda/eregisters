@@ -65,12 +65,45 @@ import {
 function deriveValidIds(program: Program | undefined): {
     validAttributeIds: Set<string>;
     validDataElementsByStage: Map<string, Set<string>>;
+    optionCodesByDataElement: Map<string, Set<string>>;
+    optionCodesByAttribute: Map<string, Set<string>>;
 } {
     if (!program) {
         return {
             validAttributeIds: new Set(),
             validDataElementsByStage: new Map(),
+            optionCodesByDataElement: new Map(),
+            optionCodesByAttribute: new Map(),
         };
+    }
+    const optionCodesByDataElement = new Map<string, Set<string>>();
+    for (const stage of program.programStages) {
+        for (const psde of stage.programStageDataElements) {
+            const { dataElement } = psde;
+            if (dataElement.optionSetValue && dataElement.optionSet) {
+                optionCodesByDataElement.set(
+                    dataElement.id,
+                    new Set(dataElement.optionSet.options.map((o) => o.code)),
+                );
+            }
+        }
+    }
+    const optionCodesByAttribute = new Map<string, Set<string>>();
+    for (const ptea of program.programTrackedEntityAttributes) {
+        const { trackedEntityAttribute } = ptea;
+        if (
+            trackedEntityAttribute.optionSetValue &&
+            trackedEntityAttribute.optionSet
+        ) {
+            optionCodesByAttribute.set(
+                trackedEntityAttribute.id,
+                new Set(
+                    trackedEntityAttribute.optionSet.options.map(
+                        (o) => o.code,
+                    ),
+                ),
+            );
+        }
     }
     return {
         validAttributeIds: new Set(
@@ -88,6 +121,8 @@ function deriveValidIds(program: Program | undefined): {
                 ),
             ]),
         ),
+        optionCodesByDataElement,
+        optionCodesByAttribute,
     };
 }
 
@@ -172,6 +207,8 @@ export interface SyncContext {
     resources: Resource[];
     validAttributeIds: Set<string>;
     validDataElementsByStage: Map<string, Set<string>>;
+    optionCodesByDataElement: Map<string, Set<string>>;
+    optionCodesByAttribute: Map<string, Set<string>>;
     message: MessageInstance;
     metadata: Partial<Awaited<ReturnType<typeof queryInfo>>>;
     userInfo: MeUser;
@@ -189,6 +226,8 @@ const syncReportToLocal = async ({
     engine,
     validAttributeIds,
     validDataElementsByStage,
+    optionCodesByDataElement,
+    optionCodesByAttribute,
 }: {
     entities: Array<
         FlattenedTrackedEntity | FlattenedEnrollment | FlattenedEvent
@@ -196,6 +235,8 @@ const syncReportToLocal = async ({
     engine: ReturnType<typeof useDataEngine>;
     validAttributeIds: Set<string>;
     validDataElementsByStage: Map<string, Set<string>>;
+    optionCodesByDataElement: Map<string, Set<string>>;
+    optionCodesByAttribute: Map<string, Set<string>>;
 }) => {
     const reachable = await isDhis2Reachable(engine);
     if (!reachable) {
@@ -210,17 +251,27 @@ const syncReportToLocal = async ({
         (acc, entity) => {
             if ("trackedEntityType" in entity) {
                 acc.trackedEntities.push(
-                    transformTrackedEntity(entity, validAttributeIds),
+                    transformTrackedEntity(
+                        entity,
+                        validAttributeIds,
+                        optionCodesByAttribute,
+                    ),
                 );
             } else if ("enrolledAt" in entity) {
                 acc.enrollments.push(
-                    transformEnrollment(entity, validAttributeIds),
+                    transformEnrollment(
+                        entity,
+                        validAttributeIds,
+                        optionCodesByAttribute,
+                    ),
                 );
             } else if ("event" in entity) {
                 const stageIds =
                     validDataElementsByStage.get(entity.programStage) ??
                     new Set<string>();
-                acc.events.push(transformEvent(entity, stageIds));
+                acc.events.push(
+                    transformEvent(entity, stageIds, optionCodesByDataElement),
+                );
             }
             return acc;
         },
@@ -1213,10 +1264,17 @@ const syncMachine = setup({
                     engine: ReturnType<typeof useDataEngine>;
                     validAttributeIds: Set<string>;
                     validDataElementsByStage: Map<string, Set<string>>;
+                    optionCodesByDataElement: Map<string, Set<string>>;
+                    optionCodesByAttribute: Map<string, Set<string>>;
                 };
             }) => {
-                const { engine, validAttributeIds, validDataElementsByStage } =
-                    input;
+                const {
+                    engine,
+                    validAttributeIds,
+                    validDataElementsByStage,
+                    optionCodesByDataElement,
+                    optionCodesByAttribute,
+                } = input;
 
                 const teTable =
                     trackedEntitiesCollection.utils.getTable() as Table<
@@ -1297,6 +1355,8 @@ const syncMachine = setup({
                         engine,
                         validAttributeIds,
                         validDataElementsByStage,
+                        optionCodesByDataElement,
+                        optionCodesByAttribute,
                     });
                 }
 
@@ -1375,6 +1435,8 @@ const syncMachine = setup({
             dataPushMode: "batch",
             validAttributeIds: new Set<string>(),
             validDataElementsByStage: new Map<string, Set<string>>(),
+            optionCodesByDataElement: new Map<string, Set<string>>(),
+            optionCodesByAttribute: new Map<string, Set<string>>(),
             message,
             info: undefined,
             metadata: {},
@@ -1722,6 +1784,10 @@ const syncMachine = setup({
                             validAttributeIds: context.validAttributeIds,
                             validDataElementsByStage:
                                 context.validDataElementsByStage,
+                            optionCodesByDataElement:
+                                context.optionCodesByDataElement,
+                            optionCodesByAttribute:
+                                context.optionCodesByAttribute,
                         }),
                         onDone: [
                             {
