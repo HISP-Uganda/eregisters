@@ -10,6 +10,7 @@ import {
     Event,
     FlattenedEnrollment,
     FlattenedEvent,
+    FlattenedOptionSet,
     FlattenedTrackedEntity,
     Metadata,
     MeUser,
@@ -62,48 +63,29 @@ import {
     shouldUseLastUpdatedFilter,
 } from "./sync-metadata-mode";
 
-function deriveValidIds(program: Program | undefined): {
+/**
+ * Which attribute/data-element ids belong to this program (and, for data
+ * elements, which program stage) — used to drop stale local fields that
+ * are no longer part of the program before push.
+ *
+ * Deliberately doesn't also derive optionSet validity here: the program's
+ * own `programStageDataElements[].dataElement` / `programTrackedEntityAttributes[].trackedEntityAttribute`
+ * references are id-only stubs (the metadata pull only fetches
+ * `dataElement[id]` for them — see the `fields:` selector below), so they
+ * never carry a real `optionSetValue`/`optionSet`. `transformEvent` /
+ * `transformTrackedEntity` / `transformEnrollment` look that up directly
+ * from the full metadata maps (`context.metadata.dataElements` /
+ * `.trackedEntityAttributes` / `.optionSets`) instead.
+ */
+export function deriveValidIds(program: Program | undefined): {
     validAttributeIds: Set<string>;
     validDataElementsByStage: Map<string, Set<string>>;
-    optionCodesByDataElement: Map<string, Set<string>>;
-    optionCodesByAttribute: Map<string, Set<string>>;
 } {
     if (!program) {
         return {
             validAttributeIds: new Set(),
             validDataElementsByStage: new Map(),
-            optionCodesByDataElement: new Map(),
-            optionCodesByAttribute: new Map(),
         };
-    }
-    const optionCodesByDataElement = new Map<string, Set<string>>();
-    for (const stage of program.programStages) {
-        for (const psde of stage.programStageDataElements) {
-            const { dataElement } = psde;
-            if (dataElement.optionSetValue && dataElement.optionSet) {
-                optionCodesByDataElement.set(
-                    dataElement.id,
-                    new Set(dataElement.optionSet.options.map((o) => o.code)),
-                );
-            }
-        }
-    }
-    const optionCodesByAttribute = new Map<string, Set<string>>();
-    for (const ptea of program.programTrackedEntityAttributes) {
-        const { trackedEntityAttribute } = ptea;
-        if (
-            trackedEntityAttribute.optionSetValue &&
-            trackedEntityAttribute.optionSet
-        ) {
-            optionCodesByAttribute.set(
-                trackedEntityAttribute.id,
-                new Set(
-                    trackedEntityAttribute.optionSet.options.map(
-                        (o) => o.code,
-                    ),
-                ),
-            );
-        }
     }
     return {
         validAttributeIds: new Set(
@@ -121,8 +103,6 @@ function deriveValidIds(program: Program | undefined): {
                 ),
             ]),
         ),
-        optionCodesByDataElement,
-        optionCodesByAttribute,
     };
 }
 
@@ -207,8 +187,6 @@ export interface SyncContext {
     resources: Resource[];
     validAttributeIds: Set<string>;
     validDataElementsByStage: Map<string, Set<string>>;
-    optionCodesByDataElement: Map<string, Set<string>>;
-    optionCodesByAttribute: Map<string, Set<string>>;
     message: MessageInstance;
     metadata: Partial<Awaited<ReturnType<typeof queryInfo>>>;
     userInfo: MeUser;
@@ -226,8 +204,9 @@ const syncReportToLocal = async ({
     engine,
     validAttributeIds,
     validDataElementsByStage,
-    optionCodesByDataElement,
-    optionCodesByAttribute,
+    dataElements,
+    trackedEntityAttributes,
+    optionSets,
 }: {
     entities: Array<
         FlattenedTrackedEntity | FlattenedEnrollment | FlattenedEvent
@@ -235,8 +214,9 @@ const syncReportToLocal = async ({
     engine: ReturnType<typeof useDataEngine>;
     validAttributeIds: Set<string>;
     validDataElementsByStage: Map<string, Set<string>>;
-    optionCodesByDataElement: Map<string, Set<string>>;
-    optionCodesByAttribute: Map<string, Set<string>>;
+    dataElements: Map<string, DataElement> | undefined;
+    trackedEntityAttributes: Map<string, TrackedEntityAttribute> | undefined;
+    optionSets: Map<string, FlattenedOptionSet[]> | undefined;
 }) => {
     const reachable = await isDhis2Reachable(engine);
     if (!reachable) {
@@ -254,7 +234,8 @@ const syncReportToLocal = async ({
                     transformTrackedEntity(
                         entity,
                         validAttributeIds,
-                        optionCodesByAttribute,
+                        trackedEntityAttributes,
+                        optionSets,
                     ),
                 );
             } else if ("enrolledAt" in entity) {
@@ -262,7 +243,8 @@ const syncReportToLocal = async ({
                     transformEnrollment(
                         entity,
                         validAttributeIds,
-                        optionCodesByAttribute,
+                        trackedEntityAttributes,
+                        optionSets,
                     ),
                 );
             } else if ("event" in entity) {
@@ -270,7 +252,7 @@ const syncReportToLocal = async ({
                     validDataElementsByStage.get(entity.programStage) ??
                     new Set<string>();
                 acc.events.push(
-                    transformEvent(entity, stageIds, optionCodesByDataElement),
+                    transformEvent(entity, stageIds, dataElements, optionSets),
                 );
             }
             return acc;
@@ -874,323 +856,322 @@ const syncMachine = setup({
             for (const resource of resources) {
                 try {
                     switch (resource) {
-                    case "categoryOptionCombos":
-                        const {
-                            categoryOptionCombos: { categoryOptionCombos },
-                        } = (await engine.query({
-                            categoryOptionCombos: {
-                                resource: `categoryCombos/UjXPudXlraY/categoryOptionCombos.json`,
-                                params: {
-                                    fields: "id,name,access,categoryOptions[id,name,access]",
+                        case "categoryOptionCombos":
+                            const {
+                                categoryOptionCombos: { categoryOptionCombos },
+                            } = (await engine.query({
+                                categoryOptionCombos: {
+                                    resource: `categoryCombos/UjXPudXlraY/categoryOptionCombos.json`,
+                                    params: {
+                                        fields: "id,name,access,categoryOptions[id,name,access]",
+                                    },
                                 },
-                            },
-                        })) as {
-                            categoryOptionCombos: {
-                                categoryOptionCombos: CategoryOptionCombo[];
+                            })) as {
+                                categoryOptionCombos: {
+                                    categoryOptionCombos: CategoryOptionCombo[];
+                                };
                             };
-                        };
-                        results.categoryOptionCombos = categoryOptionCombos;
-                        break;
-                    case "organisationUnits":
-                        const {
-                            organisationUnits: { organisationUnits },
-                        } = (await engine.query({
-                            organisationUnits: {
-                                resource: `organisationUnits/${userOrgUnit}.json`,
-                                params: {
-                                    fields: "id,name,code,path,parent",
-                                    paging: false,
-                                    includeDescendants: true,
+                            results.categoryOptionCombos = categoryOptionCombos;
+                            break;
+                        case "organisationUnits":
+                            const {
+                                organisationUnits: { organisationUnits },
+                            } = (await engine.query({
+                                organisationUnits: {
+                                    resource: `organisationUnits/${userOrgUnit}.json`,
+                                    params: {
+                                        fields: "id,name,code,path,parent",
+                                        paging: false,
+                                        includeDescendants: true,
+                                    },
                                 },
-                            },
-                        })) as {
-                            organisationUnits: {
-                                organisationUnits: OU[];
+                            })) as {
+                                organisationUnits: {
+                                    organisationUnits: OU[];
+                                };
                             };
-                        };
-                        results.organisationUnits = organisationUnits;
-                        break;
-                    case "dataSets":
-                        const {
-                            dataSets: { dataSets },
-                        } = (await engine.query({
-                            dataSets: {
-                                resource: "dataSets.json",
-                                params: {
-                                    fields: "id,name,code,periodType",
+                            results.organisationUnits = organisationUnits;
+                            break;
+                        case "dataSets":
+                            const {
+                                dataSets: { dataSets },
+                            } = (await engine.query({
+                                dataSets: {
+                                    resource: "dataSets.json",
+                                    params: {
+                                        fields: "id,name,code,periodType",
+                                    },
                                 },
-                            },
-                        })) as {
-                            dataSets: {
-                                dataSets: DataSet[];
+                            })) as {
+                                dataSets: {
+                                    dataSets: DataSet[];
+                                };
                             };
-                        };
-                        results.dataSets = dataSets;
-                        break;
+                            results.dataSets = dataSets;
+                            break;
 
-                    case "programs":
-                        const { program } = (await engine.query({
-                            program: {
-                                resource: "programs",
-                                id: "ueBhWkWll5v",
-                                params: {
-                                    fields: "id,name,programSections[id,name,sortOrder,trackedEntityAttributes[id]],trackedEntityType[id,trackedEntityTypeAttributes[id]],programType,selectEnrollmentDatesInFuture,selectIncidentDatesInFuture,programStages[id,repeatable,name,code,programStageDataElements[id,compulsory,renderOptionsAsRadio,dataElement[id],renderType,allowFutureDate],programStageSections[id,name,sortOrder,dataElements[id]]],programTrackedEntityAttributes[id,mandatory,searchable,renderOptionsAsRadio,renderType,sortOrder,allowFutureDate,displayInList,trackedEntityAttribute[id]]",
+                        case "programs":
+                            const { program } = (await engine.query({
+                                program: {
+                                    resource: "programs",
+                                    id: "ueBhWkWll5v",
+                                    params: {
+                                        fields: "id,name,programSections[id,name,sortOrder,trackedEntityAttributes[id]],trackedEntityType[id,trackedEntityTypeAttributes[id]],programType,selectEnrollmentDatesInFuture,selectIncidentDatesInFuture,programStages[id,repeatable,name,code,programStageDataElements[id,compulsory,renderOptionsAsRadio,dataElement[id],renderType,allowFutureDate],programStageSections[id,name,sortOrder,dataElements[id]]],programTrackedEntityAttributes[id,mandatory,searchable,renderOptionsAsRadio,renderType,sortOrder,allowFutureDate,displayInList,trackedEntityAttribute[id]]",
+                                    },
                                 },
-                            },
-                        })) as { program: Program };
-                        results.programs = [program];
-                        break;
+                            })) as { program: Program };
+                            results.programs = [program];
+                            break;
 
-                    case "dataElements":
-                        const dataElementsParams: any = {
-                            fields: "id,name,code,valueType,formName,optionSetValue,optionSet[id]",
-                            paging: false,
-                        };
-
-                        if (
-                            shouldUseLastUpdatedFilter(
-                                metadataSyncMode,
-                                lastMetadataPull,
-                            )
-                        ) {
-                            dataElementsParams.filter = `lastUpdated:gt:${lastMetadataPull}`;
-                        }
-                        const {
-                            dataElements: { dataElements },
-                        } = (await engine.query({
-                            dataElements: {
-                                resource: "dataElements",
-                                params: dataElementsParams,
-                            },
-                        })) as {
-                            dataElements: {
-                                dataElements: DataElement[];
+                        case "dataElements":
+                            const dataElementsParams: any = {
+                                fields: "id,name,code,valueType,formName,optionSetValue,optionSet[id]",
+                                paging: false,
                             };
-                        };
 
-                        results.dataElements = dataElements;
-                        break;
-                    case "programIndicators":
-                        const programIndicatorsParams: any = {
-                            fields: "id,name,filter,program,aggregationType,expression",
-                            paging: false,
-                        };
-                        if (
-                            shouldUseLastUpdatedFilter(
-                                metadataSyncMode,
-                                lastMetadataPull,
-                            )
-                        ) {
-                            programIndicatorsParams.filter = `lastUpdated:gt:${lastMetadataPull}`;
-                        }
-                        const {
-                            programIndicators: { programIndicators },
-                        } = (await engine.query({
-                            programIndicators: {
-                                resource: "programIndicators",
-                                params: programIndicatorsParams,
-                            },
-                        })) as {
-                            programIndicators: {
-                                programIndicators: ProgramIndicator[];
-                            };
-                        };
-
-                        results.programIndicators = programIndicators;
-
-                        break;
-
-                    case "attributes":
-                        const attributesParams: any = {
-                            fields: "id,name,code,unique,generated,pattern,confidential,valueType,optionSetValue,displayFormName,formName,optionSet[id]",
-                            paging: false,
-                        };
-                        if (
-                            shouldUseLastUpdatedFilter(
-                                metadataSyncMode,
-                                lastMetadataPull,
-                            )
-                        ) {
-                            attributesParams.filter = `lastUpdated:gt:${lastMetadataPull}`;
-                        }
-                        const {
-                            trackedEntityAttributes: {
-                                trackedEntityAttributes,
-                            },
-                        } = (await engine.query({
-                            trackedEntityAttributes: {
-                                resource: "trackedEntityAttributes",
-                                params: attributesParams,
-                            },
-                        })) as {
-                            trackedEntityAttributes: {
-                                trackedEntityAttributes: TrackedEntityAttribute[];
-                            };
-                        };
-
-                        results.trackedEntityAttributes =
-                            trackedEntityAttributes;
-                        break;
-
-                    case "programRules":
-                        const programRulesFilters = [
-                            "program.id:eq:ueBhWkWll5v",
-                        ];
-                        if (
-                            shouldUseLastUpdatedFilter(
-                                metadataSyncMode,
-                                lastMetadataPull,
-                            )
-                        ) {
-                            programRulesFilters.push(
-                                `lastUpdated:gt:${lastMetadataPull}`,
-                            );
-                        }
-                        const {
-                            programRules: { programRules },
-                        } = (await engine.query({
-                            programRules: {
-                                resource: `programRules.json`,
-                                params: {
-                                    filter: programRulesFilters,
-                                    fields: "*,programRuleActions[*]",
-                                    paging: false,
+                            if (
+                                shouldUseLastUpdatedFilter(
+                                    metadataSyncMode,
+                                    lastMetadataPull,
+                                )
+                            ) {
+                                dataElementsParams.filter = `lastUpdated:gt:${lastMetadataPull}`;
+                            }
+                            const {
+                                dataElements: { dataElements },
+                            } = (await engine.query({
+                                dataElements: {
+                                    resource: "dataElements",
+                                    params: dataElementsParams,
                                 },
-                            },
-                        })) as {
-                            programRules: {
-                                programRules: ProgramRule[];
+                            })) as {
+                                dataElements: {
+                                    dataElements: DataElement[];
+                                };
                             };
-                        };
 
-                        results.programRules = programRules;
-
-                        break;
-
-                    case "programRuleVariables":
-                        const programRuleVariablesFilters = [
-                            "program.id:eq:ueBhWkWll5v",
-                        ];
-                        if (
-                            shouldUseLastUpdatedFilter(
-                                metadataSyncMode,
-                                lastMetadataPull,
-                            )
-                        ) {
-                            programRuleVariablesFilters.push(
-                                `lastUpdated:gt:${lastMetadataPull}`,
-                            );
-                        }
-                        const {
-                            programRuleVariables: { programRuleVariables },
-                        } = (await engine.query({
-                            programRuleVariables: {
-                                resource: `programRuleVariables.json`,
-                                params: {
-                                    filter: programRuleVariablesFilters,
-                                    fields: "*",
-                                    paging: false,
+                            results.dataElements = dataElements;
+                            break;
+                        case "programIndicators":
+                            const programIndicatorsParams: any = {
+                                fields: "id,name,filter,program,aggregationType,expression",
+                                paging: false,
+                            };
+                            if (
+                                shouldUseLastUpdatedFilter(
+                                    metadataSyncMode,
+                                    lastMetadataPull,
+                                )
+                            ) {
+                                programIndicatorsParams.filter = `lastUpdated:gt:${lastMetadataPull}`;
+                            }
+                            const {
+                                programIndicators: { programIndicators },
+                            } = (await engine.query({
+                                programIndicators: {
+                                    resource: "programIndicators",
+                                    params: programIndicatorsParams,
                                 },
-                            },
-                        })) as {
-                            programRuleVariables: {
-                                programRuleVariables: ProgramRuleVariable[];
+                            })) as {
+                                programIndicators: {
+                                    programIndicators: ProgramIndicator[];
+                                };
                             };
-                        };
 
-                        results.programRuleVariables = programRuleVariables;
-                        break;
+                            results.programIndicators = programIndicators;
 
-                    case "optionSets":
-                        const optionSetsParams: any = {
-                            fields: "id,name,options[id,name,code,sortOrder]",
-                            paging: false,
-                        };
-                        if (
-                            shouldUseLastUpdatedFilter(
-                                metadataSyncMode,
-                                lastMetadataPull,
-                            )
-                        ) {
-                            optionSetsParams.filter = `lastUpdated:gt:${lastMetadataPull}`;
-                        }
-                        const { optionSets } = (await engine.query({
-                            optionSets: {
-                                resource: "optionSets",
-                                params: optionSetsParams,
-                            },
-                        })) as {
-                            optionSets: {
+                            break;
+
+                        case "attributes":
+                            const attributesParams: any = {
+                                fields: "id,name,code,unique,generated,pattern,confidential,valueType,optionSetValue,displayFormName,formName,optionSet[id]",
+                                paging: false,
+                            };
+                            if (
+                                shouldUseLastUpdatedFilter(
+                                    metadataSyncMode,
+                                    lastMetadataPull,
+                                )
+                            ) {
+                                attributesParams.filter = `lastUpdated:gt:${lastMetadataPull}`;
+                            }
+                            const {
+                                trackedEntityAttributes: {
+                                    trackedEntityAttributes,
+                                },
+                            } = (await engine.query({
+                                trackedEntityAttributes: {
+                                    resource: "trackedEntityAttributes",
+                                    params: attributesParams,
+                                },
+                            })) as {
+                                trackedEntityAttributes: {
+                                    trackedEntityAttributes: TrackedEntityAttribute[];
+                                };
+                            };
+
+                            results.trackedEntityAttributes =
+                                trackedEntityAttributes;
+                            break;
+
+                        case "programRules":
+                            const programRulesFilters = [
+                                "program.id:eq:ueBhWkWll5v",
+                            ];
+                            if (
+                                shouldUseLastUpdatedFilter(
+                                    metadataSyncMode,
+                                    lastMetadataPull,
+                                )
+                            ) {
+                                programRulesFilters.push(
+                                    `lastUpdated:gt:${lastMetadataPull}`,
+                                );
+                            }
+                            const {
+                                programRules: { programRules },
+                            } = (await engine.query({
+                                programRules: {
+                                    resource: `programRules.json`,
+                                    params: {
+                                        filter: programRulesFilters,
+                                        fields: "*,programRuleActions[*]",
+                                        paging: false,
+                                    },
+                                },
+                            })) as {
+                                programRules: {
+                                    programRules: ProgramRule[];
+                                };
+                            };
+
+                            results.programRules = programRules;
+
+                            break;
+
+                        case "programRuleVariables":
+                            const programRuleVariablesFilters = [
+                                "program.id:eq:ueBhWkWll5v",
+                            ];
+                            if (
+                                shouldUseLastUpdatedFilter(
+                                    metadataSyncMode,
+                                    lastMetadataPull,
+                                )
+                            ) {
+                                programRuleVariablesFilters.push(
+                                    `lastUpdated:gt:${lastMetadataPull}`,
+                                );
+                            }
+                            const {
+                                programRuleVariables: { programRuleVariables },
+                            } = (await engine.query({
+                                programRuleVariables: {
+                                    resource: `programRuleVariables.json`,
+                                    params: {
+                                        filter: programRuleVariablesFilters,
+                                        fields: "*",
+                                        paging: false,
+                                    },
+                                },
+                            })) as {
+                                programRuleVariables: {
+                                    programRuleVariables: ProgramRuleVariable[];
+                                };
+                            };
+
+                            results.programRuleVariables = programRuleVariables;
+                            break;
+
+                        case "optionSets":
+                            const optionSetsParams: any = {
+                                fields: "id,name,options[id,name,code,sortOrder]",
+                                paging: false,
+                            };
+                            if (
+                                shouldUseLastUpdatedFilter(
+                                    metadataSyncMode,
+                                    lastMetadataPull,
+                                )
+                            ) {
+                                optionSetsParams.filter = `lastUpdated:gt:${lastMetadataPull}`;
+                            }
+                            const { optionSets } = (await engine.query({
                                 optionSets: {
-                                    id: string;
-                                    name: string;
-                                    options: {
+                                    resource: "optionSets",
+                                    params: optionSetsParams,
+                                },
+                            })) as {
+                                optionSets: {
+                                    optionSets: {
                                         id: string;
                                         name: string;
-                                        code: string;
-                                        sortOrder: number;
+                                        options: {
+                                            id: string;
+                                            name: string;
+                                            code: string;
+                                            sortOrder: number;
+                                        }[];
                                     }[];
-                                }[];
+                                };
                             };
-                        };
 
-                        const flattenedOptionSets =
-                            optionSets.optionSets.flatMap((os) =>
-                                os.options.map((o) => ({
-                                    ...o,
-                                    optionSet: os.id,
-                                    optionSetName: os.name,
-                                })),
-                            );
-                        results.optionSets = flattenedOptionSets;
-                        break;
+                            const flattenedOptionSets =
+                                optionSets.optionSets.flatMap((os) =>
+                                    os.options.map((o) => ({
+                                        ...o,
+                                        optionSet: os.id,
+                                        optionSetName: os.name,
+                                    })),
+                                );
+                            results.optionSets = flattenedOptionSets;
+                            break;
 
-                    case "optionGroups":
-                        const optionGroupsParams: any = {
-                            fields: "id,options[id,name,code,sortOrder]",
-                            paging: false,
-                        };
-                        if (
-                            shouldUseLastUpdatedFilter(
-                                metadataSyncMode,
-                                lastMetadataPull,
-                            )
-                        ) {
-                            optionGroupsParams.filter = `lastUpdated:gt:${lastMetadataPull}`;
-                        }
-                        const { optionGroups } = (await engine.query({
-                            optionGroups: {
-                                resource: "optionGroups",
-                                params: optionGroupsParams,
-                            },
-                        })) as {
-                            optionGroups: {
-                                optionGroups: Array<{
-                                    id: string;
-                                    options: {
+                        case "optionGroups":
+                            const optionGroupsParams: any = {
+                                fields: "id,options[id,name,code,sortOrder]",
+                                paging: false,
+                            };
+                            if (
+                                shouldUseLastUpdatedFilter(
+                                    metadataSyncMode,
+                                    lastMetadataPull,
+                                )
+                            ) {
+                                optionGroupsParams.filter = `lastUpdated:gt:${lastMetadataPull}`;
+                            }
+                            const { optionGroups } = (await engine.query({
+                                optionGroups: {
+                                    resource: "optionGroups",
+                                    params: optionGroupsParams,
+                                },
+                            })) as {
+                                optionGroups: {
+                                    optionGroups: Array<{
                                         id: string;
-                                        name: string;
-                                        code: string;
-                                        sortOrder: number;
-                                    }[];
-                                }>;
+                                        options: {
+                                            id: string;
+                                            name: string;
+                                            code: string;
+                                            sortOrder: number;
+                                        }[];
+                                    }>;
+                                };
                             };
-                        };
 
-                        const flattenedOptionGroups =
-                            optionGroups.optionGroups.flatMap((og) =>
-                                og.options.map((o) => ({
-                                    ...o,
-                                    optionGroup: og.id,
-                                })),
-                            );
-                        results.optionGroups = flattenedOptionGroups;
-                        break;
-                }
+                            const flattenedOptionGroups =
+                                optionGroups.optionGroups.flatMap((og) =>
+                                    og.options.map((o) => ({
+                                        ...o,
+                                        optionGroup: og.id,
+                                    })),
+                                );
+                            results.optionGroups = flattenedOptionGroups;
+                            break;
+                    }
                     const currentTimestamp = new Date().toISOString();
-                    let version = await db.metadataVersions.get(
-                        "metadata-version",
-                    );
+                    let version =
+                        await db.metadataVersions.get("metadata-version");
                     if (version === undefined) {
                         version = {
                             id: "metadata-version",
@@ -1264,16 +1245,20 @@ const syncMachine = setup({
                     engine: ReturnType<typeof useDataEngine>;
                     validAttributeIds: Set<string>;
                     validDataElementsByStage: Map<string, Set<string>>;
-                    optionCodesByDataElement: Map<string, Set<string>>;
-                    optionCodesByAttribute: Map<string, Set<string>>;
+                    dataElements: Map<string, DataElement> | undefined;
+                    trackedEntityAttributes:
+                        | Map<string, TrackedEntityAttribute>
+                        | undefined;
+                    optionSets: Map<string, FlattenedOptionSet[]> | undefined;
                 };
             }) => {
                 const {
                     engine,
                     validAttributeIds,
                     validDataElementsByStage,
-                    optionCodesByDataElement,
-                    optionCodesByAttribute,
+                    dataElements,
+                    trackedEntityAttributes,
+                    optionSets,
                 } = input;
 
                 const teTable =
@@ -1355,8 +1340,9 @@ const syncMachine = setup({
                         engine,
                         validAttributeIds,
                         validDataElementsByStage,
-                        optionCodesByDataElement,
-                        optionCodesByAttribute,
+                        dataElements,
+                        trackedEntityAttributes,
+                        optionSets,
                     });
                 }
 
@@ -1435,8 +1421,6 @@ const syncMachine = setup({
             dataPushMode: "batch",
             validAttributeIds: new Set<string>(),
             validDataElementsByStage: new Map<string, Set<string>>(),
-            optionCodesByDataElement: new Map<string, Set<string>>(),
-            optionCodesByAttribute: new Map<string, Set<string>>(),
             message,
             info: undefined,
             metadata: {},
@@ -1784,10 +1768,10 @@ const syncMachine = setup({
                             validAttributeIds: context.validAttributeIds,
                             validDataElementsByStage:
                                 context.validDataElementsByStage,
-                            optionCodesByDataElement:
-                                context.optionCodesByDataElement,
-                            optionCodesByAttribute:
-                                context.optionCodesByAttribute,
+                            dataElements: context.metadata.dataElements,
+                            trackedEntityAttributes:
+                                context.metadata.trackedEntityAttributes,
+                            optionSets: context.metadata.optionSets,
                         }),
                         onDone: [
                             {

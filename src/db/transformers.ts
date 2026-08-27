@@ -1,7 +1,11 @@
+import { isEmpty } from "lodash";
 import type {
-    FlattenedEvent,
+    DataElement,
     FlattenedEnrollment,
+    FlattenedEvent,
+    FlattenedOptionSet,
     FlattenedTrackedEntity,
+    TrackedEntityAttribute,
 } from "../schemas";
 
 /**
@@ -12,29 +16,48 @@ import type {
  */
 
 /**
- * Transform a tracked entity from local format to DHIS2 API format
- * Converts flat attributes object to array of {attribute, value} objects
- * Handles parent entity relationship via FhyNxUVOpjh attribute
+ * Filters a (possibly multi-select, comma-joined) value down to just its
+ * valid option codes, dropping any that no longer exist in the field's
+ * optionSet — rather than discarding the whole value over one bad code.
+ *
+ * Looks the field up directly in the metadata maps already loaded into
+ * sync context (`context.metadata.dataElements` / `.trackedEntityAttributes`
+ * / `.optionSets`) rather than a separately-derived cache: the program's own
+ * `programStageDataElements[].dataElement` / `programTrackedEntityAttributes[].trackedEntityAttribute`
+ * references are id-only stubs (the metadata pull only fetches `dataElement[id]`
+ * for them), so they never carry a real `optionSetValue`/`optionSet`.
+ *
+ * - Field not found, or not optionSet-backed: nothing to validate, `value`
+ *   passes through unchanged.
+ * - optionSet-backed but every code is invalid: returns `undefined`,
+ *   telling the caller to drop the field entirely (no valid value left).
+ * - Otherwise: returns just the valid codes, rejoined with commas.
  */
-/**
- * A value passes optionSet validation when the field has no registered
- * optionSet (nothing to check against), or every code in the value matches
- * one of the optionSet's option codes.
- */
-function hasValidOptionCodes(
+function filterValidOptionCodes(
     fieldId: string,
     value: string,
-    optionCodesByField?: Map<string, Set<string>>,
-): boolean {
-    const validCodes = optionCodesByField?.get(fieldId);
-    if (!validCodes) return true;
-    return value.split(",").every((code) => validCodes.has(code));
+    fieldsById:
+        | Map<string, Pick<DataElement | TrackedEntityAttribute, "optionSetValue" | "optionSet">>
+        | undefined,
+    optionSets: Map<string, FlattenedOptionSet[]> | undefined,
+): string | undefined {
+    const field = fieldsById?.get(fieldId);
+    if (!field?.optionSetValue || !field.optionSet) return value;
+
+    const options = optionSets?.get(field.optionSet.id) ?? [];
+    const validCodes = new Set(options.map((o) => o.code));
+    const validTokens = value
+        .split(",")
+        .map((code) => code.trim())
+        .filter((code) => code.length > 0 && validCodes.has(code));
+    return validTokens.length > 0 ? validTokens.join(",") : undefined;
 }
 
 export function transformTrackedEntity(
     te: FlattenedTrackedEntity,
     validAttributeIds?: Set<string>,
-    optionCodesByAttribute?: Map<string, Set<string>>,
+    trackedEntityAttributes?: Map<string, TrackedEntityAttribute>,
+    optionSets?: Map<string, FlattenedOptionSet[]>,
 ) {
     const { attributes, ...rest } = te;
     const { enrolledAt, ...teAttributes } = attributes;
@@ -47,19 +70,20 @@ export function transformTrackedEntity(
         ...rest,
         attributes: Object.entries(finalAttributes).flatMap(
             ([attribute, value]: [string, any]) => {
-                if (validAttributeIds?.size && !validAttributeIds.has(attribute))
+                if (
+                    validAttributeIds?.size &&
+                    !validAttributeIds.has(attribute)
+                )
                     return [];
                 if (value !== undefined && value !== null && value !== "") {
-                    const stringValue = String(value);
-                    if (
-                        !hasValidOptionCodes(
-                            attribute,
-                            stringValue,
-                            optionCodesByAttribute,
-                        )
-                    )
-                        return [];
-                    return { attribute, value: stringValue };
+                    const filtered = filterValidOptionCodes(
+                        attribute,
+                        String(value),
+                        trackedEntityAttributes,
+                        optionSets,
+                    );
+                    if (filtered === undefined) return [];
+                    return { attribute, value: filtered };
                 }
                 return [];
             },
@@ -69,7 +93,8 @@ export function transformTrackedEntity(
 export function transformEnrollment(
     enrollment: FlattenedEnrollment,
     validAttributeIds?: Set<string>,
-    optionCodesByAttribute?: Map<string, Set<string>>,
+    trackedEntityAttributes?: Map<string, TrackedEntityAttribute>,
+    optionSets?: Map<string, FlattenedOptionSet[]>,
 ) {
     const { attributes, ...rest } = enrollment;
     const { enrolledAt, ...enrollmentAttributes } = attributes;
@@ -79,19 +104,20 @@ export function transformEnrollment(
         enrolledAt: enrolledAt || rest.enrolledAt,
         attributes: Object.entries(enrollmentAttributes).flatMap(
             ([attribute, value]: [string, any]) => {
-                if (validAttributeIds?.size && !validAttributeIds.has(attribute))
+                if (
+                    validAttributeIds?.size &&
+                    !validAttributeIds.has(attribute)
+                )
                     return [];
                 if (value !== undefined && value !== null && value !== "") {
-                    const stringValue = String(value);
-                    if (
-                        !hasValidOptionCodes(
-                            attribute,
-                            stringValue,
-                            optionCodesByAttribute,
-                        )
-                    )
-                        return [];
-                    return { attribute, value: stringValue };
+                    const filtered = filterValidOptionCodes(
+                        attribute,
+                        String(value),
+                        trackedEntityAttributes,
+                        optionSets,
+                    );
+                    if (filtered === undefined) return [];
+                    return { attribute, value: filtered };
                 }
                 return [];
             },
@@ -102,7 +128,8 @@ export function transformEnrollment(
 export function transformEvent(
     event: FlattenedEvent,
     validDataElementIds?: Set<string>,
-    optionCodesByDataElement?: Map<string, Set<string>>,
+    dataElements?: Map<string, DataElement>,
+    optionSets?: Map<string, FlattenedOptionSet[]>,
 ) {
     const { dataValues, ...eventRest } = event;
     const { occurredAt, ...otherDataElements } = dataValues;
@@ -120,21 +147,23 @@ export function transformEvent(
         ...eventRest,
         dataValues: Object.entries(finalDataValues).flatMap(
             ([dataElement, value]: [string, any]) => {
-                if (validDataElementIds?.size && !validDataElementIds.has(dataElement))
+                if (
+                    validDataElementIds?.size &&
+                    !validDataElementIds.has(dataElement)
+                )
                     return [];
-                if (value !== undefined && value !== null && value !== "") {
+                if (!isEmpty(value)) {
                     const outValue = Array.isArray(value)
                         ? value.join(",")
                         : value;
-                    if (
-                        !hasValidOptionCodes(
-                            dataElement,
-                            String(outValue),
-                            optionCodesByDataElement,
-                        )
-                    )
-                        return [];
-                    return { dataElement, value: outValue };
+                    const filtered = filterValidOptionCodes(
+                        dataElement,
+                        String(outValue),
+                        dataElements,
+                        optionSets,
+                    );
+                    if (filtered === undefined) return [];
+                    return { dataElement, value: filtered };
                 }
                 return [];
             },
