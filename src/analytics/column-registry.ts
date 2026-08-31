@@ -5,6 +5,13 @@ interface RegistryInput {
     metadata: AnalyticsMetadata;
     mainStageId: string;
     childStageSlotCounts: Map<string, number>;
+    /** Parent stages actually realized in the real event data for the
+     * selected stage (computed by parent-event-dataset.ts from the
+     * configured legal parents) — NOT the full configured legal-parent
+     * set. One flat (non-slotted) linkedParent.<stageId>.* column group is
+     * generated per entry. Empty when the selected stage has no configured
+     * parent or no matching events exist yet. */
+    realizedParentStageIds?: string[];
 }
 
 function column(
@@ -27,6 +34,7 @@ export function buildColumnRegistry({
     metadata,
     mainStageId,
     childStageSlotCounts,
+    realizedParentStageIds,
 }: RegistryInput): AnalyticsColumn[] {
     const mainStage = metadata.program.programStages.find(
         (stage) => stage.id === mainStageId,
@@ -196,6 +204,50 @@ export function buildColumnRegistry({
                     }),
                 );
             }
+        }
+    }
+
+    // "parentEvent" here reuses the existing AnalyticsSource union value
+    // meaning "reads from an event object" — unrelated to the
+    // "parentEvent.*" column-key prefix used for the main stage above.
+    for (const stageId of realizedParentStageIds ?? []) {
+        const stage = metadata.program.programStages.find(
+            (s) => s.id === stageId,
+        );
+        if (!stage) continue;
+
+        columns.push(
+            column({
+                key: `linkedParent.${stageId}.event`,
+                label: "Event ID",
+                source: "parentEvent",
+                sourceFieldId: "event",
+                valueKind: "string",
+                groupPath: ["Linked Parent", stage.name, "System"],
+                defaultVisible: false,
+            }),
+        );
+
+        for (const psde of stage.programStageDataElements ?? []) {
+            const de =
+                metadata.dataElements.get(psde.dataElement.id) ??
+                psde.dataElement;
+            const section = findStageSection(stage, de.id) ?? "Ungrouped";
+            const valueKind = valueKindFromDhis2(de.valueType);
+            const deLabel = labelFrom(de.name, de.formName, de.id);
+            columns.push(
+                column({
+                    key: `linkedParent.${stageId}.dataValue.${de.id}`,
+                    label: deLabel,
+                    source: "parentEvent",
+                    sourceFieldId: de.id,
+                    valueKind,
+                    optionSetId: de.optionSet?.id,
+                    groupPath: ["Linked Parent", stage.name, section],
+                    defaultVisible: false,
+                    canMeasure: valueKind === "number",
+                }),
+            );
         }
     }
 

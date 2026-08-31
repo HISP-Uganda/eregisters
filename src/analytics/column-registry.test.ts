@@ -285,4 +285,48 @@ describe("buildColumnRegistry", () => {
             )?.label,
         ).toBe("Follow-up result (1)");
     });
+
+    it("adds one flat linkedParent column group per realized parent stage, no slotting", () => {
+        const columns = buildColumnRegistry({
+            metadata,
+            mainStageId: "followup001",
+            childStageSlotCounts: new Map(),
+            realizedParentStageIds: ["visit000001"],
+        });
+
+        expect(
+            columns.find((c) => c.key === "linkedParent.visit000001.event")
+                ?.groupPath,
+        ).toEqual(["Linked Parent", "Visit", "System"]);
+        expect(
+            columns.find(
+                (c) =>
+                    c.key ===
+                    "linkedParent.visit000001.dataValue.weightuid01",
+            )?.groupPath,
+        ).toEqual(["Linked Parent", "Visit", "Triage"]);
+        expect(
+            columns.find(
+                (c) =>
+                    c.key ===
+                    "linkedParent.visit000001.dataValue.weightuid01",
+            )?.label,
+        ).toBe("Weight");
+        // no slot suffix anywhere, unlike childEvent columns
+        expect(
+            columns.some((c) => /^linkedParent\..*\.\d+\./.test(c.key)),
+        ).toBe(false);
+    });
+
+    it("adds no linkedParent columns when no parent stage is realized", () => {
+        const columns = buildColumnRegistry({
+            metadata,
+            mainStageId: "followup001",
+            childStageSlotCounts: new Map(),
+        });
+
+        expect(columns.some((c) => c.key.startsWith("linkedParent."))).toBe(
+            false,
+        );
+    });
 });
