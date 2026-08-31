@@ -36,6 +36,7 @@ import {
 import { useComputedColumns } from "../hooks/useComputedColumns";
 import { useIsMobile } from "../hooks/useIsMobile";
 import { useMetadata } from "../hooks/useMetadata";
+import { useStageHierarchyConfig } from "../hooks/useStageHierarchyConfig";
 import { RootRoute } from "./__root";
 
 const { Title, Text } = Typography;
@@ -81,6 +82,7 @@ function AnalyticsPage() {
         optionSets,
     } = useMetadata();
     const defaultStage = program.programStages[0]?.id ?? "";
+    const stageHierarchyPairs = useStageHierarchyConfig();
     const routeSearch = AnalyticsRoute.useSearch();
     const routeNavigate = AnalyticsRoute.useNavigate();
     const [restored] = useState<AnalyticsRestoredState | null>(() => {
@@ -105,7 +107,7 @@ function AnalyticsPage() {
         () =>
             restored?.filters ?? {
                 programId: program.id,
-                mainStageId: defaultStage,
+                selectedStageId: defaultStage,
                 childStageIds: [],
                 startDate: dayjs().startOf("month").format("YYYY-MM-DD"),
                 endDate: dayjs().format("YYYY-MM-DD"),
@@ -148,6 +150,10 @@ function AnalyticsPage() {
         [orgUnit, filters.programId],
     );
 
+    const legalParentStageIds = stageHierarchyPairs
+        .filter((p) => p.childStageId === filters.selectedStageId)
+        .map((p) => p.parentStageId);
+
     const dataset = useMemo(
         () =>
             buildParentEventDataset({
@@ -162,7 +168,8 @@ function AnalyticsPage() {
                 events,
                 orgUnit,
                 programId: filters.programId,
-                mainStageId: filters.mainStageId || defaultStage,
+                selectedStageId: filters.selectedStageId || defaultStage,
+                legalParentStageIds,
                 childStageIds: filters.childStageIds,
                 startDate: filters.startDate,
                 endDate: filters.endDate,
@@ -173,9 +180,11 @@ function AnalyticsPage() {
             enrollments,
             events,
             filters,
+            legalParentStageIds,
             optionSets,
             orgUnit,
             program,
+            stageHierarchyPairs,
             trackedEntities,
             trackedEntityAttributes,
         ],
@@ -324,6 +333,7 @@ function AnalyticsPage() {
                 </Flex>
                 <AnalyticsFilterBar
                     program={program}
+                    pairs={stageHierarchyPairs}
                     filters={filters}
                     onChange={setFilters}
                 />
