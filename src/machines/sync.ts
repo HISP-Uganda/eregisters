@@ -5,6 +5,7 @@ import {
     DataElement,
     DataSet,
     Dhis2Report,
+    emptyStageHierarchyConfig,
     emptyUIConfig,
     Enrollment,
     Event,
@@ -20,6 +21,7 @@ import {
     ProgramRule,
     ProgramRuleVariable,
     Resource,
+    StageHierarchyConfig,
     TrackedEntity,
     TrackedEntityAttribute,
     UIConfig,
@@ -192,6 +194,7 @@ export interface SyncContext {
     userInfo: MeUser;
     rawMetadata: Metadata;
     uiConfig: UIConfig;
+    stageHierarchyConfig: StageHierarchyConfig;
     period?: string;
     dataSet?: string;
     orgUnit?: string;
@@ -820,6 +823,27 @@ const syncMachine = setup({
                 return emptyUIConfig;
             }
         }),
+        pullStageHierarchy: fromPromise<
+            StageHierarchyConfig,
+            { engine: ReturnType<typeof useDataEngine> }
+        >(async ({ input: { engine } }) => {
+            try {
+                const result = (await engine.query({
+                    stageHierarchy: {
+                        resource: "dataStore/eregisters/stage-hierarchy",
+                    },
+                })) as { stageHierarchy: StageHierarchyConfig };
+                await db.stageHierarchy.bulkPut([
+                    { id: "main", config: result.stageHierarchy },
+                ]);
+                return result.stageHierarchy;
+            } catch {
+                await db.stageHierarchy.bulkPut([
+                    { id: "main", config: emptyStageHierarchyConfig },
+                ]);
+                return emptyStageHierarchyConfig;
+            }
+        }),
         pullResource: fromPromise<
             Metadata,
             {
@@ -1426,6 +1450,7 @@ const syncMachine = setup({
             metadata: {},
             userInfo,
             uiConfig: emptyUIConfig,
+            stageHierarchyConfig: emptyStageHierarchyConfig,
             rawMetadata: {
                 dataElements: [],
                 optionGroups: [],
@@ -1619,9 +1644,22 @@ const syncMachine = setup({
                         src: "pullUIConfig",
                         input: ({ context: { engine } }) => ({ engine }),
                         onDone: {
-                            target: "queryingIndexDB",
+                            target: "pullingStageHierarchy",
                             actions: assign(({ event }) => ({
                                 uiConfig: event.output,
+                            })),
+                        },
+                        onError: "pullingStageHierarchy",
+                    },
+                },
+                pullingStageHierarchy: {
+                    invoke: {
+                        src: "pullStageHierarchy",
+                        input: ({ context: { engine } }) => ({ engine }),
+                        onDone: {
+                            target: "queryingIndexDB",
+                            actions: assign(({ event }) => ({
+                                stageHierarchyConfig: event.output,
                             })),
                         },
                         onError: "queryingIndexDB",
