@@ -19,10 +19,10 @@ export function buildParentEventDataset(
     input: AnalyticsDatasetInput,
 ): AnalyticsDataset {
     const mainStage = input.metadata.program.programStages.find(
-        (stage) => stage.id === input.mainStageId,
+        (stage) => stage.id === input.selectedStageId,
     );
     if (!mainStage) {
-        throw new Error(`Main stage ${input.mainStageId} was not found`);
+        throw new Error(`Main stage ${input.selectedStageId} was not found`);
     }
     const selectedChildStageIds = new Set(input.childStageIds);
 
@@ -40,7 +40,7 @@ export function buildParentEventDataset(
         if (event.syncStatus === "deleted" || event.deleted) return false;
         if (event.orgUnit !== input.orgUnit) return false;
         if (event.program !== input.programId) return false;
-        if (event.programStage !== input.mainStageId) return false;
+        if (event.programStage !== input.selectedStageId) return false;
         return isWithinDateRange(
             effectiveOccurredAt(event),
             input.startDate,
@@ -71,10 +71,29 @@ export function buildParentEventDataset(
         }
     }
 
+    const eventById = new Map(input.events.map((event) => [event.event, event]));
+    const legalParentStageIds = new Set(input.legalParentStageIds);
+
+    function resolveLinkedParent(selectedEvent: (typeof input.events)[number]) {
+        if (!selectedEvent.parentEvent) return undefined;
+        const parent = eventById.get(selectedEvent.parentEvent);
+        if (!parent) return undefined;
+        if (parent.syncStatus === "deleted" || parent.deleted) return undefined;
+        if (!legalParentStageIds.has(parent.programStage)) return undefined;
+        return parent;
+    }
+
+    const realizedParentStageIds = new Set<string>();
+    for (const selectedEvent of mainEvents) {
+        const parent = resolveLinkedParent(selectedEvent);
+        if (parent) realizedParentStageIds.add(parent.programStage);
+    }
+
     const columns = buildColumnRegistry({
         metadata: input.metadata,
-        mainStageId: input.mainStageId,
+        mainStageId: input.selectedStageId,
         childStageSlotCounts: slotCounts,
+        realizedParentStageIds: [...realizedParentStageIds],
     });
 
     const rows = mainEvents.map((parentEvent) => {
@@ -85,6 +104,12 @@ export function buildParentEventDataset(
         const childEventsByStage = groupChildrenByStage(
             childEventsByParent.get(parentEvent.event) ?? [],
         );
+        const linkedParent = resolveLinkedParent(parentEvent);
+        const linkedParentByStage: Record<string, (typeof input.events)[number]> =
+            {};
+        if (linkedParent) {
+            linkedParentByStage[linkedParent.programStage] = linkedParent;
+        }
         const enrollment = enrollmentById.get(parentEvent.enrollment);
         const values = buildRowValues({
             columns,
@@ -92,6 +117,7 @@ export function buildParentEventDataset(
             enrollment,
             parentEvent,
             childEventsByStage,
+            linkedParentByStage,
             optionSets: input.metadata.optionSets,
         });
 
@@ -101,6 +127,7 @@ export function buildParentEventDataset(
             enrollment,
             parentEvent,
             childEventsByStage,
+            linkedParentByStage,
             values,
         };
     });
@@ -177,6 +204,7 @@ function buildRowValues({
     enrollment,
     parentEvent,
     childEventsByStage,
+    linkedParentByStage,
     optionSets,
 }: {
     columns: AnalyticsColumn[];
@@ -184,6 +212,7 @@ function buildRowValues({
     enrollment: RecordWithAttributes | undefined;
     parentEvent: RecordWithDataValues;
     childEventsByStage: Record<string, RecordWithDataValues[]>;
+    linkedParentByStage: Record<string, RecordWithDataValues>;
     optionSets: Parameters<typeof displayValue>[2];
 }): Record<string, AnalyticsCell> {
     const values: Record<string, AnalyticsCell> = {};
@@ -194,6 +223,7 @@ function buildRowValues({
             enrollment,
             parentEvent,
             childEventsByStage,
+            linkedParentByStage,
         );
         values[column.key] = {
             raw,
@@ -209,6 +239,7 @@ function readRawValue(
     enrollment: RecordWithAttributes | undefined,
     parentEvent: RecordWithDataValues,
     childEventsByStage: Record<string, RecordWithDataValues[]>,
+    linkedParentByStage: Record<string, RecordWithDataValues>,
 ) {
     if (key.startsWith("te.attribute.")) {
         return trackedEntity.attributes[key.replace("te.attribute.", "")];
@@ -226,6 +257,14 @@ function readRawValue(
     }
     if (key.startsWith("parentEvent.")) {
         return parentEvent[key.replace("parentEvent.", "")];
+    }
+    if (key.startsWith("linkedParent.")) {
+        const [, stageId, fieldType, fieldId] = key.split(".");
+        const parent = linkedParentByStage[stageId];
+        if (!parent) return undefined;
+        return fieldType === "dataValue"
+            ? parent.dataValues[fieldId]
+            : parent[fieldType];
     }
     if (key.startsWith("childEvent.")) {
         const [, stageId, slotText, fieldType, fieldId] = key.split(".");

@@ -117,6 +117,7 @@ function row(id: string, values: Record<string, unknown>): AnalyticsRow {
         enrollment: undefined,
         parentEvent: {} as AnalyticsRow["parentEvent"],
         childEventsByStage: {},
+        linkedParentByStage: {},
         values: Object.fromEntries(
             Object.entries(values).map(([key, raw]) => [
                 key,

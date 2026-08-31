@@ -10,7 +10,8 @@ describe("buildParentEventDataset", () => {
             metadata,
             orgUnit: "ouuid000001",
             programId: "programuid1",
-            mainStageId: "visit000001",
+            selectedStageId: "visit000001",
+            legalParentStageIds: [],
             childStageIds: ["labstage001"],
             startDate: "2026-08-01",
             endDate: "2026-08-31",
@@ -65,7 +66,8 @@ describe("buildParentEventDataset", () => {
             metadata,
             orgUnit: "ouuid000001",
             programId: "programuid1",
-            mainStageId: "visit000001",
+            selectedStageId: "visit000001",
+            legalParentStageIds: [],
             childStageIds: [],
             startDate: "2026-08-01",
             endDate: "2026-08-31",
@@ -91,7 +93,8 @@ describe("buildParentEventDataset", () => {
             metadata,
             orgUnit: "ouuid000001",
             programId: "programuid1",
-            mainStageId: "visit000001",
+            selectedStageId: "visit000001",
+            legalParentStageIds: [],
             childStageIds: [],
             startDate: "2026-08-01",
             endDate: "2026-08-31",
@@ -120,7 +123,8 @@ describe("buildParentEventDataset", () => {
             metadata,
             orgUnit: "ouuid000001",
             programId: "programuid1",
-            mainStageId: "visit000001",
+            selectedStageId: "visit000001",
+            legalParentStageIds: [],
             childStageIds: [],
             startDate: "2026-08-01",
             endDate: "2026-08-31",
@@ -144,6 +148,75 @@ describe("buildParentEventDataset", () => {
             ),
         ).toBe(false);
         expect(dataset.rows[0].childEventsByStage).toEqual({});
+    });
+
+    it("flattens exactly one realized parent stage's data as linkedParent columns, one-to-one", () => {
+        const dataset = buildParentEventDataset({
+            metadata,
+            orgUnit: "ouuid000001",
+            programId: "programuid1",
+            selectedStageId: "labstage001",
+            childStageIds: [],
+            legalParentStageIds: ["visit000001"],
+            startDate: "2026-08-01",
+            endDate: "2026-08-31",
+            trackedEntities: [trackedEntity("teuid000001", {})],
+            enrollments: [enrollment("enroll00001", "teuid000001")],
+            events: [
+                event("visit000001", "visit000001", "teuid000001", {
+                    enrollment: "enroll00001",
+                    dataValues: { weightuid01: 51 },
+                }),
+                event("lab00000001", "labstage001", "teuid000001", {
+                    enrollment: "enroll00001",
+                    parentEvent: "visit000001",
+                    dataValues: { resultuid01: "P" },
+                }),
+            ],
+        });
+
+        expect(dataset.rows).toHaveLength(1);
+        expect(dataset.rows[0].id).toBe("lab00000001");
+        expect(
+            dataset.rows[0].values["linkedParent.visit000001.dataValue.weightuid01"]
+                .raw,
+        ).toBe(51);
+        expect(dataset.rows[0].values["linkedParent.visit000001.event"].raw).toBe(
+            "visit000001",
+        );
+        expect(
+            dataset.columns.some(
+                (c) => c.key === "linkedParent.visit000001.dataValue.weightuid01",
+            ),
+        ).toBe(true);
+    });
+
+    it("does not flatten a legal parent stage that has no realized events", () => {
+        const dataset = buildParentEventDataset({
+            metadata,
+            orgUnit: "ouuid000001",
+            programId: "programuid1",
+            selectedStageId: "labstage001",
+            childStageIds: [],
+            legalParentStageIds: ["visit000001"],
+            startDate: "2026-08-01",
+            endDate: "2026-08-31",
+            trackedEntities: [trackedEntity("teuid000001", {})],
+            enrollments: [enrollment("enroll00001", "teuid000001")],
+            events: [
+                // lab event with NO parentEvent set at all
+                event("lab00000001", "labstage001", "teuid000001", {
+                    enrollment: "enroll00001",
+                    dataValues: { resultuid01: "P" },
+                }),
+            ],
+        });
+
+        expect(dataset.rows).toHaveLength(1);
+        expect(
+            dataset.columns.some((c) => c.key.startsWith("linkedParent.")),
+        ).toBe(false);
+        expect(dataset.rows[0].linkedParentByStage).toEqual({});
     });
 });
 

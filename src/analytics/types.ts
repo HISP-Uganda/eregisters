@@ -35,6 +35,7 @@ export interface AnalyticsRow {
     enrollment: FlattenedEnrollment | undefined;
     parentEvent: FlattenedEvent;
     childEventsByStage: Record<string, FlattenedEvent[]>;
+    linkedParentByStage: Record<string, FlattenedEvent>;
     values: Record<string, AnalyticsCell>;
 }
 
@@ -92,8 +93,15 @@ export interface AnalyticsDatasetInput {
     events: FlattenedEvent[];
     orgUnit: string;
     programId: string;
-    mainStageId: string;
+    selectedStageId: string;
     childStageIds: string[];
+    /** The selected stage's configured legal parent stages (from the
+     * admin-configured stage-hierarchy pairs) — a candidate list. The
+     * dataset builder narrows this down at build time to whichever of
+     * these are actually realized by real event data (see
+     * `parent-event-dataset.ts`), which is what actually drives column
+     * generation. Empty when the selected stage has no configured parent. */
+    legalParentStageIds: string[];
     startDate: string;
     endDate: string;
 }

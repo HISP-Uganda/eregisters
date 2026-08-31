@@ -33,6 +33,7 @@ function row(id: string, age: unknown): AnalyticsRow {
         enrollment: undefined,
         parentEvent: {} as AnalyticsRow["parentEvent"],
         childEventsByStage: {},
+        linkedParentByStage: {},
         values: {
             "te.attribute.age": { raw: age, display: String(age ?? "Missing") },
         },
