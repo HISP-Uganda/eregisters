@@ -62,7 +62,9 @@ function describeRole(
     const parents = legalParentsOf(stageId, pairs);
     const parts: string[] = [];
     if (parents.length > 0) {
-        parts.push(`child of ${parents.map(stageName).join(", ")}`);
+        parts.push(
+            `child of ${parents.map((id) => stageName(id) ?? id).join(", ")}`,
+        );
     }
     if (children.length > 0) {
         parts.push(`parent of ${children.length} stage(s)`);
@@ -86,6 +88,10 @@ export function AnalyticsFilterBar({
     // its own comfortable minimum width and the row wraps as needed.
     const fieldStyle = (minWidth: number) =>
         isMobile ? { width: "100%" } : { minWidth };
+    const childStageIdsForSelectedStage = legalChildrenOf(
+        filters.selectedStageId,
+        pairs,
+    );
 
     return (
         <Flex
@@ -125,21 +131,19 @@ export function AnalyticsFilterBar({
                     }
                 />
             </Form.Item>
-            {legalChildrenOf(filters.selectedStageId, pairs).length > 0 && (
+            {childStageIdsForSelectedStage.length > 0 && (
                 <Form.Item label="Include child stages" layout="vertical">
                     <Select
                         mode="multiple"
                         style={fieldStyle(300)}
                         value={filters.childStageIds}
                         placeholder="Child stages"
-                        options={legalChildrenOf(
-                            filters.selectedStageId,
-                            pairs,
-                        ).map((id) => ({
+                        options={childStageIdsForSelectedStage.map((id) => ({
                             value: id,
-                            label: program.programStages.find(
-                                (s) => s.id === id,
-                            )?.name,
+                            label:
+                                program.programStages.find(
+                                    (s) => s.id === id,
+                                )?.name ?? id,
                         }))}
                         onChange={(childStageIds) =>
                             onChange({ ...filters, childStageIds })
