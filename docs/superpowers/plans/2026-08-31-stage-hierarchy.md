@@ -1126,10 +1126,16 @@ Add near the top of `AnalyticsPage`, alongside the other `useMetadata()`-derived
 
 ```ts
 const stageHierarchyPairs = useStageHierarchyConfig();
-const legalParentStageIds = stageHierarchyPairs
-    .filter((p) => p.childStageId === filters.selectedStageId)
-    .map((p) => p.parentStageId);
+const legalParentStageIds = useMemo(
+    () =>
+        stageHierarchyPairs
+            .filter((p) => p.childStageId === filters.selectedStageId)
+            .map((p) => p.parentStageId),
+    [stageHierarchyPairs, filters.selectedStageId],
+);
 ```
+
+**Must be memoized, not a plain `const`.** An un-memoized derivation here gets a new array reference on every render; since it later sits in the `dataset` `useMemo`'s dependency array (Step 4), that defeats the memo entirely — `dataset` recomputes every render, which cascades into `computedRows` recomputing every render, which the `useEffect` that syncs `filteredRows` treats as "changed" every time, calling `setFilteredRows` on every render and triggering an infinite re-render loop starting at mount. (This was caught in code review after an earlier draft of this plan specified the un-memoized form — if you're implementing from a stale copy of this plan, use the `useMemo` version above.)
 
 - [ ] **Step 4: Pass `legalParentStageIds` into the `buildParentEventDataset` call**
 
