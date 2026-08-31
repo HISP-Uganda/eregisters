@@ -150,9 +150,13 @@ function AnalyticsPage() {
         [orgUnit, filters.programId],
     );
 
-    const legalParentStageIds = stageHierarchyPairs
-        .filter((p) => p.childStageId === filters.selectedStageId)
-        .map((p) => p.parentStageId);
+    const legalParentStageIds = useMemo(
+        () =>
+            stageHierarchyPairs
+                .filter((p) => p.childStageId === filters.selectedStageId)
+                .map((p) => p.parentStageId),
+        [stageHierarchyPairs, filters.selectedStageId],
+    );
 
     const dataset = useMemo(
         () =>
