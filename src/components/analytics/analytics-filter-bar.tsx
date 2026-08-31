@@ -2,7 +2,7 @@ import { DatePicker, Flex, Form, Select } from "antd";
 import dayjs, { Dayjs } from "dayjs";
 import React from "react";
 import PeriodPicker from "../period-picker";
-import type { Program } from "../../schemas";
+import type { Program, StagePair } from "../../schemas";
 import { useIsMobile } from "../../hooks/useIsMobile";
 import {
     currentPeriodId,
@@ -21,7 +21,7 @@ export type AnalyticsRangeType =
 
 export interface AnalyticsFilters {
     programId: string;
-    mainStageId: string;
+    selectedStageId: string;
     childStageIds: string[];
     startDate: string;
     endDate: string;
@@ -41,12 +41,43 @@ const RANGE_TYPE_OPTIONS: { value: AnalyticsRangeType; label: string }[] = [
     { value: "Weekly", label: "Week" },
 ];
 
+function legalChildrenOf(stageId: string, pairs: StagePair[]) {
+    return pairs
+        .filter((p) => p.parentStageId === stageId)
+        .map((p) => p.childStageId);
+}
+
+function legalParentsOf(stageId: string, pairs: StagePair[]) {
+    return pairs
+        .filter((p) => p.childStageId === stageId)
+        .map((p) => p.parentStageId);
+}
+
+function describeRole(
+    stageId: string,
+    pairs: StagePair[],
+    stageName: (id: string) => string | undefined,
+) {
+    const children = legalChildrenOf(stageId, pairs);
+    const parents = legalParentsOf(stageId, pairs);
+    const parts: string[] = [];
+    if (parents.length > 0) {
+        parts.push(`child of ${parents.map(stageName).join(", ")}`);
+    }
+    if (children.length > 0) {
+        parts.push(`parent of ${children.length} stage(s)`);
+    }
+    return parts.length > 0 ? ` — ${parts.join(", ")}` : "";
+}
+
 export function AnalyticsFilterBar({
     program,
+    pairs,
     filters,
     onChange,
 }: {
     program: Program;
+    pairs: StagePair[];
     filters: AnalyticsFilters;
     onChange: (filters: AnalyticsFilters) => void;
 }) {
@@ -75,41 +106,47 @@ export function AnalyticsFilterBar({
             </Form.Item>
             <Form.Item label="Program Stage" layout="vertical">
                 <Select
-                    style={fieldStyle(260)}
-                    value={filters.mainStageId}
-                    placeholder="Main stage"
+                    style={fieldStyle(320)}
+                    value={filters.selectedStageId}
+                    placeholder="Stage"
                     options={program.programStages.map((stage) => ({
                         value: stage.id,
-                        label: stage.name,
+                        label: `${stage.name}${describeRole(
+                            stage.id,
+                            pairs,
+                            (id) =>
+                                program.programStages.find(
+                                    (s) => s.id === id,
+                                )?.name,
+                        )}`,
                     }))}
-                    onChange={(mainStageId) =>
-                        onChange({
-                            ...filters,
-                            mainStageId,
-                            childStageIds: filters.childStageIds.filter(
-                                (stageId) => stageId !== mainStageId,
-                            ),
-                        })
+                    onChange={(selectedStageId) =>
+                        onChange({ ...filters, selectedStageId, childStageIds: [] })
                     }
                 />
             </Form.Item>
-            <Form.Item label="Related Stages" layout="vertical">
-                <Select
-                    mode="multiple"
-                    style={fieldStyle(300)}
-                    value={filters.childStageIds}
-                    placeholder="Child stages"
-                    options={program.programStages
-                        .filter((stage) => stage.id !== filters.mainStageId)
-                        .map((stage) => ({
-                            value: stage.id,
-                            label: stage.name,
+            {legalChildrenOf(filters.selectedStageId, pairs).length > 0 && (
+                <Form.Item label="Include child stages" layout="vertical">
+                    <Select
+                        mode="multiple"
+                        style={fieldStyle(300)}
+                        value={filters.childStageIds}
+                        placeholder="Child stages"
+                        options={legalChildrenOf(
+                            filters.selectedStageId,
+                            pairs,
+                        ).map((id) => ({
+                            value: id,
+                            label: program.programStages.find(
+                                (s) => s.id === id,
+                            )?.name,
                         }))}
-                    onChange={(childStageIds) =>
-                        onChange({ ...filters, childStageIds })
-                    }
-                />
-            </Form.Item>
+                        onChange={(childStageIds) =>
+                            onChange({ ...filters, childStageIds })
+                        }
+                    />
+                </Form.Item>
+            )}
             <Form.Item label="Period Type" layout="vertical">
                 <Select
                     style={fieldStyle(150)}
