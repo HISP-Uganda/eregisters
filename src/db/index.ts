@@ -15,6 +15,7 @@ import {
     ProgramRule,
     ProgramRuleResult,
     ProgramRuleVariable,
+    StageHierarchyConfig,
     TrackedEntityAttribute,
     UIConfig,
 } from "../schemas";
@@ -108,6 +109,7 @@ class RegisterDatabase extends Dexie {
     programIndicators!: Table<ProgramIndicator, string>;
     indicatorEvaluations!: Table<IndicatorEvaluation, string>;
     uiConfig!: Table<{ id: string; config: UIConfig }, string>;
+    stageHierarchy!: Table<{ id: string; config: StageHierarchyConfig }, string>;
     dataSets!: Table<DataSet, string>;
     categoryOptionCombos!: Table<CategoryOptionCombo, string>;
     hmisDrafts!: Table<HmisDraft, string>;
@@ -136,6 +138,9 @@ class RegisterDatabase extends Dexie {
         });
         this.version(3).stores({
             hmisDrafts: "id, dataSet, period, orgUnit, syncStatus",
+        });
+        this.version(4).stores({
+            stageHierarchy: "id",
         });
     }
 }

@@ -754,6 +754,16 @@ export const emptyUIConfig: UIConfig = {
     formLayouts: {},
     reloadSignal: { app: null, metadata: null },
 };
+
+export interface StagePair {
+    parentStageId: string;
+    childStageId: string;
+}
+
+export type StageHierarchyConfig = StagePair[];
+
+export const emptyStageHierarchyConfig: StageHierarchyConfig = [];
+
 export type DataSet = {
     id: string;
     code?: string;
