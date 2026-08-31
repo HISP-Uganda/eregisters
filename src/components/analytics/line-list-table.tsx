@@ -1,5 +1,6 @@
 import { Table } from "antd";
 import type { ColumnsType, ColumnType } from "antd/es/table";
+import type { FilterValue, SorterResult } from "antd/es/table/interface";
 import React from "react";
 import type { AnalyticsColumn, AnalyticsRow } from "../../analytics/types";
 import { optionTokens, type OptionSets } from "../../analytics/value-format";
@@ -16,12 +17,26 @@ export interface LineListLinks {
     onOpenEvent?: (trackedEntity: string, event: string) => void;
 }
 
+/** The column filters + single active sort, in antd's own shapes — kept
+ * controlled so callers can persist and restore them across a remount. */
+export interface LineListTableState {
+    filteredInfo: Record<string, FilterValue | null>;
+    sortedColumnKey?: string;
+    sortedOrder?: "ascend" | "descend" | null;
+}
+
+export const EMPTY_LINE_LIST_TABLE_STATE: LineListTableState = {
+    filteredInfo: {},
+};
+
 export function LineListTable({
     columns,
     rows,
     visibleColumnKeys,
     optionSets = new Map(),
+    tableState = EMPTY_LINE_LIST_TABLE_STATE,
     onFilteredRowsChange,
+    onTableStateChange,
     onOpenTrackedEntity,
     onOpenEvent,
 }: {
@@ -29,12 +44,16 @@ export function LineListTable({
     rows: AnalyticsRow[];
     visibleColumnKeys: string[];
     optionSets?: OptionSets;
+    /** Controlled column filters/sort — omit to leave the table uncontrolled. */
+    tableState?: LineListTableState;
     /**
      * Fired whenever the user's column filters (or sort) change the set of
      * rows actually shown, so callers driving the Pivot tab / exports from
      * the same rows can stay in sync with what's on screen.
      */
     onFilteredRowsChange?: (rows: AnalyticsRow[]) => void;
+    /** Fired whenever the user changes a column filter or the sort column/order. */
+    onTableStateChange?: (state: LineListTableState) => void;
 } & LineListLinks) {
     const visible = columns.filter((column) =>
         visibleColumnKeys.includes(column.key),
@@ -68,15 +87,28 @@ export function LineListTable({
                 pagination={false}
                 scroll={{ x: "max-content", y: scrollY }}
                 dataSource={rows}
-                columns={toTableColumns(visible, rows, optionSets, {
-                    onOpenTrackedEntity,
-                    onOpenEvent,
-                })}
-                onChange={(_pagination, _filters, _sorter, extra) =>
+                columns={toTableColumns(
+                    visible,
+                    rows,
+                    optionSets,
+                    { onOpenTrackedEntity, onOpenEvent },
+                    tableState,
+                )}
+                onChange={(_pagination, filters, sorter, extra) => {
                     onFilteredRowsChange?.(
                         extra.currentDataSource as AnalyticsRow[],
-                    )
-                }
+                    );
+                    const single = (
+                        Array.isArray(sorter) ? sorter[0] : sorter
+                    ) as SorterResult<AnalyticsRow> | undefined;
+                    onTableStateChange?.({
+                        filteredInfo: filters,
+                        sortedColumnKey: single?.columnKey as
+                            | string
+                            | undefined,
+                        sortedOrder: single?.order ?? null,
+                    });
+                }}
             />
         </div>
     );
@@ -115,31 +147,45 @@ export function toTableColumns(
     rows: AnalyticsRow[] = [],
     optionSets: OptionSets = new Map(),
     links: LineListLinks = {},
+    tableState: LineListTableState = EMPTY_LINE_LIST_TABLE_STATE,
 ): ColumnsType<AnalyticsRow> {
-    return columns.map((column) => ({
-        title: column.label,
-        dataIndex: ["values", column.key, "display"],
-        key: column.key,
-        ellipsis: true,
-        width: estimateColumnWidth(column.label, column.key, rows),
-        // Computed columns keep their matched range's numeric value as
-        // `raw`, so sorting orders by range rather than alphabetically by
-        // the displayed label (e.g. "5-17" before "18+").
-        ...(column.isComputed
-            ? {
-                  sorter: (a: AnalyticsRow, b: AnalyticsRow) => {
-                      const left = a.values[column.key]?.raw;
-                      const right = b.values[column.key]?.raw;
-                      return (
-                          (typeof left === "number" ? left : -Infinity) -
-                          (typeof right === "number" ? right : -Infinity)
-                      );
-                  },
-              }
-            : {}),
-        ...linkRenderer(column, links),
-        ...buildColumnFilter(column, rows, optionSets),
-    }));
+    return columns.map((column) => {
+        const filter = buildColumnFilter(column, rows, optionSets);
+        return {
+            title: column.label,
+            dataIndex: ["values", column.key, "display"],
+            key: column.key,
+            ellipsis: true,
+            width: estimateColumnWidth(column.label, column.key, rows),
+            // Computed columns keep their matched range's numeric value as
+            // `raw`, so sorting orders by range rather than alphabetically by
+            // the displayed label (e.g. "5-17" before "18+").
+            ...(column.isComputed
+                ? {
+                      sorter: (a: AnalyticsRow, b: AnalyticsRow) => {
+                          const left = a.values[column.key]?.raw;
+                          const right = b.values[column.key]?.raw;
+                          return (
+                              (typeof left === "number" ? left : -Infinity) -
+                              (typeof right === "number" ? right : -Infinity)
+                          );
+                      },
+                      sortOrder:
+                          tableState.sortedColumnKey === column.key
+                              ? tableState.sortedOrder
+                              : null,
+                  }
+                : {}),
+            ...linkRenderer(column, links),
+            ...filter,
+            ...(filter.filters
+                ? {
+                      filteredValue:
+                          tableState.filteredInfo[column.key] ?? null,
+                  }
+                : {}),
+        };
+    });
 }
 
 /**

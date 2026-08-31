@@ -4,6 +4,7 @@ import { createRoute, useNavigate } from "@tanstack/react-router";
 import { Button, Flex, Tabs, Typography } from "antd";
 import dayjs from "dayjs";
 import React, { useEffect, useMemo, useState } from "react";
+import { z } from "zod";
 import {
     applyComputedColumns,
     computedColumnKey,
@@ -20,7 +21,11 @@ import { AnalyticsFilterBar } from "../components/analytics/analytics-filter-bar
 import type { AnalyticsFilters } from "../components/analytics/analytics-filter-bar";
 import { ColumnChooser } from "../components/analytics/column-chooser";
 import { ComputedColumnModal } from "../components/analytics/computed-column-modal";
-import { LineListTable } from "../components/analytics/line-list-table";
+import {
+    EMPTY_LINE_LIST_TABLE_STATE,
+    LineListTable,
+} from "../components/analytics/line-list-table";
+import type { LineListTableState } from "../components/analytics/line-list-table";
 import { PivotBuilder } from "../components/analytics/pivot-builder";
 import type { PivotExportInfo } from "../components/analytics/pivot-builder";
 import {
@@ -39,7 +44,32 @@ export const AnalyticsRoute = createRoute({
     getParentRoute: () => RootRoute,
     path: "/analytics",
     component: AnalyticsPage,
+    validateSearch: z.object({
+        /** JSON-encoded snapshot of filters/columns/tab to restore on
+         * arrival — set when returning here from a record opened from the
+         * line list, so the user's prior selections aren't lost. */
+        restore: z.string().optional(),
+    }),
 });
+
+interface AnalyticsRestoredState {
+    filters: AnalyticsFilters;
+    visibleColumnKeys: string[];
+    tab: string;
+    /** Omitted when the snapshot's `returnSearch` would otherwise grow past
+     * `MAX_RETURN_SEARCH_LENGTH` — see `buildReturnSearch`. */
+    tableState?: LineListTableState;
+}
+
+// Every modern evergreen browser accepts URLs far longer than this (Chrome
+// ~2MB, Firefox ~65K, Safari tens of thousands) — this cap is just headroom
+// so a page with many columns and heavily-filtered ones can never approach
+// any browser's actual ceiling. The column filter/sort snapshot is the only
+// part of the round trip that scales with the data (one entry per selected
+// filter value across every filtered column), so it's the one we drop first
+// if the encoded snapshot ever gets this large; filters/columns/tab stay
+// tiny and bounded regardless of how many columns the program has.
+const MAX_RETURN_SEARCH_LENGTH = 8000;
 
 function AnalyticsPage() {
     const isMobile = useIsMobile();
@@ -51,14 +81,43 @@ function AnalyticsPage() {
         optionSets,
     } = useMetadata();
     const defaultStage = program.programStages[0]?.id ?? "";
-    const [filters, setFilters] = useState<AnalyticsFilters>({
-        programId: program.id,
-        mainStageId: defaultStage,
-        childStageIds: [],
-        startDate: dayjs().startOf("month").format("YYYY-MM-DD"),
-        endDate: dayjs().format("YYYY-MM-DD"),
-        rangeType: "custom",
+    const routeSearch = AnalyticsRoute.useSearch();
+    const routeNavigate = AnalyticsRoute.useNavigate();
+    const [restored] = useState<AnalyticsRestoredState | null>(() => {
+        if (!routeSearch.restore) return null;
+        try {
+            return JSON.parse(routeSearch.restore) as AnalyticsRestoredState;
+        } catch {
+            return null;
+        }
     });
+    // The restored snapshot is only needed once, on arrival — drop it from
+    // the URL so a later reload/share doesn't stick to a stale selection.
+    useEffect(() => {
+        if (!routeSearch.restore) return;
+        routeNavigate({
+            search: (prev) => ({ ...prev, restore: undefined }),
+            replace: true,
+        });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+    const [filters, setFilters] = useState<AnalyticsFilters>(
+        () =>
+            restored?.filters ?? {
+                programId: program.id,
+                mainStageId: defaultStage,
+                childStageIds: [],
+                startDate: dayjs().startOf("month").format("YYYY-MM-DD"),
+                endDate: dayjs().format("YYYY-MM-DD"),
+                rangeType: "custom",
+            },
+    );
+    const [activeTab, setActiveTab] = useState<string>(
+        () => restored?.tab ?? "line-list",
+    );
+    const [tableState, setTableState] = useState<LineListTableState>(
+        () => restored?.tableState ?? EMPTY_LINE_LIST_TABLE_STATE,
+    );
 
     const { data: trackedEntities } = useLiveSuspenseQuery(
         (q) =>
@@ -137,10 +196,12 @@ function AnalyticsPage() {
         [dataset.columns, dataset.rows, computedColumnDefinitions],
     );
 
-    const [visibleColumnKeys, setVisibleColumnKeys] = useState<string[]>(() =>
-        columnsWithComputed
-            .filter((column) => column.defaultVisible)
-            .map((column) => column.key),
+    const [visibleColumnKeys, setVisibleColumnKeys] = useState<string[]>(
+        () =>
+            restored?.visibleColumnKeys ??
+            columnsWithComputed
+                .filter((column) => column.defaultVisible)
+                .map((column) => column.key),
     );
     const effectiveVisibleColumnKeys = visibleColumnKeys;
     const visibleColumns = useMemo(
@@ -177,18 +238,40 @@ function AnalyticsPage() {
     // both the tracked entity and the event views live on the tracked entity
     // route, an event just also opens that specific event within it.
     const navigate = useNavigate();
+    const buildReturnSearch = () => {
+        const snapshot: AnalyticsRestoredState = {
+            filters,
+            visibleColumnKeys,
+            tab: activeTab,
+            tableState,
+        };
+        const encoded = JSON.stringify(snapshot);
+        if (encoded.length <= MAX_RETURN_SEARCH_LENGTH) return encoded;
+        return JSON.stringify({
+            ...snapshot,
+            tableState: undefined,
+        } satisfies AnalyticsRestoredState);
+    };
     const openTrackedEntity = (trackedEntity: string) => {
         navigate({
             to: "/tracked-entity/$trackedEntity",
             params: { trackedEntity },
-            search: { edit: "client" },
+            search: {
+                edit: "client",
+                from: "analytics",
+                returnSearch: buildReturnSearch(),
+            },
         });
     };
     const openEvent = (trackedEntity: string, event: string) => {
         navigate({
             to: "/tracked-entity/$trackedEntity",
             params: { trackedEntity },
-            search: { event },
+            search: {
+                event,
+                from: "analytics",
+                returnSearch: buildReturnSearch(),
+            },
         });
     };
 
@@ -248,6 +331,8 @@ function AnalyticsPage() {
             <Tabs
                 className="analytics-tabs"
                 style={{ minHeight: 0 }}
+                activeKey={activeTab}
+                onChange={setActiveTab}
                 items={[
                     {
                         key: "line-list",
@@ -295,7 +380,9 @@ function AnalyticsPage() {
                                         effectiveVisibleColumnKeys
                                     }
                                     optionSets={optionSets}
+                                    tableState={tableState}
                                     onFilteredRowsChange={setFilteredRows}
+                                    onTableStateChange={setTableState}
                                     onOpenTrackedEntity={openTrackedEntity}
                                     onOpenEvent={openEvent}
                                 />

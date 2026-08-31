@@ -7,7 +7,7 @@ import {
     PlusOutlined,
     UserOutlined,
 } from "@ant-design/icons";
-import { createRoute } from "@tanstack/react-router";
+import { createRoute, useNavigate } from "@tanstack/react-router";
 import type { DescriptionsProps, TableProps } from "antd";
 
 import { and, eq, not, useLiveSuspenseQuery } from "@tanstack/react-db";
@@ -81,6 +81,10 @@ export const TrackedEntityRoute = createRoute({
     validateSearch: z.object({
         event: z.string().optional(),
         edit: z.enum(["client"]).optional(),
+        from: z.enum(["analytics"]).optional(),
+        /** Opaque snapshot forwarded from analytics.tsx, handed straight
+         * back to it as `restore` when navigating back on OK/Cancel. */
+        returnSearch: z.string().optional(),
     }),
     pendingComponent: Spinner,
 });
@@ -128,7 +132,17 @@ function TrackedEntityComponent() {
     const { trackedEntity: tei } = TrackedEntityRoute.useParams();
     const search = TrackedEntityRoute.useSearch();
     const navigate = TrackedEntityRoute.useNavigate();
+    const topNavigate = useNavigate();
     const clearModalSearch = useCallback(() => {
+        if (search.from === "analytics") {
+            topNavigate({
+                to: "/analytics",
+                search: search.returnSearch
+                    ? { restore: search.returnSearch }
+                    : {},
+            });
+            return;
+        }
         navigate({
             search: (prev) => ({
                 ...prev,
@@ -137,7 +151,7 @@ function TrackedEntityComponent() {
             }),
             replace: true,
         });
-    }, [navigate]);
+    }, [navigate, topNavigate, search.from, search.returnSearch]);
     const handledSearchRef = useRef<string | null>(null);
     const attributes = Array.from(trackedEntityAttributes.values());
     const mainStage = program?.programStages.find(
