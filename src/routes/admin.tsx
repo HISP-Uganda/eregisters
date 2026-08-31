@@ -1,4 +1,8 @@
-import { AppstoreOutlined, SettingOutlined } from "@ant-design/icons";
+import {
+    ApartmentOutlined,
+    AppstoreOutlined,
+    SettingOutlined,
+} from "@ant-design/icons";
 import {
     createRoute,
     Link,
@@ -37,6 +41,12 @@ const ADMIN_ITEMS = [
         path: "/admin/app-settings",
         icon: <SettingOutlined />,
         label: "App Settings",
+    },
+    {
+        key: "stage-relations",
+        path: "/admin/stage-relations",
+        icon: <ApartmentOutlined />,
+        label: "Stage Relations",
     },
 ];
 

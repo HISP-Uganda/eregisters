@@ -15,6 +15,7 @@ import { AnalyticsRoute } from "./routes/analytics";
 import { AdminRoute } from "./routes/admin";
 import { AdminSectionLayoutRoute } from "./routes/admin.section-layout";
 import { AdminAppSettingsRoute } from "./routes/admin.app-settings";
+import { AdminStageRelationsRoute } from "./routes/admin.stage-relations";
 import { DataSetReportRoute } from "./routes/reports.data-set";
 
 const routeTree = RootRoute.addChildren([
@@ -23,7 +24,11 @@ const routeTree = RootRoute.addChildren([
     TrackedEntityRoute,
     AnalyticsRoute,
     ReportsRoute.addChildren([DataSetReportRoute]),
-    AdminRoute.addChildren([AdminSectionLayoutRoute, AdminAppSettingsRoute]),
+    AdminRoute.addChildren([
+        AdminSectionLayoutRoute,
+        AdminAppSettingsRoute,
+        AdminStageRelationsRoute,
+    ]),
 ]);
 export const router = createRouter({
     routeTree,
