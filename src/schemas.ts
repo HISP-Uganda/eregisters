@@ -747,7 +747,10 @@ export type UIConfig = {
         app: { timestamp: string } | null;
         metadata: { timestamp: string } | null;
     };
+    dataPullPageSize?: number;
 };
+
+export const DEFAULT_DATA_PULL_PAGE_SIZE = 50;
 
 export const emptyUIConfig: UIConfig = {
     subsections: {},

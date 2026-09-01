@@ -109,6 +109,7 @@ function AnalyticsPage() {
                 programId: program.id,
                 selectedStageId: defaultStage,
                 childStageIds: [],
+                serviceTypes: [],
                 startDate: dayjs().startOf("month").format("YYYY-MM-DD"),
                 endDate: dayjs().format("YYYY-MM-DD"),
                 rangeType: "custom",
@@ -158,6 +159,14 @@ function AnalyticsPage() {
         [stageHierarchyPairs, filters.selectedStageId],
     );
 
+    // Same optionSet the main event capture form's Service Type field uses
+    // (mrKZWf2WMIC) — keeps the Analytics filter's vocabulary identical to
+    // what data entry actually offers.
+    const serviceTypeOptions = useMemo(
+        () => optionSets.get("QwsvSPpnRul") ?? [],
+        [optionSets],
+    );
+
     const dataset = useMemo(
         () =>
             buildParentEventDataset({
@@ -175,6 +184,7 @@ function AnalyticsPage() {
                 selectedStageId: filters.selectedStageId || defaultStage,
                 legalParentStageIds,
                 childStageIds: filters.childStageIds,
+                selectedServiceTypes: filters.serviceTypes,
                 startDate: filters.startDate,
                 endDate: filters.endDate,
             }),
@@ -339,6 +349,7 @@ function AnalyticsPage() {
                     program={program}
                     pairs={stageHierarchyPairs}
                     filters={filters}
+                    serviceTypeOptions={serviceTypeOptions}
                     onChange={setFilters}
                 />
             </Flex>

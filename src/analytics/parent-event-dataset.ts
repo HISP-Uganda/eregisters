@@ -1,5 +1,5 @@
 import dayjs from "dayjs";
-import { buildColumnRegistry } from "./column-registry";
+import { buildColumnRegistry, SERVICE_TYPE_FIELD_ID } from "./column-registry";
 import type {
     AnalyticsCell,
     AnalyticsColumn,
@@ -14,6 +14,14 @@ type RecordWithAttributes = Record<string, unknown> & {
 type RecordWithDataValues = Record<string, unknown> & {
     dataValues: Record<string, unknown>;
 };
+
+const SERVICE_TYPE_OPTION_SET_ID = "QwsvSPpnRul";
+
+function eventServiceTypes(event: RecordWithDataValues): string[] {
+    const raw = event.dataValues[SERVICE_TYPE_FIELD_ID];
+    if (typeof raw !== "string" || !raw) return [];
+    return raw.split(",").filter(Boolean);
+}
 
 export function buildParentEventDataset(
     input: AnalyticsDatasetInput,
@@ -36,15 +44,33 @@ export function buildParentEventDataset(
         ]),
     );
 
-    const mainEvents = input.events.filter((event) => {
+    const mainStageEvents = input.events.filter((event) => {
         if (event.syncStatus === "deleted" || event.deleted) return false;
         if (event.orgUnit !== input.orgUnit) return false;
         if (event.program !== input.programId) return false;
         if (event.programStage !== input.selectedStageId) return false;
-        return isWithinDateRange(
-            effectiveOccurredAt(event),
-            input.startDate,
-            input.endDate,
+        return true;
+    });
+
+    // Rows are scoped to the selected date range, but which linked-parent /
+    // child-event columns exist is not: a column must stay selectable once
+    // any linked event exists anywhere for this stage, even if the specific
+    // linked record currently falls outside the date filter — otherwise
+    // there's no way to discover the column exists in order to widen the
+    // date range and see it.
+    const selectedServiceTypes = new Set(input.selectedServiceTypes);
+    const mainEvents = mainStageEvents.filter((event) => {
+        if (
+            !isWithinDateRange(
+                effectiveOccurredAt(event),
+                input.startDate,
+                input.endDate,
+            )
+        )
+            return false;
+        if (selectedServiceTypes.size === 0) return true;
+        return eventServiceTypes(event).some((service) =>
+            selectedServiceTypes.has(service),
         );
     });
 
@@ -59,7 +85,7 @@ export function buildParentEventDataset(
     }
 
     const slotCounts = new Map<string, number>();
-    for (const parent of mainEvents) {
+    for (const parent of mainStageEvents) {
         const grouped = groupChildrenByStage(
             childEventsByParent.get(parent.event) ?? [],
         );
@@ -84,7 +110,7 @@ export function buildParentEventDataset(
     }
 
     const realizedParentStageIds = new Set<string>();
-    for (const selectedEvent of mainEvents) {
+    for (const selectedEvent of mainStageEvents) {
         const parent = resolveLinkedParent(selectedEvent);
         if (parent) realizedParentStageIds.add(parent.programStage);
     }
@@ -94,6 +120,9 @@ export function buildParentEventDataset(
         mainStageId: input.selectedStageId,
         childStageSlotCounts: slotCounts,
         realizedParentStageIds: [...realizedParentStageIds],
+        selectedServiceTypes: input.selectedServiceTypes,
+        serviceTypeOptions:
+            input.metadata.optionSets.get(SERVICE_TYPE_OPTION_SET_ID) ?? [],
     });
 
     const rows = mainEvents.map((parentEvent) => {

@@ -62,10 +62,9 @@ export function LineListTable({
     return (
         <div ref={containerRef} style={{ flex: 1, minHeight: 0 }}>
             <style>{`
-                .line-list-table .ant-table-thead > tr > th {
+                .line-list-table .ant-table-thead > tr > th,
+                .line-list-table .ant-table-tbody > tr > td {
                     white-space: nowrap;
-                    overflow: hidden;
-                    text-overflow: ellipsis;
                 }
                 /* Below the app's mobile breakpoint (<992px), give the
                    filter/sort trigger icons a bigger touch target — antd's
@@ -115,15 +114,17 @@ export function LineListTable({
 }
 
 const MIN_COLUMN_WIDTH = 80;
-const MAX_COLUMN_WIDTH = 320;
 const CHAR_WIDTH = 8;
 const CELL_CHROME_WIDTH = 56; // cell padding/border + filter icon
 
 /**
- * `ellipsis: true` forces antd into `table-layout: fixed`, which makes
- * every column without an explicit width share space equally. Estimate a
- * per-column width from its longest content (header label vs. a sample of
- * row values) instead, so columns still shrink/grow to fit what they hold.
+ * No column truncates (see the `white-space: nowrap` rules above, and
+ * `ellipsis` is never set on a column below) — the full header label and
+ * cell values always render on one line, so the table just grows wider and
+ * relies on `scroll: { x: "max-content" }` for horizontal scrolling.
+ * Estimate a per-column width from its longest content (header label vs. a
+ * sample of row values) so columns still start close to their real size
+ * instead of everything defaulting to the same width.
  */
 function estimateColumnWidth(
     label: string,
@@ -139,7 +140,7 @@ function estimateColumnWidth(
         }
     }
     const width = maxChars * CHAR_WIDTH + CELL_CHROME_WIDTH;
-    return Math.min(MAX_COLUMN_WIDTH, Math.max(MIN_COLUMN_WIDTH, width));
+    return Math.max(MIN_COLUMN_WIDTH, width);
 }
 
 export function toTableColumns(
@@ -155,7 +156,6 @@ export function toTableColumns(
             title: column.label,
             dataIndex: ["values", column.key, "display"],
             key: column.key,
-            ellipsis: true,
             width: estimateColumnWidth(column.label, column.key, rows),
             // Computed columns keep their matched range's numeric value as
             // `raw`, so sorting orders by range rather than alphabetically by

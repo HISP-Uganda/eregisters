@@ -5,6 +5,7 @@ import {
     DataElement,
     DataSet,
     Dhis2Report,
+    DEFAULT_DATA_PULL_PAGE_SIZE,
     emptyStageHierarchyConfig,
     emptyUIConfig,
     Enrollment,
@@ -644,15 +645,23 @@ const syncMachine = setup({
                 input: { lastDataPull, orgUnit, program, engine, dataPullMode },
             }) => {
                 let currentPage = 1;
-                const pageSize = 50;
+                // Read fresh from Dexie (not machine context) so a config
+                // change takes effect on the very next pull, without
+                // waiting for the machine's cached uiConfig to refresh.
+                const configuredPageSize = (await db.uiConfig.get("main"))
+                    ?.config.dataPullPageSize;
+                const pageSize =
+                    configuredPageSize ?? DEFAULT_DATA_PULL_PAGE_SIZE;
                 let hasMoreData = true;
+
+							console.log("Starting data pull for program:", program, "orgUnit:", orgUnit, "lastDataPull:", lastDataPull, "dataPullMode:", dataPullMode);
 
                 while (hasMoreData) {
                     let params: Record<string, any> = {
                         program,
                         orgUnits: orgUnit,
                         ouMode: "SELECTED",
-                        fields: "*,enrollments[*,events[*]]",
+                        fields: "trackedEntity,createdAt,updatedAt,createdAtClient,updatedAtClient,orgUnit,trackedEntityType,inactive,deleted,potentialDuplicate,attributes[attribute,value,createdAt,updatedAt],enrollments[enrollment,createdAt,updatedAt,createdAtClient,updatedAtClient,orgUnit,program,enrolledAt,occurredAt,completedAt,followUp,status,trackedEntity,geometry,attributeOptionCombo,deleted,attributes[attribute,value,createdAt,updatedAt],events[event,enrollment,createdAt,updatedAt,createdAtClient,updatedAtClient,status,geometry,program,programStage,orgUnit,trackedEntity,occurredAt,completedAt,scheduledAt,attributeOptionCombo,assignedUser,completedBy,followUp,deleted,dataValues[dataElement,createdBy,value,createdAt,updatedAt,providedElsewhere]]]",
                         page: currentPage,
                         pageSize: pageSize,
                     };

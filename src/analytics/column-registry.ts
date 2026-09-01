@@ -1,6 +1,12 @@
 import type { AnalyticsColumn, AnalyticsMetadata } from "./types";
 import { valueKindFromDhis2 } from "./value-format";
 
+/** The main event's Service Type data element — captured directly on the
+ * capture form (see main-event-capture.tsx) rather than within its
+ * section, but still one of the main stage's own data elements. Shared
+ * with parent-event-dataset.ts, which filters/gates on the same field. */
+export const SERVICE_TYPE_FIELD_ID = "mrKZWf2WMIC";
+
 interface RegistryInput {
     metadata: AnalyticsMetadata;
     mainStageId: string;
@@ -12,6 +18,37 @@ interface RegistryInput {
      * generated per entry. Empty when the selected stage has no configured
      * parent or no matching events exist yet. */
     realizedParentStageIds?: string[];
+    /** Service Type codes selected in the Analytics filter bar. Some
+     * programStageSections happen to be named after a service (e.g. a
+     * section literally called "TB" or "ART") — when one or more services
+     * are selected, sections whose name matches a *known* service name are
+     * narrowed to only the selected ones; sections that aren't named after
+     * any service are left alone. Empty means no filtering. */
+    selectedServiceTypes?: string[];
+    /** The full Service Type optionSet (codes + names) — the vocabulary
+     * used both to recognize which sections are "service sections" and to
+     * resolve a selected code to the name a section might be titled with. */
+    serviceTypeOptions?: Array<{ code: string; name: string }>;
+}
+
+function normalizeServiceLabel(label: string): string {
+    return label.trim().toLowerCase();
+}
+
+/** True unless `section` is a real, named section that matches a *known*
+ * service name/code but isn't among the currently selected ones. Sections
+ * that aren't named after any service (system groups, "Ungrouped", etc.)
+ * always pass through untouched. */
+function sectionPassesServiceFilter(
+    section: string | undefined,
+    knownServiceLabels: Set<string>,
+    selectedServiceLabels: Set<string>,
+): boolean {
+    if (selectedServiceLabels.size === 0) return true;
+    if (!section) return true;
+    const normalized = normalizeServiceLabel(section);
+    if (!knownServiceLabels.has(normalized)) return true;
+    return selectedServiceLabels.has(normalized);
 }
 
 function column(
@@ -35,6 +72,8 @@ export function buildColumnRegistry({
     mainStageId,
     childStageSlotCounts,
     realizedParentStageIds,
+    selectedServiceTypes,
+    serviceTypeOptions = [],
 }: RegistryInput): AnalyticsColumn[] {
     const mainStage = metadata.program.programStages.find(
         (stage) => stage.id === mainStageId,
@@ -42,6 +81,24 @@ export function buildColumnRegistry({
     if (!mainStage) {
         throw new Error(`Main stage ${mainStageId} was not found`);
     }
+
+    const knownServiceLabels = new Set<string>();
+    for (const option of serviceTypeOptions) {
+        knownServiceLabels.add(normalizeServiceLabel(option.code));
+        knownServiceLabels.add(normalizeServiceLabel(option.name));
+    }
+    const selectedServiceLabels = new Set<string>();
+    for (const code of selectedServiceTypes ?? []) {
+        selectedServiceLabels.add(normalizeServiceLabel(code));
+        const option = serviceTypeOptions.find((o) => o.code === code);
+        if (option) selectedServiceLabels.add(normalizeServiceLabel(option.name));
+    }
+    const sectionAllowed = (section: string | undefined) =>
+        sectionPassesServiceFilter(
+            section,
+            knownServiceLabels,
+            selectedServiceLabels,
+        );
 
     const columns: AnalyticsColumn[] = [
         column({
@@ -145,7 +202,9 @@ export function buildColumnRegistry({
 
     for (const psde of mainStage.programStageDataElements ?? []) {
         const de = metadata.dataElements.get(psde.dataElement.id) ?? psde.dataElement;
-        const section = findStageSection(mainStage, de.id) ?? "Ungrouped";
+        const rawSection = findStageSection(mainStage, de.id);
+        if (!sectionAllowed(rawSection)) continue;
+        const section = rawSection ?? "Ungrouped";
         const valueKind = valueKindFromDhis2(de.valueType);
         columns.push(
             column({
@@ -156,7 +215,7 @@ export function buildColumnRegistry({
                 valueKind,
                 optionSetId: de.optionSet?.id,
                 groupPath: ["Main Event", mainStage.name, section],
-                defaultVisible: false,
+                defaultVisible: de.id === SERVICE_TYPE_FIELD_ID,
                 canMeasure: valueKind === "number",
             }),
         );
@@ -184,8 +243,9 @@ export function buildColumnRegistry({
                 const de =
                     metadata.dataElements.get(psde.dataElement.id) ??
                     psde.dataElement;
-                const section =
-                    findStageSection(stage, de.id) ?? "Ungrouped Child Event";
+                const rawSection = findStageSection(stage, de.id);
+                if (!sectionAllowed(rawSection)) continue;
+                const section = rawSection ?? "Ungrouped Child Event";
                 const valueKind = valueKindFromDhis2(de.valueType);
                 const deLabel = labelFrom(de.name, de.formName, de.id);
                 columns.push(
@@ -232,7 +292,9 @@ export function buildColumnRegistry({
             const de =
                 metadata.dataElements.get(psde.dataElement.id) ??
                 psde.dataElement;
-            const section = findStageSection(stage, de.id) ?? "Ungrouped";
+            const rawSection = findStageSection(stage, de.id);
+            if (!sectionAllowed(rawSection)) continue;
+            const section = rawSection ?? "Ungrouped";
             const valueKind = valueKindFromDhis2(de.valueType);
             const deLabel = labelFrom(de.name, de.formName, de.id);
             columns.push(

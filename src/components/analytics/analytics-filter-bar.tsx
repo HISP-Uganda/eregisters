@@ -23,6 +23,11 @@ export interface AnalyticsFilters {
     programId: string;
     selectedStageId: string;
     childStageIds: string[];
+    /** Selected Service Type codes (same vocabulary as the main event's
+     * Service Type field). Only meaningful — and only shown in the filter
+     * bar — when the selected stage has configured child stages; see
+     * `serviceTypeOptions` below. */
+    serviceTypes: string[];
     startDate: string;
     endDate: string;
     /** "custom" uses startDate/endDate directly via the range picker; the
@@ -77,11 +82,16 @@ export function AnalyticsFilterBar({
     pairs,
     filters,
     onChange,
+    serviceTypeOptions,
 }: {
     program: Program;
     pairs: StagePair[];
     filters: AnalyticsFilters;
     onChange: (filters: AnalyticsFilters) => void;
+    /** Service Type options (same optionSet the main event capture form
+     * uses). The filter field itself only shows when the selected stage
+     * has configured child stages — see `childStageIdsForSelectedStage`. */
+    serviceTypeOptions: Array<{ code: string; name: string }>;
 }) {
     const isMobile = useIsMobile();
     // On mobile every field goes full-width, stacked; on desktop each keeps
@@ -127,7 +137,12 @@ export function AnalyticsFilterBar({
                         )}`,
                     }))}
                     onChange={(selectedStageId) =>
-                        onChange({ ...filters, selectedStageId, childStageIds: [] })
+                        onChange({
+                            ...filters,
+                            selectedStageId,
+                            childStageIds: [],
+                            serviceTypes: [],
+                        })
                     }
                 />
             </Form.Item>
@@ -147,6 +162,24 @@ export function AnalyticsFilterBar({
                         }))}
                         onChange={(childStageIds) =>
                             onChange({ ...filters, childStageIds })
+                        }
+                    />
+                </Form.Item>
+            )}
+            {childStageIdsForSelectedStage.length > 0 && (
+                <Form.Item label="Service Type" layout="vertical">
+                    <Select
+                        mode="multiple"
+                        style={fieldStyle(300)}
+                        value={filters.serviceTypes}
+                        placeholder="All services"
+                        allowClear
+                        options={serviceTypeOptions.map((o) => ({
+                            value: o.code,
+                            label: o.name,
+                        }))}
+                        onChange={(serviceTypes) =>
+                            onChange({ ...filters, serviceTypes })
                         }
                     />
                 </Form.Item>

@@ -104,6 +104,12 @@ export interface AnalyticsDatasetInput {
     legalParentStageIds: string[];
     startDate: string;
     endDate: string;
+    /** Service-type codes selected in the Analytics filter bar (the same
+     * vocabulary as the main event's Service Type field, `mrKZWf2WMIC`).
+     * Empty means no service filtering/restriction is applied — see
+     * `parent-event-dataset.ts` for how this narrows both rows and which
+     * service-gated child-stage columns are offered. */
+    selectedServiceTypes: string[];
 }
 
 export interface AnalyticsDataset {

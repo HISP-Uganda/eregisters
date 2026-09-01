@@ -103,6 +103,14 @@ export function ColumnChooser({
                 resizable={!isMobile}
                 defaultSize={isMobile ? "100%" : DEFAULT_DRAWER_WIDTH}
                 maxSize={MAX_DRAWER_WIDTH}
+                styles={{
+                    body: {
+                        display: "flex",
+                        flexDirection: "column",
+                        padding: 0,
+                        overflow: "hidden",
+                    },
+                }}
                 footer={
                     <Flex align="center" justify="space-between">
                         <Text type="secondary">
@@ -120,7 +128,9 @@ export function ColumnChooser({
                     </Flex>
                 }
             >
-                <Flex vertical gap="middle">
+                {/* Kept out of the scrollable region below so the search
+                    box stays visible while a long column list scrolls. */}
+                <div style={{ padding: "24px 24px 16px" }}>
                     <Input
                         allowClear
                         prefix={<SearchOutlined />}
@@ -128,6 +138,15 @@ export function ColumnChooser({
                         value={search}
                         onChange={(event) => setSearch(event.target.value)}
                     />
+                </div>
+                <div
+                    style={{
+                        flex: 1,
+                        minHeight: 0,
+                        overflowY: "auto",
+                        padding: "0 24px 24px",
+                    }}
+                >
                     {filteredGroups.length === 0 ? (
                         <Empty description="No matching columns" />
                     ) : (
@@ -199,7 +218,7 @@ export function ColumnChooser({
                             })}
                         />
                     )}
-                </Flex>
+                </div>
             </Drawer>
         </>
     );

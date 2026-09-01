@@ -329,4 +329,116 @@ describe("buildColumnRegistry", () => {
             false,
         );
     });
+
+    describe("service-type section filtering", () => {
+        const tb = {
+            id: "tbuid000001",
+            name: "TB result",
+            formName: "TB result",
+            code: "tb_result",
+            valueType: "TEXT",
+            optionSetValue: false,
+        };
+
+        const serviceScopedMetadata = {
+            ...metadata,
+            program: {
+                ...metadata.program,
+                programStages: [
+                    {
+                        ...metadata.program.programStages[0],
+                        programStageDataElements: [
+                            ...metadata.program.programStages[0]
+                                .programStageDataElements,
+                            {
+                                id: "psdetb00001",
+                                compulsory: false,
+                                allowFutureDate: false,
+                                dataElement: tb,
+                            },
+                        ],
+                        programStageSections: [
+                            ...metadata.program.programStages[0]
+                                .programStageSections,
+                            {
+                                id: "tbsection01",
+                                name: "TB",
+                                displayName: "TB",
+                                sortOrder: 2,
+                                dataElements: [tb],
+                            },
+                        ],
+                    },
+                    metadata.program.programStages[1],
+                ],
+            },
+            dataElements: new Map([
+                ...metadata.dataElements,
+                ["tbuid000001", tb],
+            ]),
+        } as unknown as AnalyticsMetadata;
+
+        const serviceTypeOptions = [
+            { code: "TB", name: "TB" },
+            { code: "ART", name: "ART" },
+        ];
+
+        it("leaves every section alone when no service is selected", () => {
+            const columns = buildColumnRegistry({
+                metadata: serviceScopedMetadata,
+                mainStageId: "visit000001",
+                childStageSlotCounts: new Map(),
+                serviceTypeOptions,
+            });
+
+            expect(
+                columns.some(
+                    (c) => c.key === "parentEvent.dataValue.tbuid000001",
+                ),
+            ).toBe(true);
+            expect(
+                columns.some(
+                    (c) => c.key === "parentEvent.dataValue.weightuid01",
+                ),
+            ).toBe(true);
+        });
+
+        it("drops a service-named section that isn't among the selected services, keeps non-service sections", () => {
+            const columns = buildColumnRegistry({
+                metadata: serviceScopedMetadata,
+                mainStageId: "visit000001",
+                childStageSlotCounts: new Map(),
+                selectedServiceTypes: ["ART"],
+                serviceTypeOptions,
+            });
+
+            expect(
+                columns.some(
+                    (c) => c.key === "parentEvent.dataValue.tbuid000001",
+                ),
+            ).toBe(false);
+            // "Triage" isn't a known service name, so it stays regardless.
+            expect(
+                columns.some(
+                    (c) => c.key === "parentEvent.dataValue.weightuid01",
+                ),
+            ).toBe(true);
+        });
+
+        it("keeps a service-named section that matches the selection", () => {
+            const columns = buildColumnRegistry({
+                metadata: serviceScopedMetadata,
+                mainStageId: "visit000001",
+                childStageSlotCounts: new Map(),
+                selectedServiceTypes: ["TB"],
+                serviceTypeOptions,
+            });
+
+            expect(
+                columns.some(
+                    (c) => c.key === "parentEvent.dataValue.tbuid000001",
+                ),
+            ).toBe(true);
+        });
+    });
 });
