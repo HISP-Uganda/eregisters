@@ -156,6 +156,10 @@ const ProgramStageSchema = z.object({
     id: UID,
     repeatable: z.boolean(),
     programStageSections: z.array(ProgramStageSectionSchema),
+    /** DHIS2's custom label for this stage's report/event date
+     * (`occurredAt`) — e.g. "Visit Date", "Diagnosis Date". Optional in
+     * DHIS2; falls back to "Report Date" wherever it's shown when unset. */
+    executionDateLabel: z.string().optional(),
 });
 
 const TrackedEntityAttributeSchema = z.object({

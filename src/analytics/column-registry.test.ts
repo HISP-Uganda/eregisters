@@ -330,6 +330,75 @@ describe("buildColumnRegistry", () => {
         );
     });
 
+    describe("main stage occurredAt label", () => {
+        it("falls back to 'Report Date' when the stage has no executionDateLabel", () => {
+            const columns = buildColumnRegistry({
+                metadata,
+                mainStageId: "visit000001",
+                childStageSlotCounts: new Map(),
+            });
+
+            expect(
+                columns.find((c) => c.key === "parentEvent.occurredAt")
+                    ?.label,
+            ).toBe("Report Date");
+        });
+
+        it("uses the stage's executionDateLabel when DHIS2 has one configured", () => {
+            const labeledMetadata = {
+                ...metadata,
+                program: {
+                    ...metadata.program,
+                    programStages: [
+                        {
+                            ...metadata.program.programStages[0],
+                            executionDateLabel: "Diagnosis Date",
+                        },
+                        metadata.program.programStages[1],
+                    ],
+                },
+            } as unknown as AnalyticsMetadata;
+
+            const columns = buildColumnRegistry({
+                metadata: labeledMetadata,
+                mainStageId: "visit000001",
+                childStageSlotCounts: new Map(),
+            });
+
+            expect(
+                columns.find((c) => c.key === "parentEvent.occurredAt")
+                    ?.label,
+            ).toBe("Diagnosis Date");
+        });
+    });
+
+    it("adds createdBy/updatedBy columns for tracked entity, enrollment, and main event", () => {
+        const columns = buildColumnRegistry({
+            metadata,
+            mainStageId: "visit000001",
+            childStageSlotCounts: new Map(),
+        });
+
+        expect(
+            columns.find((c) => c.key === "trackedEntity.createdBy")?.label,
+        ).toBe("Created By");
+        expect(
+            columns.find((c) => c.key === "trackedEntity.updatedBy")?.label,
+        ).toBe("Last Updated By");
+        expect(
+            columns.find((c) => c.key === "enrollment.createdBy")?.label,
+        ).toBe("Created By");
+        expect(
+            columns.find((c) => c.key === "enrollment.updatedBy")?.label,
+        ).toBe("Last Updated By");
+        expect(
+            columns.find((c) => c.key === "parentEvent.createdBy")?.label,
+        ).toBe("Created By");
+        expect(
+            columns.find((c) => c.key === "parentEvent.updatedBy")?.label,
+        ).toBe("Last Updated By");
+    });
+
     describe("service-type section filtering", () => {
         const tb = {
             id: "tbuid000001",

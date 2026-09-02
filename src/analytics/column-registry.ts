@@ -7,6 +7,13 @@ import { valueKindFromDhis2 } from "./value-format";
  * with parent-event-dataset.ts, which filters/gates on the same field. */
 export const SERVICE_TYPE_FIELD_ID = "mrKZWf2WMIC";
 
+/** Friendlier labels for the createdBy/updatedBy system columns, shared
+ * across the trackedEntity/enrollment/parentEvent system-column groups. */
+const USER_FIELD_LABELS: Record<string, string> = {
+    createdBy: "Created By",
+    updatedBy: "Last Updated By",
+};
+
 interface RegistryInput {
     metadata: AnalyticsMetadata;
     mainStageId: string;
@@ -108,7 +115,10 @@ export function buildColumnRegistry({
             sourceFieldId: "trackedEntity",
             valueKind: "string",
             groupPath: ["System IDs"],
-            defaultVisible: true,
+            // Opening a record is now a "View Profile"/"View Visit" button
+            // in the fixed Actions column, not a click on the id itself —
+            // still available to add back via the column chooser.
+            defaultVisible: false,
         }),
         column({
             key: "enrollment.enrollment",
@@ -126,41 +136,65 @@ export function buildColumnRegistry({
             sourceFieldId: "event",
             valueKind: "string",
             groupPath: ["System IDs"],
-            defaultVisible: true,
+            defaultVisible: false,
         }),
     ];
 
-    addSystemColumns(columns, "trackedEntity", [
-        "trackedEntityType",
-        "orgUnit",
-        "syncStatus",
-        "createdAt",
-        "updatedAt",
-    ]);
-    addSystemColumns(columns, "enrollment", [
-        "program",
+    addSystemColumns(
+        columns,
         "trackedEntity",
-        "orgUnit",
-        "status",
-        "enrolledAt",
-        "occurredAt",
-        "syncStatus",
-        "createdAt",
-        "updatedAt",
-    ]);
-    addSystemColumns(columns, "parentEvent", [
-        "program",
-        "programStage",
+        [
+            "trackedEntityType",
+            "orgUnit",
+            "syncStatus",
+            "createdAt",
+            "updatedAt",
+            "createdBy",
+            "updatedBy",
+        ],
+        USER_FIELD_LABELS,
+    );
+    addSystemColumns(
+        columns,
         "enrollment",
-        "trackedEntity",
-        "orgUnit",
-        "status",
-        "occurredAt",
-        "syncStatus",
-        "createdAt",
-        "updatedAt",
+        [
+            "program",
+            "trackedEntity",
+            "orgUnit",
+            "status",
+            "enrolledAt",
+            "occurredAt",
+            "syncStatus",
+            "createdAt",
+            "updatedAt",
+            "createdBy",
+            "updatedBy",
+        ],
+        USER_FIELD_LABELS,
+    );
+    addSystemColumns(
+        columns,
         "parentEvent",
-    ]);
+        [
+            "program",
+            "programStage",
+            "enrollment",
+            "trackedEntity",
+            "orgUnit",
+            "status",
+            "occurredAt",
+            "syncStatus",
+            "createdAt",
+            "updatedAt",
+            "createdBy",
+            "updatedBy",
+            "parentEvent",
+        ],
+        {
+            ...USER_FIELD_LABELS,
+            occurredAt: mainStage.executionDateLabel ?? "Report Date",
+        },
+    );
 
     const attributeSections = new Map<string, string>();
     for (const section of metadata.program.programSections ?? []) {
@@ -320,6 +354,7 @@ function addSystemColumns(
     columns: AnalyticsColumn[],
     source: "trackedEntity" | "enrollment" | "parentEvent",
     fields: string[],
+    labelOverrides: Record<string, string> = {},
 ) {
     const groupName =
         source === "trackedEntity"
@@ -332,7 +367,7 @@ function addSystemColumns(
         columns.push(
             column({
                 key: `${source}.${field}`,
-                label: field,
+                label: labelOverrides[field] ?? field,
                 source,
                 sourceFieldId: field,
                 valueKind: field.endsWith("At") ? "datetime" : "string",

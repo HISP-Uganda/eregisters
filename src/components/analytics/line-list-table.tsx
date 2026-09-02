@@ -1,4 +1,4 @@
-import { Table } from "antd";
+import { Button, Space, Table } from "antd";
 import type { ColumnsType, ColumnType } from "antd/es/table";
 import type { FilterValue, SorterResult } from "antd/es/table/interface";
 import React from "react";
@@ -6,9 +6,7 @@ import type { AnalyticsColumn, AnalyticsRow } from "../../analytics/types";
 import { optionTokens, type OptionSets } from "../../analytics/value-format";
 import { useTableScrollHeight } from "../../hooks/useTableScrollHeight";
 
-/** Column keys for the two system IDs that, when linked, jump into the record. */
-const TRACKED_ENTITY_ID_KEY = "trackedEntity.trackedEntity";
-const MAIN_EVENT_ID_KEY = "parentEvent.event";
+const ACTIONS_COLUMN_KEY = "__actions";
 
 export interface LineListLinks {
     /** Same destination as the sync-error-fixing flow: opens the client editor. */
@@ -86,12 +84,9 @@ export function LineListTable({
                 pagination={false}
                 scroll={{ x: "max-content", y: scrollY }}
                 dataSource={rows}
-                columns={toTableColumns(
-                    visible,
-                    rows,
-                    optionSets,
+                columns={withActionsColumn(
+                    toTableColumns(visible, rows, optionSets, tableState),
                     { onOpenTrackedEntity, onOpenEvent },
-                    tableState,
                 )}
                 onChange={(_pagination, filters, sorter, extra) => {
                     onFilteredRowsChange?.(
@@ -147,7 +142,6 @@ export function toTableColumns(
     columns: AnalyticsColumn[],
     rows: AnalyticsRow[] = [],
     optionSets: OptionSets = new Map(),
-    links: LineListLinks = {},
     tableState: LineListTableState = EMPTY_LINE_LIST_TABLE_STATE,
 ): ColumnsType<AnalyticsRow> {
     return columns.map((column) => {
@@ -176,7 +170,6 @@ export function toTableColumns(
                               : null,
                   }
                 : {}),
-            ...linkRenderer(column, links),
             ...filter,
             ...(filter.filters
                 ? {
@@ -189,42 +182,52 @@ export function toTableColumns(
 }
 
 /**
- * Same navigation as the sync-error-fixing flow: the Tracked Entity ID and
- * Main Event ID columns become clickable, jumping straight into that
- * record instead of just displaying its id.
+ * Appends a fixed-to-the-right "Actions" column with "View Visit" / "View
+ * Profile" buttons — the replacement for the old clickable Tracked Entity
+ * ID / Main Event ID cells. Returns `tableColumns` unchanged when neither
+ * callback is wired up (there'd be nothing to put in the column).
  */
-function linkRenderer(
-    column: AnalyticsColumn,
+export function withActionsColumn(
+    tableColumns: ColumnsType<AnalyticsRow>,
     links: LineListLinks,
-): Partial<ColumnType<AnalyticsRow>> {
-    if (column.key === TRACKED_ENTITY_ID_KEY && links.onOpenTrackedEntity) {
-        const onOpen = links.onOpenTrackedEntity;
-        return {
-            render: (_value, record) => (
-                <a onClick={() => onOpen(record.trackedEntity.trackedEntity)}>
-                    {record.values[column.key]?.display}
-                </a>
-            ),
-        };
-    }
-    if (column.key === MAIN_EVENT_ID_KEY && links.onOpenEvent) {
-        const onOpen = links.onOpenEvent;
-        return {
-            render: (_value, record) => (
-                <a
-                    onClick={() =>
-                        onOpen(
-                            record.trackedEntity.trackedEntity,
-                            record.parentEvent.event,
-                        )
-                    }
-                >
-                    {record.values[column.key]?.display}
-                </a>
-            ),
-        };
-    }
-    return {};
+): ColumnsType<AnalyticsRow> {
+    if (!links.onOpenTrackedEntity && !links.onOpenEvent) return tableColumns;
+    const actionsColumn: ColumnType<AnalyticsRow> = {
+        title: "Actions",
+        key: ACTIONS_COLUMN_KEY,
+        fixed: "right",
+        width: 200,
+        render: (_value, record) => (
+            <Space size={4}>
+                {links.onOpenEvent && (
+                    <Button
+                        size="small"
+                        onClick={() =>
+                            links.onOpenEvent?.(
+                                record.trackedEntity.trackedEntity,
+                                record.parentEvent.event,
+                            )
+                        }
+                    >
+                        View Visit
+                    </Button>
+                )}
+                {links.onOpenTrackedEntity && (
+                    <Button
+                        size="small"
+                        onClick={() =>
+                            links.onOpenTrackedEntity?.(
+                                record.trackedEntity.trackedEntity,
+                            )
+                        }
+                    >
+                        View Profile
+                    </Button>
+                )}
+            </Space>
+        ),
+    };
+    return [...tableColumns, actionsColumn];
 }
 
 /**

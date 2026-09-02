@@ -62,6 +62,60 @@ describe("buildParentEventDataset", () => {
         ).toBe(true);
     });
 
+    it("formats createdBy/updatedBy user objects into a display string", () => {
+        const dataset = buildParentEventDataset({
+            metadata,
+            orgUnit: "ouuid000001",
+            programId: "programuid1",
+            selectedStageId: "visit000001",
+            legalParentStageIds: [],
+            selectedServiceTypes: [],
+            childStageIds: [],
+            startDate: "2026-08-01",
+            endDate: "2026-08-31",
+            trackedEntities: [
+                {
+                    ...trackedEntity("teuid000001", { firstName01: "Jane" }),
+                    createdBy: {
+                        uid: "useruid0001",
+                        username: "jdoe",
+                        firstName: "John",
+                        surname: "Doe",
+                    },
+                },
+            ],
+            enrollments: [enrollment("enroll00001", "teuid000001")],
+            events: [
+                event("visit000001", "visit000001", "teuid000001", {
+                    enrollment: "enroll00001",
+                    createdBy: {
+                        uid: "useruid0002",
+                        username: "asmith",
+                        firstName: "Ann",
+                        surname: "Smith",
+                    },
+                    // no firstName/surname — should fall back to username
+                    updatedBy: {
+                        uid: "useruid0003",
+                        username: "onlyuser",
+                        firstName: "",
+                        surname: "",
+                    },
+                }),
+            ],
+        });
+
+        expect(dataset.rows[0].values["trackedEntity.createdBy"].raw).toBe(
+            "John Doe",
+        );
+        expect(dataset.rows[0].values["parentEvent.createdBy"].raw).toBe(
+            "Ann Smith",
+        );
+        expect(dataset.rows[0].values["parentEvent.updatedBy"].raw).toBe(
+            "onlyuser",
+        );
+    });
+
     it("excludes deleted main events and main events outside the date range", () => {
         const dataset = buildParentEventDataset({
             metadata,

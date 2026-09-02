@@ -1,7 +1,7 @@
 import { DownloadOutlined } from "@ant-design/icons";
 import { and, eq, useLiveSuspenseQuery } from "@tanstack/react-db";
 import { createRoute, useNavigate } from "@tanstack/react-router";
-import { Button, Flex, Tabs, Typography } from "antd";
+import { Badge, Button, Flex, Tabs } from "antd";
 import dayjs from "dayjs";
 import React, { useEffect, useMemo, useState } from "react";
 import { z } from "zod";
@@ -38,8 +38,6 @@ import { useIsMobile } from "../hooks/useIsMobile";
 import { useMetadata } from "../hooks/useMetadata";
 import { useStageHierarchyConfig } from "../hooks/useStageHierarchyConfig";
 import { RootRoute } from "./__root";
-
-const { Title, Text } = Typography;
 
 export const AnalyticsRoute = createRoute({
     getParentRoute: () => RootRoute,
@@ -330,29 +328,13 @@ function AnalyticsPage() {
                     display: none;
                 }
             `}</style>
-            <Flex
-                align={isMobile ? "stretch" : "center"}
-                justify="space-between"
-                wrap
-                vertical={isMobile}
-                gap="middle"
-            >
-                <Flex vertical gap={0}>
-                    <Title level={isMobile ? 4 : 3} style={{ margin: 0 }}>
-                        Analytics
-                    </Title>
-                    <Text type="secondary">
-                        {filteredRows.length} main events
-                    </Text>
-                </Flex>
-                <AnalyticsFilterBar
-                    program={program}
-                    pairs={stageHierarchyPairs}
-                    filters={filters}
-                    serviceTypeOptions={serviceTypeOptions}
-                    onChange={setFilters}
-                />
-            </Flex>
+            <AnalyticsFilterBar
+                program={program}
+                pairs={stageHierarchyPairs}
+                filters={filters}
+                serviceTypeOptions={serviceTypeOptions}
+                onChange={setFilters}
+            />
             <Tabs
                 className="analytics-tabs"
                 style={{ minHeight: 0 }}
@@ -361,7 +343,16 @@ function AnalyticsPage() {
                 items={[
                     {
                         key: "line-list",
-                        label: "Line List",
+                        label: (
+                            <Flex align="center" gap={6}>
+                                Line List
+                                <Badge
+                                    count={filteredRows.length}
+                                    overflowCount={99999}
+                                    color="#1890ff"
+                                />
+                            </Flex>
+                        ),
                         children: (
                             <Flex
                                 vertical

@@ -262,6 +262,22 @@ function buildRowValues({
     return values;
 }
 
+/** createdBy/updatedBy come off the wire as a DHIS2 user object
+ * ({ uid, username, firstName, surname }) — format it into a display
+ * string instead of letting it fall through to `String(raw)`. */
+const USER_FIELDS = new Set(["createdBy", "updatedBy"]);
+
+function formatUser(value: unknown): string | undefined {
+    if (!value || typeof value !== "object") return undefined;
+    const user = value as {
+        firstName?: string;
+        surname?: string;
+        username?: string;
+    };
+    const name = `${user.firstName ?? ""} ${user.surname ?? ""}`.trim();
+    return name || user.username;
+}
+
 function readRawValue(
     key: string,
     trackedEntity: RecordWithAttributes,
@@ -274,10 +290,14 @@ function readRawValue(
         return trackedEntity.attributes[key.replace("te.attribute.", "")];
     }
     if (key.startsWith("trackedEntity.")) {
-        return trackedEntity[key.replace("trackedEntity.", "")];
+        const field = key.replace("trackedEntity.", "");
+        const value = trackedEntity[field];
+        return USER_FIELDS.has(field) ? formatUser(value) : value;
     }
     if (key.startsWith("enrollment.")) {
-        return enrollment?.[key.replace("enrollment.", "")];
+        const field = key.replace("enrollment.", "");
+        const value = enrollment?.[field];
+        return USER_FIELDS.has(field) ? formatUser(value) : value;
     }
     if (key.startsWith("parentEvent.dataValue.")) {
         return parentEvent.dataValues[
@@ -285,7 +305,9 @@ function readRawValue(
         ];
     }
     if (key.startsWith("parentEvent.")) {
-        return parentEvent[key.replace("parentEvent.", "")];
+        const field = key.replace("parentEvent.", "");
+        const value = parentEvent[field];
+        return USER_FIELDS.has(field) ? formatUser(value) : value;
     }
     if (key.startsWith("linkedParent.")) {
         const [, stageId, fieldType, fieldId] = key.split(".");

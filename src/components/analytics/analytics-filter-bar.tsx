@@ -110,7 +110,11 @@ export function AnalyticsFilterBar({
             vertical={isMobile}
             align={isMobile ? "stretch" : "center"}
         >
-            <Form.Item label="Program" layout="vertical">
+            <Form.Item
+                label="Program"
+                layout="vertical"
+                style={{ margin: 0, padding: 0 }}
+            >
                 <Select
                     style={fieldStyle(260)}
                     value={filters.programId}
@@ -120,7 +124,11 @@ export function AnalyticsFilterBar({
                     }
                 />
             </Form.Item>
-            <Form.Item label="Program Stage" layout="vertical">
+            <Form.Item
+                label="Main Program Stage"
+                layout="vertical"
+                style={{ margin: 0, padding: 0 }}
+            >
                 <Select
                     style={fieldStyle(320)}
                     value={filters.selectedStageId}
@@ -131,9 +139,8 @@ export function AnalyticsFilterBar({
                             stage.id,
                             pairs,
                             (id) =>
-                                program.programStages.find(
-                                    (s) => s.id === id,
-                                )?.name,
+                                program.programStages.find((s) => s.id === id)
+                                    ?.name,
                         )}`,
                     }))}
                     onChange={(selectedStageId) =>
@@ -147,7 +154,11 @@ export function AnalyticsFilterBar({
                 />
             </Form.Item>
             {childStageIdsForSelectedStage.length > 0 && (
-                <Form.Item label="Include child stages" layout="vertical">
+                <Form.Item
+                    label="Include child stages"
+                    layout="vertical"
+                    style={{ margin: 0, padding: 0 }}
+                >
                     <Select
                         mode="multiple"
                         style={fieldStyle(300)}
@@ -156,9 +167,8 @@ export function AnalyticsFilterBar({
                         options={childStageIdsForSelectedStage.map((id) => ({
                             value: id,
                             label:
-                                program.programStages.find(
-                                    (s) => s.id === id,
-                                )?.name ?? id,
+                                program.programStages.find((s) => s.id === id)
+                                    ?.name ?? id,
                         }))}
                         onChange={(childStageIds) =>
                             onChange({ ...filters, childStageIds })
@@ -167,7 +177,11 @@ export function AnalyticsFilterBar({
                 </Form.Item>
             )}
             {childStageIdsForSelectedStage.length > 0 && (
-                <Form.Item label="Service Type" layout="vertical">
+                <Form.Item
+                    label="Service Type"
+                    layout="vertical"
+                    style={{ margin: 0, padding: 0 }}
+                >
                     <Select
                         mode="multiple"
                         style={fieldStyle(300)}
@@ -184,7 +198,11 @@ export function AnalyticsFilterBar({
                     />
                 </Form.Item>
             )}
-            <Form.Item label="Period Type" layout="vertical">
+            <Form.Item
+                label="Period Type"
+                layout="vertical"
+                style={{ margin: 0, padding: 0 }}
+            >
                 <Select
                     style={fieldStyle(150)}
                     value={filters.rangeType}
@@ -211,7 +229,11 @@ export function AnalyticsFilterBar({
                 />
             </Form.Item>
 
-            <Form.Item label="Period" layout="vertical">
+            <Form.Item
+                label="Period"
+                layout="vertical"
+                style={{ margin: 0, padding: 0 }}
+            >
                 {filters.rangeType === "custom" ? (
                     <RangePicker
                         style={isMobile ? { width: "100%" } : undefined}

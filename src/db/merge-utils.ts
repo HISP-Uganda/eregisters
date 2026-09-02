@@ -13,6 +13,12 @@ function mergeEvent(
     }
     return {
         ...localEvent,
+        // Read-only DHIS2 audit fields — never set by anything local, so
+        // the server's value always wins instead of being stuck at
+        // whatever an older pull (before these fields were requested)
+        // last stored, or missing entirely.
+        createdBy: serverEvent.createdBy ?? localEvent.createdBy,
+        updatedBy: serverEvent.updatedBy ?? localEvent.updatedBy,
         dataValues: {
             ...serverEvent.dataValues,
             ...localEvent.dataValues,
@@ -29,6 +35,8 @@ function mergeTrackedEntity(
     }
     return {
         ...localEntity,
+        createdBy: serverEntity.createdBy ?? localEntity.createdBy,
+        updatedBy: serverEntity.updatedBy ?? localEntity.updatedBy,
         attributes: {
             ...serverEntity.attributes,
             ...localEntity.attributes,
@@ -45,6 +53,8 @@ function mergeEnrollment(
     }
     return {
         ...localEnrollment,
+        createdBy: serverEnrollment.createdBy ?? localEnrollment.createdBy,
+        updatedBy: serverEnrollment.updatedBy ?? localEnrollment.updatedBy,
         attributes: {
             ...serverEnrollment.attributes,
             ...localEnrollment.attributes,
