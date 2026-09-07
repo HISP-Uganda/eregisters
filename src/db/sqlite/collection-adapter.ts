@@ -86,12 +86,23 @@ export function sqliteCollectionOptions<
     // server pull). A sync.ts pull calls these with `{ source: "server" }`;
     // ordinary optimistic writes leave it unset and each row adapter
     // defaults to "local".
+    // Upserts: a sync pull re-encountering an entity it already stored
+    // locally on a previous cycle is the normal case, not an edge case —
+    // calling row.insertRow unconditionally would throw a duplicate-key
+    // error the second time any given row is pulled. previousSnapshot
+    // (already maintained for diffing) doubles as the existence check with
+    // no extra DB round-trip.
     async function insertLocally(
         rows: TRow[],
         options?: RowWriteOptions,
     ): Promise<void> {
         for (const r of rows) {
-            await row.insertRow(db, r, options);
+            const key = getKey(r);
+            if (previousSnapshot.has(key)) {
+                await row.updateRow(db, r, options);
+            } else {
+                await row.insertRow(db, r, options);
+            }
         }
         await reloadAndDiff();
     }

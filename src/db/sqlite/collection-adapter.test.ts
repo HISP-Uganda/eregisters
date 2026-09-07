@@ -196,6 +196,39 @@ describe("sqliteCollectionOptions", () => {
         expect(onInsertCalls).toBe(0);
     });
 
+    it("utils.bulkInsertLocally upserts: calling it again with an existing key updates rather than throwing a duplicate-key error", async () => {
+        // This is the normal case for a sync pull re-encountering an
+        // already-stored entity on a later sync cycle — not an edge case.
+        const { driver, close: c } = await setUp();
+        close = c;
+
+        const collection = createCollection(
+            sqliteCollectionOptions<SimpleRow, string>({
+                id: "test-simple-bulk-upsert",
+                db: driver,
+                getKey: (row) => row.id,
+                row: simpleRowAdapter(),
+            }),
+        );
+        await collection.toArrayWhenReady();
+
+        const utils = collection.utils as unknown as {
+            bulkInsertLocally: (rows: SimpleRow[]) => Promise<void>;
+        };
+        await utils.bulkInsertLocally([
+            { id: "a", label: "first pull", version: 1 },
+        ]);
+        await expect(
+            utils.bulkInsertLocally([
+                { id: "a", label: "second pull", version: 2 },
+            ]),
+        ).resolves.toBeUndefined();
+
+        expect(plain(collection.toArray)).toEqual([
+            { id: "a", label: "second pull", version: 2 },
+        ]);
+    });
+
     it("threads utils.bulkInsertLocally's options through to the row adapter (e.g. source: 'server')", async () => {
         const { driver, close: c } = await setUp();
         close = c;
