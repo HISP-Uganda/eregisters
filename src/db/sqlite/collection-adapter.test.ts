@@ -1,0 +1,230 @@
+import { createCollection } from "@tanstack/db";
+import { afterEach, describe, expect, it } from "vitest";
+import { createNodeSqliteDriver } from "./test-support/node-sqlite-driver";
+import { sqliteCollectionOptions } from "./collection-adapter";
+import type { RowAdapter } from "./row-adapter";
+
+type SimpleRow = { id: string; label: string; version: number };
+
+function simpleRowAdapter(): RowAdapter<SimpleRow, string> {
+    return {
+        rowVersion: (row) => String(row.version),
+        loadAll: async (db) => {
+            const result = await db.execute<SimpleRow>(
+                "SELECT id, label, version FROM simple_rows",
+            );
+            return result.rows;
+        },
+        insertRow: async (db, row) => {
+            await db.execute(
+                "INSERT INTO simple_rows (id, label, version) VALUES (?, ?, ?)",
+                [row.id, row.label, row.version],
+            );
+        },
+        updateRow: async (db, row) => {
+            await db.execute(
+                "UPDATE simple_rows SET label = ?, version = ? WHERE id = ?",
+                [row.label, row.version, row.id],
+            );
+        },
+        deleteRow: async (db, key) => {
+            await db.execute("DELETE FROM simple_rows WHERE id = ?", [key]);
+        },
+    };
+}
+
+// TanStack DB decorates rows returned from collection.toArray/toArrayWhenReady
+// with bookkeeping fields ($key, $origin, $synced, $collectionId) — strip
+// them so assertions only check the fields this test actually cares about.
+function plain(rows: SimpleRow[]): SimpleRow[] {
+    return rows.map(({ id, label, version }) => ({ id, label, version }));
+}
+
+async function setUp() {
+    const { driver, close } = createNodeSqliteDriver();
+    await driver.execute(
+        "CREATE TABLE simple_rows (id TEXT PRIMARY KEY, label TEXT, version INTEGER)",
+    );
+    return { driver, close };
+}
+
+describe("sqliteCollectionOptions", () => {
+    let close: (() => void) | undefined;
+    afterEach(() => {
+        close?.();
+        close = undefined;
+    });
+
+    it("loads existing rows on initial sync", async () => {
+        const { driver, close: c } = await setUp();
+        close = c;
+        await driver.execute(
+            "INSERT INTO simple_rows (id, label, version) VALUES (?, ?, ?)",
+            ["a", "hello", 1],
+        );
+
+        const collection = createCollection(
+            sqliteCollectionOptions<SimpleRow, string>({
+                id: "test-simple",
+                db: driver,
+                getKey: (row) => row.id,
+                row: simpleRowAdapter(),
+            }),
+        );
+
+        const rows = await collection.toArrayWhenReady();
+        expect(plain(rows)).toEqual([{ id: "a", label: "hello", version: 1 }]);
+    });
+
+    it("insert/update/delete round-trip through the collection API", async () => {
+        const { driver, close: c } = await setUp();
+        close = c;
+
+        const collection = createCollection(
+            sqliteCollectionOptions<SimpleRow, string>({
+                id: "test-simple-crud",
+                db: driver,
+                getKey: (row) => row.id,
+                row: simpleRowAdapter(),
+            }),
+        );
+        await collection.toArrayWhenReady();
+
+        const insertTx = collection.insert({ id: "a", label: "one", version: 1 });
+        await insertTx.isPersisted.promise;
+        expect(plain(collection.toArray)).toEqual([
+            { id: "a", label: "one", version: 1 },
+        ]);
+
+        const updateTx = collection.update("a", (draft) => {
+            draft.label = "two";
+        });
+        await updateTx.isPersisted.promise;
+        expect(plain(collection.toArray)).toEqual([
+            { id: "a", label: "two", version: 1 },
+        ]);
+
+        const deleteTx = collection.delete("a");
+        await deleteTx.isPersisted.promise;
+        expect(plain(collection.toArray)).toEqual([]);
+    });
+
+    it("detects a content change even when the caller doesn't bump rowVersion", async () => {
+        // Regression test for a real bug found in the wayfinder ticket 011
+        // spike: version-only diffing missed an update when the caller's
+        // draft didn't touch the version field itself.
+        const { driver, close: c } = await setUp();
+        close = c;
+
+        const collection = createCollection(
+            sqliteCollectionOptions<SimpleRow, string>({
+                id: "test-simple-content-diff",
+                db: driver,
+                getKey: (row) => row.id,
+                row: simpleRowAdapter(),
+            }),
+        );
+        await collection.toArrayWhenReady();
+
+        const insertTx = collection.insert({ id: "a", label: "one", version: 1 });
+        await insertTx.isPersisted.promise;
+
+        // Update the label WITHOUT bumping version.
+        const updateTx = collection.update("a", (draft) => {
+            draft.label = "changed-but-same-version";
+        });
+        await updateTx.isPersisted.promise;
+
+        expect(plain(collection.toArray)).toEqual([
+            { id: "a", label: "changed-but-same-version", version: 1 },
+        ]);
+    });
+
+    it("fires subscribeChanges on writes with no external watcher", async () => {
+        const { driver, close: c } = await setUp();
+        close = c;
+
+        const collection = createCollection(
+            sqliteCollectionOptions<SimpleRow, string>({
+                id: "test-simple-reactive",
+                db: driver,
+                getKey: (row) => row.id,
+                row: simpleRowAdapter(),
+            }),
+        );
+        await collection.toArrayWhenReady();
+
+        let sawChange = false;
+        const subscription = collection.subscribeChanges(() => {
+            sawChange = true;
+        });
+
+        const tx = collection.insert({ id: "a", label: "one", version: 1 });
+        await tx.isPersisted.promise;
+
+        expect(sawChange).toBe(true);
+        subscription.unsubscribe();
+    });
+
+    it("utils.bulkInsertLocally writes rows and bypasses onInsert", async () => {
+        const { driver, close: c } = await setUp();
+        close = c;
+
+        let onInsertCalls = 0;
+        const collection = createCollection(
+            sqliteCollectionOptions<SimpleRow, string>({
+                id: "test-simple-bulk",
+                db: driver,
+                getKey: (row) => row.id,
+                row: simpleRowAdapter(),
+                onInsert: async () => {
+                    onInsertCalls++;
+                },
+            }),
+        );
+        await collection.toArrayWhenReady();
+
+        const utils = collection.utils as unknown as {
+            bulkInsertLocally: (rows: SimpleRow[]) => Promise<void>;
+        };
+        await utils.bulkInsertLocally([
+            { id: "a", label: "one", version: 1 },
+            { id: "b", label: "two", version: 1 },
+        ]);
+
+        expect(collection.toArray.map((r) => r.id).sort()).toEqual(["a", "b"]);
+        expect(onInsertCalls).toBe(0);
+    });
+
+    it("survives a fresh driver/collection against the same underlying data", async () => {
+        const { driver, close: c } = await setUp();
+        close = c;
+
+        const collectionA = createCollection(
+            sqliteCollectionOptions<SimpleRow, string>({
+                id: "test-simple-reopen",
+                db: driver,
+                getKey: (row) => row.id,
+                row: simpleRowAdapter(),
+            }),
+        );
+        await collectionA.toArrayWhenReady();
+        const tx = collectionA.insert({ id: "a", label: "one", version: 1 });
+        await tx.isPersisted.promise;
+
+        // Same driver/db (node:sqlite in-memory can't reopen by name, but a
+        // fresh collection instance against the same live driver proves the
+        // adapter's loadAll() genuinely reads from storage rather than
+        // relying on in-memory state carried over between collections).
+        const collectionB = createCollection(
+            sqliteCollectionOptions<SimpleRow, string>({
+                id: "test-simple-reopen-2",
+                db: driver,
+                getKey: (row) => row.id,
+                row: simpleRowAdapter(),
+            }),
+        );
+        const rows = await collectionB.toArrayWhenReady();
+        expect(plain(rows)).toEqual([{ id: "a", label: "one", version: 1 }]);
+    });
+});
