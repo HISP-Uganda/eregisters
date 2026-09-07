@@ -3,7 +3,7 @@ title: Normalized SQLite Schema for Tracker Collections
 type: wayfinder:grilling
 status: open
 assignee: null
-blocked_by: []
+blocked_by: [009-persisted-collection-storage-scheme]
 ---
 
 ## Question
@@ -30,3 +30,10 @@ Needs to cover:
   simple keyed table (it's a computed cache, not user data).
 
 Invoke `/grilling` and `/domain-modeling`.
+
+**Blocked on ticket 009** (persisted-collection storage scheme): ticket
+002's resolution flagged that `db-sqlite-persistence-core`'s
+`sqlite-core-adapter.ts` may impose its own row-versioning/tombstone table
+layout that constrains — or conflicts with — normalizing attributes/
+dataValues into separate child tables. Need that answered before finalizing
+this schema.

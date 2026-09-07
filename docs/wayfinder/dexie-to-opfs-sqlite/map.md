@@ -55,15 +55,16 @@ in production, old Dexie databases are gone, and `pnpm test:vitest` /
 
 ## Decisions so far
 
-(none yet — charting session only)
+- [TanStack DB Reactive Collection Adapter for SQLite/OPFS](tickets/002-tanstack-db-sqlite-adapter.md) — no official op-sqlite-web adapter exists, but `@tanstack/db-sqlite-persistence-core`'s `persistedCollectionOptions` (already version-pinned to the installed `@tanstack/db@0.8.7`) can be driven by a small hand-written `OpSqliteWebDriver` shim; no hand-rolled change-notification needed. See ticket 008 (build it) and ticket 009 (storage-scheme fog it surfaced).
+- [Build Pipeline - Bundling op-sqlite Web Worker + WASM Assets](tickets/005-build-tooling-bundling.md) — confirmed the app builds via real Vite (webpack only compiles the separate SW bundle); op-sqlite's worker/wasm discovery patterns are exactly what Vite already handles via the existing `optimizeDeps.exclude`; no conflict with `scripts/patch-sw.js`'s precache injection. Vitest can't exercise worker/OPFS code — needs mocking or a real-browser tool.
 
 ## Not yet specified
 
 - Data-access-layer restructuring of `src/machines/sync.ts` itself (how its
   ~1.9k lines swap Dexie calls for SQLite calls) — depends on the schema
-  tickets and the TanStack DB adapter research landing first.
+  tickets landing first.
 - Component-level migration of every `useLiveSuspenseQuery`/`useLiveQuery`
-  call site once the adapter shape (or its replacement) is known.
+  call site once the driver/collection wiring (ticket 008) is proven out.
 - Rollout/monitoring plan for detecting migration failures in the field
   (telemetry, error reporting) across health-facility devices with poor
   connectivity — depends on the migration/cutover procedure ticket.

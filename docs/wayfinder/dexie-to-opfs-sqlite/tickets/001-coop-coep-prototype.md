@@ -35,3 +35,10 @@ this app) and confirm:
 This is the single highest-risk item in the whole migration — if it doesn't
 hold up on the real server, the destination itself needs to be revisited
 (see map's Out of scope / Not yet specified).
+
+**Note (from ticket 005's resolution)**: implement the header-injection
+patch as a third idempotent, sentinel-guarded patch alongside
+`scripts/patch-sw.js`'s existing two (`clients.claim()` and the
+navigation-fetch fix) rather than a separate service worker file — both end
+up applied to the same `build/app/service-worker.js` via the same
+`postbuild` pipeline.
