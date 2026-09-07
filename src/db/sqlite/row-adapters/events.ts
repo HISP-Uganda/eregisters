@@ -102,6 +102,36 @@ function reassemble(
     };
 }
 
+/** See tracked-entities.ts's getTrackedEntityById for the rationale. */
+export async function getEventById(
+    db: SqlDriver,
+    event: string,
+): Promise<FlattenedEvent | undefined> {
+    const [parent, dataValueRows, usersByUid] = await Promise.all([
+        db.execute<EventParentRow>(
+            `SELECT event, status, program, program_stage, enrollment,
+                    tracked_entity, org_unit, parent_event, occurred_at,
+                    follow_up, deleted, created_at, updated_at,
+                    attribute_option_combo, attribute_category_options,
+                    completed_by, completed_at, created_by_uid,
+                    updated_by_uid, notes, last_synced, sync_error,
+                    version, sync_status
+             FROM events WHERE event = ?`,
+            [event],
+        ),
+        db.execute<DataValueRow>(
+            `SELECT event, data_element, value, stored_by,
+                    provided_elsewhere, created_at, updated_at,
+                    created_by_uid, updated_by_uid
+             FROM event_data_values WHERE event = ?`,
+            [event],
+        ),
+        loadUsersByUid(db),
+    ]);
+    if (!parent.rows[0]) return undefined;
+    return reassemble(parent.rows[0], dataValueRows.rows, usersByUid);
+}
+
 export const eventsRowAdapter: RowAdapter<FlattenedEvent, string> = {
     rowVersion: (row) => row.updatedAt,
 

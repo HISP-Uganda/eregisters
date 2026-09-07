@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { FlattenedEnrollment } from "../../../schemas";
 import { createNodeSqliteDriver } from "../test-support/node-sqlite-driver";
 import { createSchema } from "../schema";
-import { enrollmentsRowAdapter } from "./enrollments";
+import { enrollmentsRowAdapter, getEnrollmentById } from "./enrollments";
 
 function makeEnrollment(
     overrides: Partial<FlattenedEnrollment> = {},
@@ -92,5 +92,20 @@ describe("enrollmentsRowAdapter", () => {
 
         const rows = await enrollmentsRowAdapter.loadAll(driver);
         expect(rows[0]!.notes).toEqual([{ value: "a note" }]);
+    });
+
+    it("getEnrollmentById returns undefined for a missing key, and the row for an existing one", async () => {
+        const { driver, close: c } = createNodeSqliteDriver();
+        close = c;
+        await createSchema(driver);
+        await driver.execute(
+            "INSERT INTO tracked_entities (tracked_entity, tracked_entity_type, org_unit, created_at, updated_at, sync_status) VALUES (?, ?, ?, ?, ?, ?)",
+            ["te-1", "tet-1", "ou-1", "2026-01-01", "2026-01-01", "synced"],
+        );
+        expect(await getEnrollmentById(driver, "missing")).toBeUndefined();
+
+        const enrollment = makeEnrollment();
+        await enrollmentsRowAdapter.insertRow(driver, enrollment);
+        expect(await getEnrollmentById(driver, "enr-1")).toEqual(enrollment);
     });
 });

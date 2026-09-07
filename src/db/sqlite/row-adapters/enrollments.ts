@@ -73,6 +73,30 @@ function reassemble(
     };
 }
 
+/** See tracked-entities.ts's getTrackedEntityById for the rationale. */
+export async function getEnrollmentById(
+    db: SqlDriver,
+    enrollment: string,
+): Promise<FlattenedEnrollment | undefined> {
+    const [parent, attributeRows, usersByUid] = await Promise.all([
+        db.execute<EnrollmentParentRow>(
+            `SELECT enrollment, tracked_entity, program, org_unit, status,
+                    enrolled_at, occurred_at, created_at, updated_at,
+                    created_by_uid, updated_by_uid, follow_up, deleted,
+                    notes, last_synced, sync_error, version, sync_status
+             FROM enrollments WHERE enrollment = ?`,
+            [enrollment],
+        ),
+        db.execute<AttributeRow>(
+            `SELECT enrollment, attribute, value FROM enrollment_attributes WHERE enrollment = ?`,
+            [enrollment],
+        ),
+        loadUsersByUid(db),
+    ]);
+    if (!parent.rows[0]) return undefined;
+    return reassemble(parent.rows[0], attributeRows.rows, usersByUid);
+}
+
 export const enrollmentsRowAdapter: RowAdapter<FlattenedEnrollment, string> = {
     rowVersion: (row) => row.updatedAt,
 

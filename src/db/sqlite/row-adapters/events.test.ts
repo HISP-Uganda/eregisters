@@ -3,7 +3,7 @@ import type { FlattenedEvent } from "../../../schemas";
 import { createNodeSqliteDriver } from "../test-support/node-sqlite-driver";
 import { createSchema } from "../schema";
 import type { SqlDriver } from "../driver-types";
-import { eventsRowAdapter } from "./events";
+import { eventsRowAdapter, getEventById } from "./events";
 
 function makeEvent(overrides: Partial<FlattenedEvent> = {}): FlattenedEvent {
     return {
@@ -97,5 +97,17 @@ describe("eventsRowAdapter", () => {
             "SELECT * FROM event_data_values",
         );
         expect(dvRows.rows).toEqual([]);
+    });
+
+    it("getEventById returns undefined for a missing key, and the row for an existing one", async () => {
+        const { driver, close: c } = createNodeSqliteDriver();
+        close = c;
+        await createSchema(driver);
+        await seedParents(driver);
+        expect(await getEventById(driver, "missing")).toBeUndefined();
+
+        const event = makeEvent();
+        await eventsRowAdapter.insertRow(driver, event);
+        expect(await getEventById(driver, "evt-1")).toEqual(event);
     });
 });

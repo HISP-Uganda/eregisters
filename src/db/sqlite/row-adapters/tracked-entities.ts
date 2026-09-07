@@ -71,6 +71,38 @@ function reassemble(
     };
 }
 
+/**
+ * Single-row lookup, scoped for the pull-loop merge step
+ * (`mergeBulkTrackedEntities`'s `getLocalEntity` callback,
+ * `src/db/merge-utils.ts:77-89`) — `RowAdapter.loadAll` is bulk-only, and a
+ * per-row merge lookup for a whole page loading everything each time would
+ * be wasteful.
+ */
+export async function getTrackedEntityById(
+    db: SqlDriver,
+    trackedEntity: string,
+): Promise<FlattenedTrackedEntity | undefined> {
+    const [parent, attributeRows, usersByUid] = await Promise.all([
+        db.execute<TrackedEntityParentRow>(
+            `SELECT tracked_entity, tracked_entity_type, org_unit, created_at,
+                    updated_at, created_by_uid, updated_by_uid, inactive,
+                    deleted, potential_duplicate, parent_entity,
+                    last_synced, sync_error, version, sync_status
+             FROM tracked_entities WHERE tracked_entity = ?`,
+            [trackedEntity],
+        ),
+        db.execute<AttributeRow>(
+            `SELECT tracked_entity, attribute, value, display_name,
+                    value_type, created_at, updated_at
+             FROM tracked_entity_attributes WHERE tracked_entity = ?`,
+            [trackedEntity],
+        ),
+        loadUsersByUid(db),
+    ]);
+    if (!parent.rows[0]) return undefined;
+    return reassemble(parent.rows[0], attributeRows.rows, usersByUid);
+}
+
 export const trackedEntitiesRowAdapter: RowAdapter<
     FlattenedTrackedEntity,
     string

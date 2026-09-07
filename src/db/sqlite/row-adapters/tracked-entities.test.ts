@@ -2,7 +2,10 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { FlattenedTrackedEntity } from "../../../schemas";
 import { createNodeSqliteDriver } from "../test-support/node-sqlite-driver";
 import { createSchema } from "../schema";
-import { trackedEntitiesRowAdapter } from "./tracked-entities";
+import {
+    getTrackedEntityById,
+    trackedEntitiesRowAdapter,
+} from "./tracked-entities";
 
 function makeTrackedEntity(
     overrides: Partial<FlattenedTrackedEntity> = {},
@@ -153,5 +156,31 @@ describe("trackedEntitiesRowAdapter", () => {
         const byId = new Map(rows.map((r) => [r.trackedEntity, r]));
         expect(byId.get("te-1")!.attributes).toEqual({ age: "10" });
         expect(byId.get("te-2")!.attributes).toEqual({ age: "20" });
+    });
+
+    describe("getTrackedEntityById", () => {
+        it("returns undefined for a key that doesn't exist", async () => {
+            const { driver, close: c } = createNodeSqliteDriver();
+            close = c;
+            await createSchema(driver);
+
+            expect(await getTrackedEntityById(driver, "missing")).toBeUndefined();
+        });
+
+        it("returns the same reassembled row loadAll would, scoped to one id", async () => {
+            const { driver, close: c } = createNodeSqliteDriver();
+            close = c;
+            await createSchema(driver);
+
+            const entity = makeTrackedEntity();
+            await trackedEntitiesRowAdapter.insertRow(driver, entity);
+            await trackedEntitiesRowAdapter.insertRow(
+                driver,
+                makeTrackedEntity({ trackedEntity: "te-other" }),
+            );
+
+            const result = await getTrackedEntityById(driver, "te-1");
+            expect(result).toEqual(entity);
+        });
     });
 });
