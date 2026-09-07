@@ -23,6 +23,39 @@ export function shouldUseLastDataPull(
     return mode === "incremental" && lastDataPull !== undefined;
 }
 
+/**
+ * Reads the DHIS2 server clock out of a `system/info` response. This is the
+ * value the Android SDK uses as the `updatedAfter` boundary for incremental
+ * tracker pulls — the server date, never the device clock (see
+ * `SystemInfoCall`/`TrackedEntityInstanceLastUpdatedManager` in the Android
+ * SDK). Returns `undefined` when the response has no usable `serverDate` so
+ * callers can keep the previous boundary rather than advancing with an
+ * untrusted timestamp.
+ */
+export function extractServerDate(
+    response: { info?: { serverDate?: string } } | undefined,
+): string | undefined {
+    const serverDate = response?.info?.serverDate;
+    return typeof serverDate === "string" && serverDate.length > 0
+        ? serverDate
+        : undefined;
+}
+
+/**
+ * Picks the boundary to persist after a successful incremental data pull. The
+ * Android SDK captures the server date *before* the pull and stores it only
+ * once the pull succeeds; if we could not read a server date we deliberately
+ * keep the previous boundary instead of falling back to the device clock —
+ * at worst the next pull re-fetches an overlap, but no server-side update is
+ * ever skipped.
+ */
+export function resolveNextDataPull(
+    serverDate: string | undefined,
+    previousLastDataPull: string | undefined,
+) {
+    return serverDate ?? previousLastDataPull;
+}
+
 export function isDataPullLoading(
     isDataPullActive: boolean,
     _lastDataPull: string | undefined,
