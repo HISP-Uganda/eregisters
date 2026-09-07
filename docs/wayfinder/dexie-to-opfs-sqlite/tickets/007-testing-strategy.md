@@ -2,7 +2,7 @@
 title: Testing Strategy for OPFS/SQLite in CI and Pre-deploy QA
 type: wayfinder:grilling
 status: open
-assignee: null
+assignee: claude-session-01PcWUcXQiieqFWmoKvZKBtH
 blocked_by: []
 ---
 
