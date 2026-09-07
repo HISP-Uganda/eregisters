@@ -52,12 +52,15 @@ in production, old Dexie databases are gone, and `pnpm test:vitest` /
   (decided during charting) — but that's about the *code* migration
   strategy, not necessarily production rollout pacing.
 - Invoke `/grilling` and `/domain-modeling` for any grilling-type ticket.
-- The COOP/COEP mechanism itself is now proven locally (ticket 001) — the
-  remaining gating risk is ticket 012 (real production DHIS2 + Safari
-  verification), which needs a human with deployment access. Not a hard
-  tracker blocker on other tickets, but the one thing that could still
-  redraw the destination if production behaves differently than the local
-  simulation.
+- The COOP/COEP mechanism itself is now proven locally (ticket 001), and
+  the real integration into `scripts/patch-sw.js` is written and locally
+  verified against the actual app bundle (ticket 012's progress note,
+  branch `task/coi-sw-patch-integration`, not merged). The remaining
+  gating risk is ticket 012's items 2-6 (real production DHIS2 servlet +
+  Safari + PWA-update-flow verification), which needs a human with
+  deployment access. Not a hard tracker blocker on other tickets, but the
+  one thing that could still redraw the destination if production behaves
+  differently than the local simulation.
 - No issue tracker is configured for this repo; using the local-markdown
   tracker. Open tickets live as files under `tickets/`; a ticket is
   "unclaimed" if its frontmatter has no `assignee`, and "unblocked" if its
