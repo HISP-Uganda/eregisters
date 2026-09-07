@@ -44,10 +44,12 @@ in production, old Dexie databases are gone, and `pnpm test:vitest` /
   (decided during charting) — but that's about the *code* migration
   strategy, not necessarily production rollout pacing.
 - Invoke `/grilling` and `/domain-modeling` for any grilling-type ticket.
-- Highest-priority/gating item in practice (not a hard blocker in the
-  tracker, but sequence it first): the COOP/COEP prototype task — if it
-  fails against the real DHIS2 server, the whole destination needs
-  revisiting.
+- The COOP/COEP mechanism itself is now proven locally (ticket 001) — the
+  remaining gating risk is ticket 012 (real production DHIS2 + Safari
+  verification), which needs a human with deployment access. Not a hard
+  tracker blocker on other tickets, but the one thing that could still
+  redraw the destination if production behaves differently than the local
+  simulation.
 - No issue tracker is configured for this repo; using the local-markdown
   tracker. Open tickets live as files under `tickets/`; a ticket is
   "unclaimed" if its frontmatter has no `assignee`, and "unblocked" if its
@@ -60,6 +62,7 @@ in production, old Dexie databases are gone, and `pnpm test:vitest` /
 - [Does persistedCollectionOptions Impose a Storage Scheme Incompatible With Normalized Child Tables?](tickets/009-persisted-collection-storage-scheme.md) — yes, opaque blob/tombstone tables, no extension point. (Moot after ticket 010 dropped the framework entirely — kept as the record of why.)
 - [Build and Verify OpSqliteWebDriver Conformance](tickets/008-opsqlite-driver-conformance.md) — built and verified end-to-end in real headless Chrome: op-sqlite's web/OPFS backend genuinely persists data, `execute()`/`transaction()` work async end-to-end, survives a fresh connection. Driver code reusable for ticket 011; the `persistedCollectionOptions` wiring specifically is superseded. Spike code on throwaway branch `spike/opsqlite-driver-conformance`, not merged.
 - [Drop persistedCollectionOptions in Favor of a Direct op-sqlite Collection Adapter](tickets/010-drop-persisted-collection-options.md) — checked op-sqlite's own docs directly at the user's prompt; no simpler built-in path exists for the COOP/COEP or reactivity problems. But the two-schemas-in-one-database shape ticket 009 surfaced was self-inflicted complexity: dropped `persistedCollectionOptions` entirely in favor of a direct collection adapter (modeled on `tanstack-dexie-db-collection`'s own diffing approach) over one normalized schema. Simplified ticket 003, superseded tickets 002/008/009's architectural recommendations (their facts still stand), surfaced ticket 011.
+- [Prototype COOP/COEP Service-Worker Header Injection Against Production DHIS2](tickets/001-coop-coep-prototype.md) — core mechanism proven in real headless Chrome against a server sending no COOP/COEP headers (simulating DHIS2): SW registers, one-time reload, `crossOriginIsolated` becomes true purely from the SW, OPFS/op-sqlite work under it, second visit needs no further reload. Also found a real multi-tab OPFS access-handle conflict relevant to ticket 011. Production/Safari/PWA-update verification still needs a human with deployment access — surfaced as ticket 012. Spike on branch `spike/coop-coep-header-injection`, not merged.
 
 ## Not yet specified
 
