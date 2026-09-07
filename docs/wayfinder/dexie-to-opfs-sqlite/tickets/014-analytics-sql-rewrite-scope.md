@@ -1,7 +1,7 @@
 ---
 title: Should Analytics Queries Be Rewritten to Raw SQL Now, or Deferred?
 type: wayfinder:grilling
-status: open
+status: closed
 assignee: claude-session-01PcWUcXQiieqFWmoKvZKBtH
 blocked_by: []
 ---
@@ -37,3 +37,21 @@ test against) vs. scope creep risk (rewriting `parent-event-dataset.ts`'s
 substantial additional work layered onto an already large migration).
 
 Invoke `/grilling` and `/domain-modeling`.
+
+## Resolution
+
+**Out of scope for this migration.** The storage swap doesn't require
+touching analytics — the adapter's collections (ticket 011) keep working
+with `parent-event-dataset.ts`'s existing in-memory JS joins exactly as
+they do against Dexie today, since `useLiveSuspenseQuery` reads the full
+collection snapshot regardless of backing store.
+
+Rewriting `parent-event-dataset.ts`/`column-registry.ts`/`pivot-engine.ts`
+into real SQL (querying `tracked_entity_attributes`/`event_data_values`
+directly) is a genuine, separable future improvement — but bundling
+~300+ lines of join/slot-counting/self-join rewrite into an already-large
+migration (schema + adapter + `sync.ts` rewrite + production COOP/COEP
+risk) raises correctness risk and makes it harder to isolate which change
+caused a regression if something breaks. Ship the storage swap alone
+first, on a stable and already-verified SQLite foundation; tackle
+analytics SQL as its own separately-scoped effort afterward.

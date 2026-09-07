@@ -13,10 +13,13 @@ from Dexie.js to OPFS-backed SQLite via `@op-engineering/op-sqlite`'s web
 backend (which itself wraps `@sqlite.org/sqlite-wasm` + OPFS, async-only).
 
 Tracker collections (trackedEntities/enrollments/events) get normalized into
-real relational tables — attributes/dataValues as child tables — so analytics
-queries (`src/analytics/parent-event-dataset.ts`) can eventually use real SQL
-joins/aggregation instead of hand-rolled JS. `MOHRegisterDB`'s simpler
-reference/metadata tables get a simpler schema.
+real relational tables — attributes/dataValues as child tables — which makes
+real SQL joins/aggregation possible for analytics queries
+(`src/analytics/parent-event-dataset.ts`) as a *future*, separately-scoped
+effort (see ticket "Should Analytics Queries Be Rewritten to Raw SQL Now, or
+Deferred?" — explicitly out of scope for this migration; analytics keeps
+using its existing in-memory JS joins against the new adapter unchanged).
+`MOHRegisterDB`'s simpler reference/metadata tables get a simpler schema.
 
 Migration safety is copy-and-verify: every row is copied from all 5 Dexie
 databases into the new SQLite schema regardless of `syncStatus`, row counts
@@ -81,6 +84,7 @@ in production, old Dexie databases are gone, and `pnpm test:vitest` /
 - [Build and Verify Direct op-sqlite TanStack DB Collection Adapter](tickets/011-direct-opsqlite-collection-adapter.md) — built and verified end-to-end in real headless Chrome against the harder join+reassembly case (tracked_entities + tracked_entity_attributes): insert/update/delete, reactive notification via explicit reload-and-diff (no liveQuery equivalent needed — this schema has exactly one writer), bulk local insert for the sync-machine pull path, and persistence-across-reopen all pass. Found and fixed a real diffing bug (version-only comparison missed a content change) and reproduced ticket 001's multi-tab OPFS conflict independently. Spike on branch `spike/direct-opsqlite-adapter`, not merged.
 - **Handling users mid-upgrade / staggered rollout** (fog item, resolved as an addendum, not its own ticket) — not a real open question: DHIS2 apps deploy as one bundle with no per-device staged-rollout mechanism, and ticket "Migration and Cutover Procedure Design" already designed each device's migration to be autonomous, safe, retry-on-failure, and non-blocking. Whenever any given device happens to load the new app version, it migrates safely on its own — no coordination or staging needed.
 - [How Does src/machines/sync.ts's Pull/Push Logic Get Restructured for the New SQLite Adapter?](tickets/013-sync-machine-restructuring.md) — merge logic stays in JS (schema's `source` column supports this unchanged), `saveMetadata` collapses into one shared function, `checkIndexDB`/`queryInfo` get restructured (not 1:1 ported) given the uniform metadata schema, push write-back and delete-cascade both become single atomic transactions (real correctness improvements SQLite enables over Dexie's per-table transaction constraint), and development happens incrementally per-actor against `node:sqlite` tests even though the shipped result is still one release.
+- [Should Analytics Queries Be Rewritten to Raw SQL Now, or Deferred?](tickets/014-analytics-sql-rewrite-scope.md) — deferred, out of scope for this migration. The storage swap doesn't require it (analytics keeps using its existing in-memory JS joins against the new adapter unchanged); bundling a ~300+ line SQL rewrite into an already-large migration raises risk and makes regressions harder to isolate. Ship the storage swap alone first.
 
 ## Not yet specified
 
@@ -94,3 +98,8 @@ mid-upgrade" note under Decisions so far.)
   backend — this repo has no native app shell, and adding one is a much
   larger architectural change than this migration. Only its web/OPFS
   backend is in scope. (Ruled out during charting, not a closed ticket.)
+- Rewriting `src/analytics/parent-event-dataset.ts`/`column-registry.ts`/
+  `pivot-engine.ts` into real SQL joins/aggregation — a real future
+  benefit the new schema enables, but not required by the storage swap
+  itself and deliberately deferred to a separate later effort. See
+  [Should Analytics Queries Be Rewritten to Raw SQL Now, or Deferred?](tickets/014-analytics-sql-rewrite-scope.md).
