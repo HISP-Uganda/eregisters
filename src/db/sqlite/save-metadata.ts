@@ -12,6 +12,14 @@ import type { SqlDriver } from "./driver-types";
  * Not yet wired into sync.ts itself — that integration is this ticket's own
  * deferred, separate scope. This is the standalone, independently-tested
  * piece ready for that later wiring.
+ *
+ * Deliberately does NOT reuse `createMetadataTableRowAdapter`'s insert/
+ * update (code review flagged this as duplicated SQL shape): that adapter's
+ * insert-vs-update split exists to support the collection-adapter's
+ * diffing (distinguishing a genuinely new key from an existing one it's
+ * updating), which doesn't apply here — a metadata pull always wants
+ * unconditional upsert (`INSERT OR REPLACE`) regardless of whether a row
+ * previously existed, since the whole resource set is being resynced.
  */
 
 /** `INSERT OR REPLACE` every row into a uniform `id TEXT, data TEXT` table. */

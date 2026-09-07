@@ -90,11 +90,20 @@ describe("applyPushResults", () => {
             ],
         });
 
-        const te = await driver.execute<{ sync_status: string }>(
-            "SELECT sync_status FROM tracked_entities WHERE tracked_entity = ?",
+        const te = await driver.execute<{
+            sync_status: string;
+            last_synced: string;
+        }>(
+            "SELECT sync_status, last_synced FROM tracked_entities WHERE tracked_entity = ?",
             ["te-1"],
         );
         expect(te.rows[0]!.sync_status).toBe("synced");
+        // Stamped fresh at write time (matching syncReportToLocal), not the
+        // "2026-01-01" placeholder seed() inserted.
+        expect(te.rows[0]!.last_synced).not.toBe("2026-01-01");
+        expect(new Date(te.rows[0]!.last_synced).getTime()).toBeGreaterThan(
+            Date.now() - 5000,
+        );
 
         const enr = await driver.execute<{ sync_status: string }>(
             "SELECT sync_status FROM enrollments WHERE enrollment = ?",

@@ -82,30 +82,52 @@ export type CheckMetadataInfoResult = {
     program: Program | undefined;
 };
 
+const SAFE_FALLBACK_RESULT: CheckMetadataInfoResult = {
+    needsSyncing: true,
+    hasEmptyTables: true,
+    wasDatabaseDeleted: true,
+    metadataVersion: undefined,
+    syncState: undefined,
+    program: undefined,
+};
+
 export async function checkMetadataInfo(
     db: SqlDriver,
 ): Promise<CheckMetadataInfoResult> {
-    const hasEmptyTables = await anyTableEmpty(db, CHECKED_TABLES);
-    const metadataVersion = await getRowById<MetadataVersion>(
-        db,
-        "metadata_versions",
-        "metadata-version",
-    );
-    const syncState = await getRowById(db, "sync_state", "current");
-    const wasDatabaseDeleted = !metadataVersion?.lastSync;
-    const [program] = await createMetadataTableRowAdapter<Program>(
-        "programs",
-        (r) => r.id,
-    ).loadAll(db);
+    // Mirrors checkInfo's try/catch shape (src/utils/utils.ts:1536,1573-1586):
+    // any query failure here is treated as "needs a full resync" rather than
+    // propagating. checkInfo's catch ALSO deletes and reopens the Dexie
+    // database on corruption — there's no equivalent here yet, since that
+    // needs a driver-level "drop this database" capability the generic
+    // SqlDriver interface doesn't expose. Deliberately deferred: whoever
+    // wires this into sync.ts needs to decide what "corrupted OPFS database"
+    // recovery looks like for SQLite specifically, not assume it inherits
+    // Dexie's delete-and-reopen approach unchanged.
+    try {
+        const hasEmptyTables = await anyTableEmpty(db, CHECKED_TABLES);
+        const metadataVersion = await getRowById<MetadataVersion>(
+            db,
+            "metadata_versions",
+            "metadata-version",
+        );
+        const syncState = await getRowById(db, "sync_state", "current");
+        const wasDatabaseDeleted = !metadataVersion?.lastSync;
+        const [program] = await createMetadataTableRowAdapter<Program>(
+            "programs",
+            (r) => r.id,
+        ).loadAll(db);
 
-    return {
-        needsSyncing: hasEmptyTables || wasDatabaseDeleted,
-        hasEmptyTables,
-        wasDatabaseDeleted,
-        metadataVersion,
-        syncState,
-        program,
-    };
+        return {
+            needsSyncing: hasEmptyTables || wasDatabaseDeleted,
+            hasEmptyTables,
+            wasDatabaseDeleted,
+            metadataVersion,
+            syncState,
+            program,
+        };
+    } catch {
+        return SAFE_FALLBACK_RESULT;
+    }
 }
 
 function groupByKey<T extends object>(

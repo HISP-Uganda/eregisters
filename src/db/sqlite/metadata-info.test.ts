@@ -154,6 +154,24 @@ describe("checkMetadataInfo", () => {
         expect(info.wasDatabaseDeleted).toBe(true);
         expect(info.needsSyncing).toBe(true);
     });
+
+    it("returns the safe fallback instead of throwing when a query genuinely fails", async () => {
+        const { driver, close: c } = createNodeSqliteDriver();
+        close = c;
+        // Deliberately skip createSchema() — every table is missing, so any
+        // query inside checkMetadataInfo throws "no such table", mirroring
+        // the corrupted-database case checkInfo's catch block handles.
+        const info = await checkMetadataInfo(driver);
+
+        expect(info).toEqual({
+            needsSyncing: true,
+            hasEmptyTables: true,
+            wasDatabaseDeleted: true,
+            metadataVersion: undefined,
+            syncState: undefined,
+            program: undefined,
+        });
+    });
 });
 
 describe("queryMetadataInfo", () => {

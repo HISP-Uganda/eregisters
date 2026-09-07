@@ -28,9 +28,18 @@ async function applyUpdates(
     updates: PushResultUpdate[],
 ): Promise<void> {
     for (const update of updates) {
+        // Stamped fresh at write time, matching syncReportToLocal's
+        // `lastSynced: new Date().toISOString()` on every branch
+        // (src/machines/sync.ts:313,323,336,343,355,362) — not passed in by
+        // the caller, since it records when THIS write happened.
         await db.execute(
-            `UPDATE ${table} SET sync_status = ?, sync_error = ? WHERE ${keyColumn} = ?`,
-            [update.syncStatus, update.syncError, update.key],
+            `UPDATE ${table} SET sync_status = ?, sync_error = ?, last_synced = ? WHERE ${keyColumn} = ?`,
+            [
+                update.syncStatus,
+                update.syncError,
+                new Date().toISOString(),
+                update.key,
+            ],
         );
     }
 }
