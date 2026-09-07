@@ -2,7 +2,7 @@
 title: Migration-Failure Telemetry - Build From Scratch, and What Shape?
 type: wayfinder:grilling
 status: open
-assignee: null
+assignee: claude-session-01PcWUcXQiieqFWmoKvZKBtH
 blocked_by: []
 ---
 
