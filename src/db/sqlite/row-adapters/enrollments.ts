@@ -100,6 +100,61 @@ export async function getEnrollmentById(
     return reassemble(parent.rows[0], attributeRows.rows, usersByUid);
 }
 
+async function loadMany(
+    db: SqlDriver,
+    whereClause: string,
+    params: ReadonlyArray<unknown>,
+): Promise<FlattenedEnrollment[]> {
+    const [parents, attributeRows, usersByUid] = await Promise.all([
+        db.execute<EnrollmentParentRow>(
+            `SELECT ${PARENT_COLUMNS} FROM enrollments WHERE ${whereClause}`,
+            params,
+        ),
+        db.execute<AttributeRow>(`SELECT ${ATTRIBUTE_COLUMNS} FROM enrollment_attributes`),
+        loadUsersByUid(db),
+    ]);
+    const attributesByEnrollment = new Map<string, AttributeRow[]>();
+    for (const attr of attributeRows.rows) {
+        const bucket = attributesByEnrollment.get(attr.enrollment) ?? [];
+        bucket.push(attr);
+        attributesByEnrollment.set(attr.enrollment, bucket);
+    }
+    return parents.rows.map((parent) =>
+        reassemble(
+            parent,
+            attributesByEnrollment.get(parent.enrollment) ?? [],
+            usersByUid,
+        ),
+    );
+}
+
+/** Backs the recursive delete walk's "enrollments under this TE" lookup. */
+export function findEnrollmentsByTrackedEntity(
+    db: SqlDriver,
+    trackedEntity: string,
+): Promise<FlattenedEnrollment[]> {
+    return loadMany(db, "tracked_entity = ?", [trackedEntity]);
+}
+
+/** Backs `tracked-entity.tsx`'s save-cascade query (multiple child TEs at once). */
+export function findEnrollmentsByTrackedEntityIn(
+    db: SqlDriver,
+    trackedEntityIds: ReadonlyArray<string>,
+): Promise<FlattenedEnrollment[]> {
+    if (trackedEntityIds.length === 0) return Promise.resolve([]);
+    const placeholders = trackedEntityIds.map(() => "?").join(", ");
+    return loadMany(db, `tracked_entity IN (${placeholders})`, trackedEntityIds);
+}
+
+/** Backs sync.ts's pending/failed/deleted scans (`processBatchSync`). */
+export function findEnrollmentsBySyncStatusIn(
+    db: SqlDriver,
+    statuses: ReadonlyArray<string>,
+): Promise<FlattenedEnrollment[]> {
+    const placeholders = statuses.map(() => "?").join(", ");
+    return loadMany(db, `sync_status IN (${placeholders})`, statuses);
+}
+
 export const enrollmentsRowAdapter: RowAdapter<FlattenedEnrollment, string> = {
     rowVersion: (row) => row.updatedAt,
 

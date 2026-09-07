@@ -2,7 +2,13 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { FlattenedEnrollment } from "../../../schemas";
 import { createNodeSqliteDriver } from "../test-support/node-sqlite-driver";
 import { createSchema } from "../schema";
-import { enrollmentsRowAdapter, getEnrollmentById } from "./enrollments";
+import {
+    enrollmentsRowAdapter,
+    findEnrollmentsByTrackedEntity,
+    findEnrollmentsByTrackedEntityIn,
+    findEnrollmentsBySyncStatusIn,
+    getEnrollmentById,
+} from "./enrollments";
 
 function makeEnrollment(
     overrides: Partial<FlattenedEnrollment> = {},
@@ -107,5 +113,76 @@ describe("enrollmentsRowAdapter", () => {
         const enrollment = makeEnrollment();
         await enrollmentsRowAdapter.insertRow(driver, enrollment);
         expect(await getEnrollmentById(driver, "enr-1")).toEqual(enrollment);
+    });
+
+    describe("query helpers", () => {
+        async function seedTwoTrackedEntitiesWithEnrollments(
+            driver: Awaited<ReturnType<typeof createNodeSqliteDriver>>["driver"],
+        ) {
+            for (const teId of ["te-1", "te-2"]) {
+                await driver.execute(
+                    "INSERT INTO tracked_entities (tracked_entity, tracked_entity_type, org_unit, created_at, updated_at, sync_status) VALUES (?, ?, ?, ?, ?, ?)",
+                    [teId, "tet-1", "ou-1", "2026-01-01", "2026-01-01", "synced"],
+                );
+            }
+            await enrollmentsRowAdapter.insertRow(
+                driver,
+                makeEnrollment({
+                    enrollment: "enr-1",
+                    trackedEntity: "te-1",
+                    syncStatus: "pending",
+                }),
+            );
+            await enrollmentsRowAdapter.insertRow(
+                driver,
+                makeEnrollment({
+                    enrollment: "enr-2",
+                    trackedEntity: "te-2",
+                    syncStatus: "synced",
+                }),
+            );
+        }
+
+        it("findEnrollmentsByTrackedEntity returns only that TE's enrollments", async () => {
+            const { driver, close: c } = createNodeSqliteDriver();
+            close = c;
+            await createSchema(driver);
+            await seedTwoTrackedEntitiesWithEnrollments(driver);
+
+            const rows = await findEnrollmentsByTrackedEntity(driver, "te-1");
+            expect(rows.map((r) => r.enrollment)).toEqual(["enr-1"]);
+        });
+
+        it("findEnrollmentsByTrackedEntityIn returns enrollments for any listed TE, and [] for an empty list", async () => {
+            const { driver, close: c } = createNodeSqliteDriver();
+            close = c;
+            await createSchema(driver);
+            await seedTwoTrackedEntitiesWithEnrollments(driver);
+
+            const rows = await findEnrollmentsByTrackedEntityIn(driver, [
+                "te-1",
+                "te-2",
+            ]);
+            expect(rows.map((r) => r.enrollment).sort()).toEqual([
+                "enr-1",
+                "enr-2",
+            ]);
+            expect(await findEnrollmentsByTrackedEntityIn(driver, [])).toEqual(
+                [],
+            );
+        });
+
+        it("findEnrollmentsBySyncStatusIn filters by sync status", async () => {
+            const { driver, close: c } = createNodeSqliteDriver();
+            close = c;
+            await createSchema(driver);
+            await seedTwoTrackedEntitiesWithEnrollments(driver);
+
+            const rows = await findEnrollmentsBySyncStatusIn(driver, [
+                "pending",
+                "failed",
+            ]);
+            expect(rows.map((r) => r.enrollment)).toEqual(["enr-1"]);
+        });
     });
 });
