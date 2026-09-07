@@ -2,7 +2,7 @@
 title: SQLite Schema for MOHRegisterDB Metadata Tables
 type: wayfinder:grilling
 status: open
-assignee: null
+assignee: claude-session-01PcWUcXQiieqFWmoKvZKBtH
 blocked_by: []
 ---
 
