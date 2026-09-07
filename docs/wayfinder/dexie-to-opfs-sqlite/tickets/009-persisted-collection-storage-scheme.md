@@ -60,3 +60,10 @@ separate, app-owned "read-model" schema (`tracked_entity_attributes`,
 `event_data_values`, etc.) in the same database, refreshed transactionally
 on every write, queried directly via raw SQL for analytics. This unblocks
 ticket 003.
+
+**Superseded by ticket 010**: this exact two-schemas-in-one-database shape
+(framework's opaque tables + a separate app read-model) is what prompted
+dropping `persistedCollectionOptions` entirely. With no framework schema
+in the picture, this ticket's finding is moot for the final design — ticket
+003 designs one schema, not two. Kept here as the record of why that
+architecture was rejected.

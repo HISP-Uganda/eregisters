@@ -59,3 +59,11 @@ Follow-on surfaced: ticket 008 (build & verify the driver shim) and a note
 added to ticket 003 (schema design must read `sqlite-core-adapter.ts`'s
 table layout/tombstone scheme, which constrains how the normalized schema
 fits alongside the persisted-collection tables).
+
+**Superseded by ticket 010**: the recommendation to build on
+`persistedCollectionOptions` was dropped — it forces a redundant
+opaque-schema-plus-read-model shape (see ticket 009). This ticket's core
+research (no official op-sqlite-web adapter exists; op-sqlite's async
+`SQLiteDriver`-shaped API works) still stands as fact; only the
+architectural recommendation changed. See ticket 010 for the direct
+adapter decision.

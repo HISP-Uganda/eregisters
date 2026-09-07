@@ -31,11 +31,8 @@ Needs to cover:
 
 Invoke `/grilling` and `/domain-modeling`.
 
-**Resolved by ticket 009**: `persistedCollectionOptions` owns an opaque
-blob/tombstone table per collection with no extension point — it must NOT
-be expected to store the normalized data itself. This schema design is for
-a separate, app-owned "read-model" (`tracked_entity_attributes`,
-`event_data_values`, etc.) living in the same OPFS database, refreshed
-transactionally on every write and queried directly via raw SQL for
-analytics — the framework's tables remain the authoritative sync/mutation
-store, untouched by this design.
+**Simplified by ticket 010**: no `persistedCollectionOptions` framework
+schema in the picture anymore (see tickets 009/010) — design **one**
+normalized schema, not a read-model alongside an opaque framework schema.
+These tables are the authoritative store; the direct collection adapter
+(ticket 011) reads/writes them straight, no duplication.

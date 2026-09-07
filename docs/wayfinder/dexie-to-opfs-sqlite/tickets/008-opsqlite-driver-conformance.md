@@ -88,3 +88,14 @@ through a new dependency) avoided the issue.
 Tickets 003, 004, and 006 can now proceed with real confidence that the
 op-sqlite-web + persistedCollectionOptions combination works, not just
 research-on-paper.
+
+**Superseded by ticket 010**: `persistedCollectionOptions` itself was
+dropped in favor of a direct collection adapter. The core evidence this
+ticket produced still stands and carries forward — op-sqlite's web/OPFS
+backend genuinely persists data, `db.execute()`/`db.transaction()` work
+async end-to-end, and OPFS survives a fresh connection — none of that
+depended on `persistedCollectionOptions` specifically. The driver code in
+`src/spikes/opsqlite-driver-conformance/opsqlite-web-driver.ts` (on branch
+`spike/opsqlite-driver-conformance`) is reusable groundwork for ticket 011's
+direct adapter; only `opsqlite-web-persistence.ts`'s wiring into
+`createSQLiteCorePersistenceAdapter` is no longer the plan.

@@ -55,10 +55,11 @@ in production, old Dexie databases are gone, and `pnpm test:vitest` /
 
 ## Decisions so far
 
-- [TanStack DB Reactive Collection Adapter for SQLite/OPFS](tickets/002-tanstack-db-sqlite-adapter.md) — no official op-sqlite-web adapter exists, but `@tanstack/db-sqlite-persistence-core`'s `persistedCollectionOptions` (already version-pinned to the installed `@tanstack/db@0.8.7`) can be driven by a small hand-written `OpSqliteWebDriver` shim; no hand-rolled change-notification needed. See ticket 008 (build it) and ticket 009 (storage-scheme fog it surfaced).
+- [TanStack DB Reactive Collection Adapter for SQLite/OPFS](tickets/002-tanstack-db-sqlite-adapter.md) — no official op-sqlite-web adapter exists; op-sqlite's async API is `SQLiteDriver`-shaped. (Recommendation to build on `persistedCollectionOptions` superseded by ticket 010 — facts still stand.)
 - [Build Pipeline - Bundling op-sqlite Web Worker + WASM Assets](tickets/005-build-tooling-bundling.md) — confirmed the app builds via real Vite (webpack only compiles the separate SW bundle); op-sqlite's worker/wasm discovery patterns are exactly what Vite already handles via the existing `optimizeDeps.exclude`; no conflict with `scripts/patch-sw.js`'s precache injection. Vitest can't exercise worker/OPFS code — needs mocking or a real-browser tool.
-- [Does persistedCollectionOptions Impose a Storage Scheme Incompatible With Normalized Child Tables?](tickets/009-persisted-collection-storage-scheme.md) — yes, the framework owns an opaque blob/tombstone table per collection with no extension point. Ticket 003 must design a separate app-owned normalized "read-model" schema in the same OPFS database instead, refreshed on every write. Unblocked ticket 003.
-- [Build and Verify OpSqliteWebDriver Conformance](tickets/008-opsqlite-driver-conformance.md) — built and verified end-to-end in real headless Chrome: op-sqlite's web/OPFS backend correctly satisfies `persistedCollectionOptions`' `SQLiteDriver` contract, including genuine OPFS persistence across a fresh driver reopen and reactive change notification with no hand-rolled pub/sub. Spike code on throwaway branch `spike/opsqlite-driver-conformance`, not merged.
+- [Does persistedCollectionOptions Impose a Storage Scheme Incompatible With Normalized Child Tables?](tickets/009-persisted-collection-storage-scheme.md) — yes, opaque blob/tombstone tables, no extension point. (Moot after ticket 010 dropped the framework entirely — kept as the record of why.)
+- [Build and Verify OpSqliteWebDriver Conformance](tickets/008-opsqlite-driver-conformance.md) — built and verified end-to-end in real headless Chrome: op-sqlite's web/OPFS backend genuinely persists data, `execute()`/`transaction()` work async end-to-end, survives a fresh connection. Driver code reusable for ticket 011; the `persistedCollectionOptions` wiring specifically is superseded. Spike code on throwaway branch `spike/opsqlite-driver-conformance`, not merged.
+- [Drop persistedCollectionOptions in Favor of a Direct op-sqlite Collection Adapter](tickets/010-drop-persisted-collection-options.md) — checked op-sqlite's own docs directly at the user's prompt; no simpler built-in path exists for the COOP/COEP or reactivity problems. But the two-schemas-in-one-database shape ticket 009 surfaced was self-inflicted complexity: dropped `persistedCollectionOptions` entirely in favor of a direct collection adapter (modeled on `tanstack-dexie-db-collection`'s own diffing approach) over one normalized schema. Simplified ticket 003, superseded tickets 002/008/009's architectural recommendations (their facts still stand), surfaced ticket 011.
 
 ## Not yet specified
 
@@ -66,7 +67,7 @@ in production, old Dexie databases are gone, and `pnpm test:vitest` /
   ~1.9k lines swap Dexie calls for SQLite calls) — depends on the schema
   tickets landing first.
 - Component-level migration of every `useLiveSuspenseQuery`/`useLiveQuery`
-  call site once the driver/collection wiring (ticket 008) is proven out.
+  call site once the direct collection adapter (ticket 011) is proven out.
 - Rollout/monitoring plan for detecting migration failures in the field
   (telemetry, error reporting) across health-facility devices with poor
   connectivity — depends on the migration/cutover procedure ticket.
