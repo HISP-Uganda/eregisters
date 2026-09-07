@@ -142,7 +142,7 @@ export const eventsRowAdapter: RowAdapter<FlattenedEvent, string> = {
         );
     },
 
-    insertRow: async (db, row) => {
+    insertRow: async (db, row, options) => {
         await db.transaction(async (tx) => {
             await upsertUser(tx, row.createdBy);
             await upsertUser(tx, row.updatedBy);
@@ -183,11 +183,16 @@ export const eventsRowAdapter: RowAdapter<FlattenedEvent, string> = {
                     row.syncStatus,
                 ],
             );
-            await insertDataValues(tx, row.event, row.dataValues);
+            await insertDataValues(
+                tx,
+                row.event,
+                row.dataValues,
+                options?.source ?? "local",
+            );
         });
     },
 
-    updateRow: async (db, row) => {
+    updateRow: async (db, row, options) => {
         await db.transaction(async (tx) => {
             await upsertUser(tx, row.createdBy);
             await upsertUser(tx, row.updatedBy);
@@ -233,7 +238,12 @@ export const eventsRowAdapter: RowAdapter<FlattenedEvent, string> = {
                 "DELETE FROM event_data_values WHERE event = ?",
                 [row.event],
             );
-            await insertDataValues(tx, row.event, row.dataValues);
+            await insertDataValues(
+                tx,
+                row.event,
+                row.dataValues,
+                options?.source ?? "local",
+            );
         });
     },
 
@@ -248,22 +258,24 @@ export const eventsRowAdapter: RowAdapter<FlattenedEvent, string> = {
     },
 };
 
-// See tracked-entities.ts's equivalent note: source='local' and no per-value
-// audit metadata (createdBy/updatedBy/storedBy/providedElsewhere) is passed
-// through here since FlattenedEvent's dataValues record doesn't carry them
-// yet — the columns exist and are ready for whichever effort wires up
-// per-value audit fields at the app level.
+// Defaults to 'local'; the future sync.ts pull path can pass 'server'
+// explicitly via utils.bulkInsertLocally's options parameter. Per-value
+// audit metadata (createdBy/updatedBy/storedBy/providedElsewhere) still
+// isn't passed through since FlattenedEvent's dataValues record doesn't
+// carry them yet — the columns exist and are ready for whichever effort
+// wires up per-value audit fields at the app level.
 async function insertDataValues(
     db: SqlDriver,
     event: string,
     dataValues: Record<string, unknown>,
+    source: "local" | "server",
 ): Promise<void> {
     for (const [dataElement, value] of Object.entries(dataValues)) {
         await db.execute(
             `INSERT INTO event_data_values
                 (event, data_element, value, source)
-             VALUES (?, ?, ?, 'local')`,
-            [event, dataElement, value == null ? null : String(value)],
+             VALUES (?, ?, ?, ?)`,
+            [event, dataElement, value == null ? null : String(value), source],
         );
     }
 }

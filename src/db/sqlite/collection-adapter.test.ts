@@ -196,6 +196,46 @@ describe("sqliteCollectionOptions", () => {
         expect(onInsertCalls).toBe(0);
     });
 
+    it("threads utils.bulkInsertLocally's options through to the row adapter (e.g. source: 'server')", async () => {
+        const { driver, close: c } = await setUp();
+        close = c;
+
+        const receivedOptions: unknown[] = [];
+        const spyingRowAdapter: RowAdapter<SimpleRow, string> = {
+            ...simpleRowAdapter(),
+            insertRow: async (db, row, options) => {
+                receivedOptions.push(options);
+                await db.execute(
+                    "INSERT INTO simple_rows (id, label, version) VALUES (?, ?, ?)",
+                    [row.id, row.label, row.version],
+                );
+            },
+        };
+
+        const collection = createCollection(
+            sqliteCollectionOptions<SimpleRow, string>({
+                id: "test-simple-options",
+                db: driver,
+                getKey: (row) => row.id,
+                row: spyingRowAdapter,
+            }),
+        );
+        await collection.toArrayWhenReady();
+
+        const utils = collection.utils as unknown as {
+            bulkInsertLocally: (
+                rows: SimpleRow[],
+                options?: { source?: "local" | "server" },
+            ) => Promise<void>;
+        };
+        await utils.bulkInsertLocally(
+            [{ id: "a", label: "one", version: 1 }],
+            { source: "server" },
+        );
+
+        expect(receivedOptions).toEqual([{ source: "server" }]);
+    });
+
     it("survives a fresh driver/collection against the same underlying data", async () => {
         const { driver, close: c } = await setUp();
         close = c;

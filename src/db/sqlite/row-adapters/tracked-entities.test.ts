@@ -105,6 +105,30 @@ describe("trackedEntitiesRowAdapter", () => {
         expect(attributeRows.rows).toEqual([]);
     });
 
+    it("defaults attribute rows to source='local', and honors an explicit source='server'", async () => {
+        const { driver, close: c } = createNodeSqliteDriver();
+        close = c;
+        await createSchema(driver);
+
+        await trackedEntitiesRowAdapter.insertRow(driver, makeTrackedEntity());
+        let sources = await driver.execute<{ source: string }>(
+            "SELECT source FROM tracked_entity_attributes WHERE tracked_entity = ?",
+            ["te-1"],
+        );
+        expect(sources.rows.every((r) => r.source === "local")).toBe(true);
+
+        await trackedEntitiesRowAdapter.updateRow(
+            driver,
+            makeTrackedEntity({ attributes: { age: "40" } }),
+            { source: "server" },
+        );
+        sources = await driver.execute<{ source: string }>(
+            "SELECT source FROM tracked_entity_attributes WHERE tracked_entity = ?",
+            ["te-1"],
+        );
+        expect(sources.rows.every((r) => r.source === "server")).toBe(true);
+    });
+
     it("supports multiple tracked entities without cross-contaminating attributes", async () => {
         const { driver, close: c } = createNodeSqliteDriver();
         close = c;

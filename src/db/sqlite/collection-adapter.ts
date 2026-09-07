@@ -1,6 +1,6 @@
 import type { SyncConfig } from "@tanstack/db";
 import type { SqlDriver } from "./driver-types";
-import type { RowAdapter } from "./row-adapter";
+import type { RowAdapter, RowWriteOptions } from "./row-adapter";
 import {
     safeCallPersistence,
     type SafeCallPersistenceOptions,
@@ -80,16 +80,28 @@ export function sqliteCollectionOptions<
         previousSnapshot = nextSnapshot;
     }
 
-    async function insertLocally(rows: TRow[]): Promise<void> {
+    // "Locally" (ported from tanstack-dexie-db-collection's naming) means
+    // "bypasses onInsert/onUpdate" — orthogonal to `options.source`, which
+    // is about data origin (who wrote this value: the local user, or a
+    // server pull). A sync.ts pull calls these with `{ source: "server" }`;
+    // ordinary optimistic writes leave it unset and each row adapter
+    // defaults to "local".
+    async function insertLocally(
+        rows: TRow[],
+        options?: RowWriteOptions,
+    ): Promise<void> {
         for (const r of rows) {
-            await row.insertRow(db, r);
+            await row.insertRow(db, r, options);
         }
         await reloadAndDiff();
     }
 
-    async function updateLocally(rows: TRow[]): Promise<void> {
+    async function updateLocally(
+        rows: TRow[],
+        options?: RowWriteOptions,
+    ): Promise<void> {
         for (const r of rows) {
-            await row.updateRow(db, r);
+            await row.updateRow(db, r, options);
         }
         await reloadAndDiff();
     }

@@ -107,7 +107,7 @@ export const enrollmentsRowAdapter: RowAdapter<FlattenedEnrollment, string> = {
         );
     },
 
-    insertRow: async (db, row) => {
+    insertRow: async (db, row, options) => {
         await db.transaction(async (tx) => {
             await upsertUser(tx, row.createdBy);
             await upsertUser(tx, row.updatedBy);
@@ -139,11 +139,16 @@ export const enrollmentsRowAdapter: RowAdapter<FlattenedEnrollment, string> = {
                     row.syncStatus,
                 ],
             );
-            await insertAttributes(tx, row.enrollment, row.attributes);
+            await insertAttributes(
+                tx,
+                row.enrollment,
+                row.attributes,
+                options?.source ?? "local",
+            );
         });
     },
 
-    updateRow: async (db, row) => {
+    updateRow: async (db, row, options) => {
         await db.transaction(async (tx) => {
             await upsertUser(tx, row.createdBy);
             await upsertUser(tx, row.updatedBy);
@@ -180,7 +185,12 @@ export const enrollmentsRowAdapter: RowAdapter<FlattenedEnrollment, string> = {
                 "DELETE FROM enrollment_attributes WHERE enrollment = ?",
                 [row.enrollment],
             );
-            await insertAttributes(tx, row.enrollment, row.attributes);
+            await insertAttributes(
+                tx,
+                row.enrollment,
+                row.attributes,
+                options?.source ?? "local",
+            );
         });
     },
 
@@ -197,20 +207,21 @@ export const enrollmentsRowAdapter: RowAdapter<FlattenedEnrollment, string> = {
     },
 };
 
-// See tracked-entities.ts's equivalent note: source='local' is a
-// schema+adapter-only-scope simplification, revisited when sync.ts
-// integration (a separate, deferred wayfinder ticket) lands.
+// Defaults to 'local'; the future sync.ts pull path can pass 'server'
+// explicitly via utils.bulkInsertLocally's options parameter — see
+// tracked-entities.ts's equivalent function for the full rationale.
 async function insertAttributes(
     db: SqlDriver,
     enrollment: string,
     attributes: Record<string, unknown>,
+    source: "local" | "server",
 ): Promise<void> {
     for (const [attribute, value] of Object.entries(attributes)) {
         await db.execute(
             `INSERT INTO enrollment_attributes
                 (enrollment, attribute, value, source)
-             VALUES (?, ?, ?, 'local')`,
-            [enrollment, attribute, value == null ? null : String(value)],
+             VALUES (?, ?, ?, ?)`,
+            [enrollment, attribute, value == null ? null : String(value), source],
         );
     }
 }

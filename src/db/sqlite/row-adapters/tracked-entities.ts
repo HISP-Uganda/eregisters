@@ -110,7 +110,7 @@ export const trackedEntitiesRowAdapter: RowAdapter<
         );
     },
 
-    insertRow: async (db, row) => {
+    insertRow: async (db, row, options) => {
         await db.transaction(async (tx) => {
             await upsertUser(tx, row.createdBy);
             await upsertUser(tx, row.updatedBy);
@@ -139,11 +139,16 @@ export const trackedEntitiesRowAdapter: RowAdapter<
                     row.syncStatus,
                 ],
             );
-            await insertAttributes(tx, row.trackedEntity, row.attributes);
+            await insertAttributes(
+                tx,
+                row.trackedEntity,
+                row.attributes,
+                options?.source ?? "local",
+            );
         });
     },
 
-    updateRow: async (db, row) => {
+    updateRow: async (db, row, options) => {
         await db.transaction(async (tx) => {
             await upsertUser(tx, row.createdBy);
             await upsertUser(tx, row.updatedBy);
@@ -177,7 +182,12 @@ export const trackedEntitiesRowAdapter: RowAdapter<
                 "DELETE FROM tracked_entity_attributes WHERE tracked_entity = ?",
                 [row.trackedEntity],
             );
-            await insertAttributes(tx, row.trackedEntity, row.attributes);
+            await insertAttributes(
+                tx,
+                row.trackedEntity,
+                row.attributes,
+                options?.source ?? "local",
+            );
         });
     },
 
@@ -195,24 +205,27 @@ export const trackedEntitiesRowAdapter: RowAdapter<
     },
 };
 
-// insertRow/updateRow always write attribute rows with source='local' — this
-// adapter is written/verified independent of the sync machine (wayfinder
-// ticket "How Does src/machines/sync.ts's Pull/Push Logic Get Restructured
-// for the New SQLite Adapter?" deferred that integration to a later session).
-// Server-sourced bulk writes (the future sync.ts pull path) will need a
-// variant that marks rows `source='server'` to support the per-field merge
-// ticket 003 designed — not needed for this schema+adapter-only scope.
+// Defaults to 'local' (ordinary optimistic collection writes) but a caller
+// — the future sync.ts pull path, via utils.bulkInsertLocally's options
+// parameter — can pass 'server' explicitly, so the per-field merge model
+// ticket 003 designed is actually honored once that integration lands.
 async function insertAttributes(
     db: SqlDriver,
     trackedEntity: string,
     attributes: Record<string, unknown>,
+    source: "local" | "server",
 ): Promise<void> {
     for (const [attribute, value] of Object.entries(attributes)) {
         await db.execute(
             `INSERT INTO tracked_entity_attributes
                 (tracked_entity, attribute, value, source)
-             VALUES (?, ?, ?, 'local')`,
-            [trackedEntity, attribute, value == null ? null : String(value)],
+             VALUES (?, ?, ?, ?)`,
+            [
+                trackedEntity,
+                attribute,
+                value == null ? null : String(value),
+                source,
+            ],
         );
     }
 }
