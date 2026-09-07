@@ -180,6 +180,7 @@ export default function PeriodPicker({
                 placeholder={placeholder ?? "Select period"}
                 suffix={
                     <DownOutlined
+                        onClick={() => !disabled && setOpen((o) => !o)}
                         style={{
                             color: "rgba(0,0,0,0.25)",
                             fontSize: 12,
