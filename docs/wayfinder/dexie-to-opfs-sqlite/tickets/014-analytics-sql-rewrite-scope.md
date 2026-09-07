@@ -2,7 +2,7 @@
 title: Should Analytics Queries Be Rewritten to Raw SQL Now, or Deferred?
 type: wayfinder:grilling
 status: open
-assignee: null
+assignee: claude-session-01PcWUcXQiieqFWmoKvZKBtH
 blocked_by: []
 ---
 
