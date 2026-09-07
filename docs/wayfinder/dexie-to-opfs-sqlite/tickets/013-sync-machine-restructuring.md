@@ -1,7 +1,7 @@
 ---
 title: How Does src/machines/sync.ts's Pull/Push Logic Get Restructured for the New SQLite Adapter?
 type: wayfinder:grilling
-status: open
+status: closed
 assignee: claude-session-01PcWUcXQiieqFWmoKvZKBtH
 blocked_by: []
 ---
@@ -45,3 +45,65 @@ Needs deciding:
   the shipped result is still one release)?
 
 Invoke `/grilling` and `/domain-modeling`.
+
+## Resolution
+
+Grilling session settled 7 decisions (facts on the push side —
+`processBatchSync`, `syncReportToLocal`, `syncDeleteToLocal`,
+`src/machines/sync.ts:208-518,1309-1441` — gathered before asking, since
+the original ticket only covered pull/metadata):
+
+1. **Pull batch-write strategy**: keep the already-verified per-row
+   `insertRow`/`updateRow` loop inside one op-sqlite `transaction()`
+   (ticket 011's pattern) — no evidence yet that it's a bottleneck at
+   this app's realistic data volumes. Optimize only if ticket 007's
+   dry-run against realistic production-shaped data shows it's too slow.
+2. **Merge logic stays in JS**: `mergeEvent`/`mergeEnrollment`/
+   `mergeTrackedEntity` (`src/db/merge-utils.ts`) keep computing the
+   merged record in JS before handing it to the adapter — ticket 003's
+   `source` column was specifically added to support this continuing
+   unchanged. Not moved into SQL (`ON CONFLICT DO UPDATE`); stays more
+   testable as plain JS under ticket 007's `node:sqlite` unit tests.
+3. **`saveMetadata` consolidation**: collapses into one shared
+   `saveMetadataTable(tableName, rows)` function (`INSERT OR REPLACE INTO
+   <table> (id, data) VALUES (?, ?)` per row, one transaction), replacing
+   the 12+ near-identical per-resource `bulkPut` calls
+   (`sync.ts:792-833`) — straightforward given ticket 004's uniform
+   schema.
+4. **`checkIndexDB`/`queryInfo` restructured**, not 1:1 ported — their
+   per-table special-casing is redundant now that 15 of 18 metadata
+   tables share one uniform shape; carrying it forward would preserve
+   complexity this migration should shed.
+5. **Push write-back becomes one transaction**: today's 3 separate
+   per-collection Dexie transactions (TE, enrollment, event status
+   updates) become a single SQLite transaction spanning all three — a
+   real correctness improvement (atomic all-or-nothing) at essentially no
+   extra cost, since SQLite (unlike Dexie) doesn't require declaring every
+   touched table upfront per transaction.
+6. **Delete path becomes a single cascading transaction**: today's
+   record-by-record loop with individually-awaited promises (including
+   nested cascade loops for enrollments/events) becomes one SQL
+   transaction using the schema's real `REFERENCES` foreign keys
+   (ticket 003) — faster and atomically correct instead of a loop that
+   could partially complete.
+7. **Develop incrementally per-actor, ship as one release**: `sync.ts`
+   is explicitly load-bearing and fragile (root `CLAUDE.md`'s warning not
+   to refactor away its helpers) — pull, push, and metadata actors get
+   rewritten and tested one at a time against ticket 007's `node:sqlite`
+   unit tests, not as one 1.9k-line big-bang rewrite. The map's big-bang
+   preference still holds for the *shipped* result (one atomic app
+   version bump), which this doesn't contradict — it's about development
+   safety, not production rollout strategy.
+
+### Notes
+
+- Business logic that carries over unchanged regardless of storage
+  backend (not re-litigated here): `syncDeleteToLocal`'s special-case
+  error-code handling (E1082/E1113/E1114 treated as "already deleted" =
+  success), the tracker-import payload shape/batching (one combined
+  POST per push cycle, no chunking), and reachability gating
+  (`isDhis2Reachable`).
+- No batch-size chunking exists today for the push payload (the whole
+  pending set goes in one tracker-import call) — this ticket doesn't
+  change that; revisit only if real data volumes (ticket 007) show it's
+  a problem.
