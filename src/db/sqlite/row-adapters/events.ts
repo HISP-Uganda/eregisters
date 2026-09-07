@@ -49,6 +49,17 @@ function toInt(b: boolean): number {
     return b ? 1 : 0;
 }
 
+const PARENT_COLUMNS = `event, status, program, program_stage, enrollment,
+                    tracked_entity, org_unit, parent_event, occurred_at,
+                    follow_up, deleted, created_at, updated_at,
+                    attribute_option_combo, attribute_category_options,
+                    completed_by, completed_at, created_by_uid,
+                    updated_by_uid, notes, last_synced, sync_error,
+                    version, sync_status`;
+const DATA_VALUE_COLUMNS = `event, data_element, value, stored_by,
+                    provided_elsewhere, created_at, updated_at,
+                    created_by_uid, updated_by_uid`;
+
 // FlattenedEventSchema's `dataValues` is `z.record(z.string(), z.any())` —
 // today's flatten silently drops each dataValue's own audit fields (ticket
 // 003's resolution point 2). This adapter now CAN preserve them (the child
@@ -109,20 +120,12 @@ export async function getEventById(
 ): Promise<FlattenedEvent | undefined> {
     const [parent, dataValueRows, usersByUid] = await Promise.all([
         db.execute<EventParentRow>(
-            `SELECT event, status, program, program_stage, enrollment,
-                    tracked_entity, org_unit, parent_event, occurred_at,
-                    follow_up, deleted, created_at, updated_at,
-                    attribute_option_combo, attribute_category_options,
-                    completed_by, completed_at, created_by_uid,
-                    updated_by_uid, notes, last_synced, sync_error,
-                    version, sync_status
+            `SELECT ${PARENT_COLUMNS}
              FROM events WHERE event = ?`,
             [event],
         ),
         db.execute<DataValueRow>(
-            `SELECT event, data_element, value, stored_by,
-                    provided_elsewhere, created_at, updated_at,
-                    created_by_uid, updated_by_uid
+            `SELECT ${DATA_VALUE_COLUMNS}
              FROM event_data_values WHERE event = ?`,
             [event],
         ),
@@ -137,21 +140,9 @@ export const eventsRowAdapter: RowAdapter<FlattenedEvent, string> = {
 
     loadAll: async (db) => {
         const [parents, dataValueRows, usersByUid] = await Promise.all([
-            db.execute<EventParentRow>(
-                `SELECT event, status, program, program_stage, enrollment,
-                        tracked_entity, org_unit, parent_event, occurred_at,
-                        follow_up, deleted, created_at, updated_at,
-                        attribute_option_combo, attribute_category_options,
-                        completed_by, completed_at, created_by_uid,
-                        updated_by_uid, notes, last_synced, sync_error,
-                        version, sync_status
-                 FROM events`,
-            ),
+            db.execute<EventParentRow>(`SELECT ${PARENT_COLUMNS} FROM events`),
             db.execute<DataValueRow>(
-                `SELECT event, data_element, value, stored_by,
-                        provided_elsewhere, created_at, updated_at,
-                        created_by_uid, updated_by_uid
-                 FROM event_data_values`,
+                `SELECT ${DATA_VALUE_COLUMNS} FROM event_data_values`,
             ),
             loadUsersByUid(db),
         ]);

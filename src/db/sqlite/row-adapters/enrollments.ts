@@ -37,6 +37,12 @@ function toInt(b: boolean): number {
     return b ? 1 : 0;
 }
 
+const PARENT_COLUMNS = `enrollment, tracked_entity, program, org_unit, status,
+                    enrolled_at, occurred_at, created_at, updated_at,
+                    created_by_uid, updated_by_uid, follow_up, deleted,
+                    notes, last_synced, sync_error, version, sync_status`;
+const ATTRIBUTE_COLUMNS = `enrollment, attribute, value`;
+
 function reassemble(
     parent: EnrollmentParentRow,
     attributes: AttributeRow[],
@@ -80,15 +86,12 @@ export async function getEnrollmentById(
 ): Promise<FlattenedEnrollment | undefined> {
     const [parent, attributeRows, usersByUid] = await Promise.all([
         db.execute<EnrollmentParentRow>(
-            `SELECT enrollment, tracked_entity, program, org_unit, status,
-                    enrolled_at, occurred_at, created_at, updated_at,
-                    created_by_uid, updated_by_uid, follow_up, deleted,
-                    notes, last_synced, sync_error, version, sync_status
+            `SELECT ${PARENT_COLUMNS}
              FROM enrollments WHERE enrollment = ?`,
             [enrollment],
         ),
         db.execute<AttributeRow>(
-            `SELECT enrollment, attribute, value FROM enrollment_attributes WHERE enrollment = ?`,
+            `SELECT ${ATTRIBUTE_COLUMNS} FROM enrollment_attributes WHERE enrollment = ?`,
             [enrollment],
         ),
         loadUsersByUid(db),
@@ -103,14 +106,10 @@ export const enrollmentsRowAdapter: RowAdapter<FlattenedEnrollment, string> = {
     loadAll: async (db) => {
         const [parents, attributeRows, usersByUid] = await Promise.all([
             db.execute<EnrollmentParentRow>(
-                `SELECT enrollment, tracked_entity, program, org_unit, status,
-                        enrolled_at, occurred_at, created_at, updated_at,
-                        created_by_uid, updated_by_uid, follow_up, deleted,
-                        notes, last_synced, sync_error, version, sync_status
-                 FROM enrollments`,
+                `SELECT ${PARENT_COLUMNS} FROM enrollments`,
             ),
             db.execute<AttributeRow>(
-                `SELECT enrollment, attribute, value FROM enrollment_attributes`,
+                `SELECT ${ATTRIBUTE_COLUMNS} FROM enrollment_attributes`,
             ),
             loadUsersByUid(db),
         ]);

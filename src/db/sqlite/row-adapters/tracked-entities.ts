@@ -38,6 +38,13 @@ function toInt(b: boolean): number {
     return b ? 1 : 0;
 }
 
+const PARENT_COLUMNS = `tracked_entity, tracked_entity_type, org_unit, created_at,
+                    updated_at, created_by_uid, updated_by_uid, inactive,
+                    deleted, potential_duplicate, parent_entity,
+                    last_synced, sync_error, version, sync_status`;
+const ATTRIBUTE_COLUMNS = `tracked_entity, attribute, value, display_name,
+                    value_type, created_at, updated_at`;
+
 function reassemble(
     parent: TrackedEntityParentRow,
     attributes: AttributeRow[],
@@ -84,16 +91,12 @@ export async function getTrackedEntityById(
 ): Promise<FlattenedTrackedEntity | undefined> {
     const [parent, attributeRows, usersByUid] = await Promise.all([
         db.execute<TrackedEntityParentRow>(
-            `SELECT tracked_entity, tracked_entity_type, org_unit, created_at,
-                    updated_at, created_by_uid, updated_by_uid, inactive,
-                    deleted, potential_duplicate, parent_entity,
-                    last_synced, sync_error, version, sync_status
+            `SELECT ${PARENT_COLUMNS}
              FROM tracked_entities WHERE tracked_entity = ?`,
             [trackedEntity],
         ),
         db.execute<AttributeRow>(
-            `SELECT tracked_entity, attribute, value, display_name,
-                    value_type, created_at, updated_at
+            `SELECT ${ATTRIBUTE_COLUMNS}
              FROM tracked_entity_attributes WHERE tracked_entity = ?`,
             [trackedEntity],
         ),
@@ -112,16 +115,10 @@ export const trackedEntitiesRowAdapter: RowAdapter<
     loadAll: async (db) => {
         const [parents, attributeRows, usersByUid] = await Promise.all([
             db.execute<TrackedEntityParentRow>(
-                `SELECT tracked_entity, tracked_entity_type, org_unit, created_at,
-                        updated_at, created_by_uid, updated_by_uid, inactive,
-                        deleted, potential_duplicate, parent_entity,
-                        last_synced, sync_error, version, sync_status
-                 FROM tracked_entities`,
+                `SELECT ${PARENT_COLUMNS} FROM tracked_entities`,
             ),
             db.execute<AttributeRow>(
-                `SELECT tracked_entity, attribute, value, display_name,
-                        value_type, created_at, updated_at
-                 FROM tracked_entity_attributes`,
+                `SELECT ${ATTRIBUTE_COLUMNS} FROM tracked_entity_attributes`,
             ),
             loadUsersByUid(db),
         ]);
