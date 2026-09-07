@@ -79,20 +79,13 @@ in production, old Dexie databases are gone, and `pnpm test:vitest` /
 - [Migration and Cutover Procedure Design](tickets/006-migration-cutover-procedure.md) — dropped the "require full sync first" gate (revises map's original Q7 — see Destination above); settled on flag+presence-check detection, copy-and-verify with restart-from-scratch on any failure/interruption (no partial-resume logic), and a non-blocking progress banner reusing this app's existing sync-status UI conventions.
 - [Testing Strategy for OPFS/SQLite in CI and Pre-deploy QA](tickets/007-testing-strategy.md) — Node 22's built-in `node:sqlite` module gives real, synchronous SQL execution for schema/query/merge unit tests under Vitest with zero new dependencies; invest in a minimal Playwright suite (not full E2E) for the OPFS/COOP-COEP/multi-tab layer rather than one-off scripts; dry-run the migration procedure against realistic production-shaped data volume before shipping.
 - [Build and Verify Direct op-sqlite TanStack DB Collection Adapter](tickets/011-direct-opsqlite-collection-adapter.md) — built and verified end-to-end in real headless Chrome against the harder join+reassembly case (tracked_entities + tracked_entity_attributes): insert/update/delete, reactive notification via explicit reload-and-diff (no liveQuery equivalent needed — this schema has exactly one writer), bulk local insert for the sync-machine pull path, and persistence-across-reopen all pass. Found and fixed a real diffing bug (version-only comparison missed a content change) and reproduced ticket 001's multi-tab OPFS conflict independently. Spike on branch `spike/direct-opsqlite-adapter`, not merged.
+- **Handling users mid-upgrade / staggered rollout** (fog item, resolved as an addendum, not its own ticket) — not a real open question: DHIS2 apps deploy as one bundle with no per-device staged-rollout mechanism, and ticket "Migration and Cutover Procedure Design" already designed each device's migration to be autonomous, safe, retry-on-failure, and non-blocking. Whenever any given device happens to load the new app version, it migrates safely on its own — no coordination or staging needed.
 
 ## Not yet specified
 
-- Data-access-layer restructuring of `src/machines/sync.ts` itself (how its
-  ~1.9k lines swap Dexie calls for SQLite calls) — depends on the schema
-  tickets landing first.
-- Component-level migration of every `useLiveSuspenseQuery`/`useLiveQuery`
-  call site once the direct collection adapter (ticket 011) is proven out.
-- Rollout/monitoring plan for detecting migration failures in the field
-  (telemetry, error reporting) across health-facility devices with poor
-  connectivity — depends on the migration/cutover procedure ticket.
-- Whether HMIS drafts / aggregate `dataValueSets` push logic needs schema
-  changes too, or can stay as-is on top of the new storage layer.
-- Handling users mid-upgrade / staggered rollout across facilities.
+(empty — every fog item has either graduated into a ticket below or been
+resolved as an addendum to an existing decision; see "Handling users
+mid-upgrade" note under Decisions so far.)
 
 ## Out of scope
 
