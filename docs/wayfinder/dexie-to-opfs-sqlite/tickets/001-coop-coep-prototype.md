@@ -2,7 +2,7 @@
 title: Prototype COOP/COEP Service-Worker Header Injection Against Production DHIS2
 type: wayfinder:task
 status: open
-assignee: null
+assignee: claude-session-01PcWUcXQiieqFWmoKvZKBtH
 blocked_by: []
 ---
 
