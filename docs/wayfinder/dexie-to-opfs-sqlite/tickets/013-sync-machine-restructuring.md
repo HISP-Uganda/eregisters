@@ -2,7 +2,7 @@
 title: How Does src/machines/sync.ts's Pull/Push Logic Get Restructured for the New SQLite Adapter?
 type: wayfinder:grilling
 status: open
-assignee: null
+assignee: claude-session-01PcWUcXQiieqFWmoKvZKBtH
 blocked_by: []
 ---
 
