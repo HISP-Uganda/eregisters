@@ -124,3 +124,27 @@ coordination, as ticket 001 already flagged).
   not auto-incrementing) — confirm this holds for the real port, or port
   them if some caller actually needs write-visibility waiting beyond
   `tx.isPersisted.promise`.
+
+## Implementation note (from code review of the production port)
+
+The design here was ported into real production code at `src/db/sqlite/`
+(commit `4cf5a4a`, schema + adapter only, not wired into the app yet).
+Code review surfaced two gaps, both anticipated by this ticket's own text
+above and correctly left for later rather than new decisions:
+
+- `option_sets`/`option_groups` (ticket 004's composite-PK metadata
+  tables) have no row adapter yet — the generic
+  `createMetadataTableRowAdapter`'s single-`id`-column shape doesn't fit
+  them. Needs its own small adapter variant, same pattern as
+  `organisation-units.ts`.
+- The tracker row adapters' `insertRow`/`updateRow` hardcode every
+  attribute/dataValue row's `source` column to `'local'` — correct for
+  now (this session's collection-level writes genuinely are local), but
+  ticket 013's future sync.ts integration must NOT reuse
+  `utils.bulkInsertLocally` as-is for server-origin pulls without first
+  adding a variant that marks rows `source='server'`, or the per-field
+  merge model ticket 003 designed breaks silently the first time it's
+  used for a pull. Also: per-value audit fields (createdAt/updatedAt on
+  attributes, the gap ticket 003 decision #2 meant to close) are written
+  to the child-table columns but never read back out in `loadAll`/
+  `reassemble` — the data isn't lost, but nothing surfaces it yet.
