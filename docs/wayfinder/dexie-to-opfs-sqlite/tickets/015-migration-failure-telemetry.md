@@ -1,7 +1,7 @@
 ---
 title: Migration-Failure Telemetry - Build From Scratch, and What Shape?
 type: wayfinder:grilling
-status: open
+status: closed
 assignee: claude-session-01PcWUcXQiieqFWmoKvZKBtH
 blocked_by: []
 ---
@@ -39,3 +39,33 @@ intervention needed for the common case), decide:
   answer as a side effect.
 
 Invoke `/grilling` and `/domain-modeling`.
+
+## Resolution
+
+Grilling session settled 3 decisions:
+
+1. **Yes, worth having — but minimal.** Ticket 006's retry-from-scratch
+   design is genuine self-healing for the common case (a failing device
+   just keeps trying on every boot, no data at risk since Dexie stays
+   untouched until verification passes). The real gap is a device that
+   *never* succeeds — nothing today would surface that a specific
+   facility is silently stuck on old storage indefinitely, which is
+   exactly the kind of failure a migration meant to protect data
+   shouldn't leave invisible. Not a general crash-reporting system —
+   scoped narrowly to this one outcome.
+2. **Both an in-app indicator and a one-time `dataStore` write.** Reuse
+   the existing `dataStore/eregisters` pattern already proven in this app
+   (`ui-config`, `stage-hierarchy` via `engine.mutate`,
+   `src/routes/admin.app-settings.tsx:41-53`) — write a single outcome
+   record (not a retry log) to something like
+   `dataStore/eregisters/migration-status-<deviceOrUserId>` once
+   migration finally succeeds or after N consecutive failures. Combine
+   with an in-app visible indicator extending ticket 006's progress
+   banner UX (e.g., "still trying" after repeated failures) so field
+   staff physically at a facility see a stuck device without needing
+   central DHIS2 access. No new infrastructure, no purpose-built
+   telemetry endpoint, degrades gracefully under poor connectivity since
+   it only fires on a known final outcome, not every retry attempt.
+3. **Scope confirmed**: migration failures only, not a reopening of
+   general app-wide error telemetry (a separate, larger question outside
+   this map's destination).
