@@ -99,6 +99,25 @@ describe("eventsRowAdapter", () => {
         expect(dvRows.rows).toEqual([]);
     });
 
+    it("deleteRow also cleans up indicator_evaluations for the event", async () => {
+        const { driver, close: c } = createNodeSqliteDriver();
+        close = c;
+        await createSchema(driver);
+        await seedParents(driver);
+        await eventsRowAdapter.insertRow(driver, makeEvent());
+        await driver.execute(
+            "INSERT INTO indicator_evaluations (id, event_id, data) VALUES (?, ?, ?)",
+            ["ie-1", "evt-1", "{}"],
+        );
+
+        await eventsRowAdapter.deleteRow(driver, "evt-1");
+
+        const rows = await driver.execute(
+            "SELECT * FROM indicator_evaluations",
+        );
+        expect(rows.rows).toEqual([]);
+    });
+
     it("getEventById returns undefined for a missing key, and the row for an existing one", async () => {
         const { driver, close: c } = createNodeSqliteDriver();
         close = c;

@@ -44,6 +44,7 @@ export const TRACKER_SCHEMA_STATEMENTS: readonly string[] = [
     )`,
     `CREATE INDEX IF NOT EXISTS idx_te_org_unit ON tracked_entities(org_unit)`,
     `CREATE INDEX IF NOT EXISTS idx_te_sync_status ON tracked_entities(sync_status)`,
+    `CREATE INDEX IF NOT EXISTS idx_te_parent_entity ON tracked_entities(parent_entity)`,
     `CREATE TABLE IF NOT EXISTS tracked_entity_attributes (
         tracked_entity TEXT NOT NULL REFERENCES tracked_entities(tracked_entity),
         attribute TEXT NOT NULL,

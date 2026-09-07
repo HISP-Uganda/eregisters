@@ -100,7 +100,7 @@ export function sqliteCollectionOptions<
     // their own internal `db.transaction()` for a single row's multi-table
     // write; both drivers' tx-scoped `.transaction()` is reentrant (just
     // reuses the active transaction) specifically so this nests safely.
-    async function insertLocally(
+    async function bulkInsertLocally(
         rows: TRow[],
         options?: RowWriteOptions,
     ): Promise<void> {
@@ -115,6 +115,17 @@ export function sqliteCollectionOptions<
             }
         });
         await reloadAndDiff();
+    }
+
+    // Matches tanstack-dexie-db-collection's real two-name API: callers that
+    // already have exactly one row to insert (most app code — see the form
+    // machines' `persist` actors and the various "create a draft" call
+    // sites) pass it here directly, not wrapped in an array.
+    function insertLocally(
+        singleRow: TRow,
+        options?: RowWriteOptions,
+    ): Promise<void> {
+        return bulkInsertLocally([singleRow], options);
     }
 
     async function updateLocally(
@@ -138,6 +149,18 @@ export function sqliteCollectionOptions<
         await reloadAndDiff();
     }
 
+    // For callers that write directly against the SqlDriver, bypassing this
+    // adapter's own insert/update/delete path entirely (e.g. sync.ts's
+    // push-results/delete-cascade calls, which need ONE atomic transaction
+    // spanning multiple tables/collections — something no single
+    // collection's write path can express). Such a caller must call
+    // `refresh()` afterward so this collection's reactive snapshot catches
+    // up; every other write path (`.insert`/`.update`/`.delete`, the `utils`
+    // functions above) already keeps the snapshot current on its own.
+    function refresh(): Promise<void> {
+        return reloadAndDiff();
+    }
+
     return {
         id,
         getKey,
@@ -157,7 +180,9 @@ export function sqliteCollectionOptions<
         }: {
             transaction: { mutations: Array<{ modified: TRow }> };
         }) => {
-            await insertLocally(transaction.mutations.map((m) => m.modified));
+            await bulkInsertLocally(
+                transaction.mutations.map((m) => m.modified),
+            );
             if (onInsert) {
                 for (const m of transaction.mutations) {
                     await safeCallPersistence(
@@ -199,9 +224,10 @@ export function sqliteCollectionOptions<
         },
         utils: {
             insertLocally,
+            bulkInsertLocally,
             updateLocally,
             deleteLocally,
-            bulkInsertLocally: insertLocally,
+            refresh,
         },
     };
 }

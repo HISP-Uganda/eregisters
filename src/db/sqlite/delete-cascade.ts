@@ -22,6 +22,11 @@ export async function deleteTrackedEntityCascade(
                 (SELECT event FROM events WHERE tracked_entity = ?)`,
             [trackedEntityId],
         );
+        await tx.execute(
+            `DELETE FROM indicator_evaluations WHERE event_id IN
+                (SELECT event FROM events WHERE tracked_entity = ?)`,
+            [trackedEntityId],
+        );
         await tx.execute("DELETE FROM events WHERE tracked_entity = ?", [
             trackedEntityId,
         ]);
@@ -54,6 +59,11 @@ export async function deleteEnrollmentCascade(
                 (SELECT event FROM events WHERE enrollment = ?)`,
             [enrollmentId],
         );
+        await tx.execute(
+            `DELETE FROM indicator_evaluations WHERE event_id IN
+                (SELECT event FROM events WHERE enrollment = ?)`,
+            [enrollmentId],
+        );
         await tx.execute("DELETE FROM events WHERE enrollment = ?", [
             enrollmentId,
         ]);
@@ -75,6 +85,10 @@ export async function deleteEventCascade(
         await tx.execute("DELETE FROM event_data_values WHERE event = ?", [
             eventId,
         ]);
+        await tx.execute(
+            "DELETE FROM indicator_evaluations WHERE event_id = ?",
+            [eventId],
+        );
         await tx.execute("DELETE FROM events WHERE event = ?", [eventId]);
     });
 }

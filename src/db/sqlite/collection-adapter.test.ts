@@ -337,4 +337,65 @@ describe("sqliteCollectionOptions", () => {
         const rows = await collectionB.toArrayWhenReady();
         expect(plain(rows)).toEqual([{ id: "a", label: "one", version: 1 }]);
     });
+
+    it("utils.insertLocally accepts a single row (not wrapped in an array), matching tanstack-dexie-db-collection's real API", async () => {
+        const { driver, close: c } = await setUp();
+        close = c;
+
+        let onInsertCalls = 0;
+        const collection = createCollection(
+            sqliteCollectionOptions<SimpleRow, string>({
+                id: "test-simple-single-insert",
+                db: driver,
+                getKey: (row) => row.id,
+                row: simpleRowAdapter(),
+                onInsert: async () => {
+                    onInsertCalls++;
+                },
+            }),
+        );
+        await collection.toArrayWhenReady();
+
+        const utils = collection.utils as unknown as {
+            insertLocally: (row: SimpleRow) => Promise<void>;
+        };
+        await utils.insertLocally({ id: "a", label: "one", version: 1 });
+
+        expect(plain(collection.toArray)).toEqual([
+            { id: "a", label: "one", version: 1 },
+        ]);
+        expect(onInsertCalls).toBe(0);
+    });
+
+    it("utils.refresh() picks up a write made directly against the driver, bypassing this adapter entirely", async () => {
+        const { driver, close: c } = await setUp();
+        close = c;
+
+        const collection = createCollection(
+            sqliteCollectionOptions<SimpleRow, string>({
+                id: "test-simple-refresh",
+                db: driver,
+                getKey: (row) => row.id,
+                row: simpleRowAdapter(),
+            }),
+        );
+        await collection.toArrayWhenReady();
+
+        // Bypass the adapter: write straight to the table, the way
+        // sync.ts's push-results/delete-cascade calls do.
+        await driver.execute(
+            "INSERT INTO simple_rows (id, label, version) VALUES (?, ?, ?)",
+            ["a", "written directly", 1],
+        );
+        expect(collection.toArray).toHaveLength(0);
+
+        const utils = collection.utils as unknown as {
+            refresh: () => Promise<void>;
+        };
+        await utils.refresh();
+
+        expect(plain(collection.toArray)).toEqual([
+            { id: "a", label: "written directly", version: 1 },
+        ]);
+    });
 });

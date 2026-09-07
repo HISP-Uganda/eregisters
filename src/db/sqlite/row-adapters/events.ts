@@ -274,6 +274,16 @@ export const eventsRowAdapter: RowAdapter<FlattenedEvent, string> = {
                 "DELETE FROM event_data_values WHERE event = ?",
                 [key],
             );
+            // indicator_evaluations is a separate computed-cache table
+            // (Dexie's equivalent: db.indicatorEvaluations.where("eventId")
+            // .equals(id).delete()) keyed 1:1 to an event — deleting it here,
+            // uniformly for every event deletion path (not just the bulk
+            // cascade functions in delete-cascade.ts), means callers never
+            // need to remember it as a separate step.
+            await tx.execute(
+                "DELETE FROM indicator_evaluations WHERE event_id = ?",
+                [key],
+            );
             await tx.execute("DELETE FROM events WHERE event = ?", [key]);
         });
     },
