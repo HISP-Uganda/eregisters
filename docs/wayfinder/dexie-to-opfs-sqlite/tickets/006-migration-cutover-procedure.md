@@ -2,7 +2,7 @@
 title: Migration and Cutover Procedure Design
 type: wayfinder:grilling
 status: open
-assignee: null
+assignee: claude-session-01PcWUcXQiieqFWmoKvZKBtH
 blocked_by: []
 ---
 
