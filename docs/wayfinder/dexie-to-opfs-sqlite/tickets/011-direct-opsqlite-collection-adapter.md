@@ -2,7 +2,7 @@
 title: Build and Verify Direct op-sqlite TanStack DB Collection Adapter
 type: wayfinder:task
 status: open
-assignee: null
+assignee: claude-session-01PcWUcXQiieqFWmoKvZKBtH
 blocked_by: []
 ---
 
