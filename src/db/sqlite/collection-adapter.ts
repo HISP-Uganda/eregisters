@@ -92,18 +92,28 @@ export function sqliteCollectionOptions<
     // error the second time any given row is pulled. previousSnapshot
     // (already maintained for diffing) doubles as the existence check with
     // no extra DB round-trip.
+    //
+    // The whole batch/page is wrapped in ONE transaction (ticket "How Does
+    // src/machines/sync.ts's Pull/Push Logic Get Restructured for the New
+    // SQLite Adapter?" decision #1) — a crash partway through a page write
+    // must not leave some rows written and others not. Row adapters keep
+    // their own internal `db.transaction()` for a single row's multi-table
+    // write; both drivers' tx-scoped `.transaction()` is reentrant (just
+    // reuses the active transaction) specifically so this nests safely.
     async function insertLocally(
         rows: TRow[],
         options?: RowWriteOptions,
     ): Promise<void> {
-        for (const r of rows) {
-            const key = getKey(r);
-            if (previousSnapshot.has(key)) {
-                await row.updateRow(db, r, options);
-            } else {
-                await row.insertRow(db, r, options);
+        await db.transaction(async (tx) => {
+            for (const r of rows) {
+                const key = getKey(r);
+                if (previousSnapshot.has(key)) {
+                    await row.updateRow(tx, r, options);
+                } else {
+                    await row.insertRow(tx, r, options);
+                }
             }
-        }
+        });
         await reloadAndDiff();
     }
 
@@ -111,16 +121,20 @@ export function sqliteCollectionOptions<
         rows: TRow[],
         options?: RowWriteOptions,
     ): Promise<void> {
-        for (const r of rows) {
-            await row.updateRow(db, r, options);
-        }
+        await db.transaction(async (tx) => {
+            for (const r of rows) {
+                await row.updateRow(tx, r, options);
+            }
+        });
         await reloadAndDiff();
     }
 
     async function deleteLocally(keys: TKey[]): Promise<void> {
-        for (const key of keys) {
-            await row.deleteRow(db, key);
-        }
+        await db.transaction(async (tx) => {
+            for (const key of keys) {
+                await row.deleteRow(tx, key);
+            }
+        });
         await reloadAndDiff();
     }
 

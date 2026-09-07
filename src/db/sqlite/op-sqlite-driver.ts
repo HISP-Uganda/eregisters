@@ -15,47 +15,53 @@ import type { SqlDriver, SqlExecuteResult } from "./driver-types";
  */
 
 type OpSqliteDb = Awaited<ReturnType<typeof openAsync>>;
+type OpSqliteTransaction = Parameters<
+    Parameters<OpSqliteDb["transaction"]>[0]
+>[0];
+
+function wrapExecute(
+    executor: { execute: (sql: string, params?: any[]) => Promise<any> },
+) {
+    return async <TRow = Record<string, unknown>>(
+        sql: string,
+        params?: ReadonlyArray<unknown>,
+    ): Promise<SqlExecuteResult<TRow>> => {
+        const result = await executor.execute(
+            sql,
+            params as any[] | undefined,
+        );
+        return {
+            rows: result.rows as unknown as TRow[],
+            rowsAffected: result.rowsAffected,
+            insertId: result.insertId,
+        };
+    };
+}
+
+// Reentrant: op-sqlite's own Transaction object has no `.transaction()` of
+// its own (nesting a real BEGIN inside op-sqlite's web backend isn't
+// supported), so a `.transaction()` call already running inside this
+// tx-scoped driver just reuses itself rather than erroring — this lets a
+// whole page/batch be one atomic unit (collection-adapter.ts) while each
+// row adapter keeps its own internal `db.transaction()` for direct,
+// standalone calls outside a batch.
+function makeTxDriver(tx: OpSqliteTransaction): SqlDriver {
+    const txDriver: SqlDriver = {
+        execute: wrapExecute(tx),
+        transaction: async (fn) => fn(txDriver),
+    };
+    return txDriver;
+}
 
 function wrap(db: OpSqliteDb): SqlDriver {
     return {
-        execute: async <TRow = Record<string, unknown>>(
-            sql: string,
-            params?: ReadonlyArray<unknown>,
-        ): Promise<SqlExecuteResult<TRow>> => {
-            const result = await db.execute(sql, params as any[] | undefined);
-            return {
-                rows: result.rows as unknown as TRow[],
-                rowsAffected: result.rowsAffected,
-                insertId: result.insertId,
-            };
-        },
+        execute: wrapExecute(db),
         transaction: async <T>(
             fn: (tx: SqlDriver) => Promise<T>,
         ): Promise<T> => {
             let result!: T;
             await db.transaction(async (tx) => {
-                const txDriver: SqlDriver = {
-                    execute: async <TRow = Record<string, unknown>>(
-                        sql: string,
-                        params?: ReadonlyArray<unknown>,
-                    ): Promise<SqlExecuteResult<TRow>> => {
-                        const execResult = await tx.execute(
-                            sql,
-                            params as any[] | undefined,
-                        );
-                        return {
-                            rows: execResult.rows as unknown as TRow[],
-                            rowsAffected: execResult.rowsAffected,
-                            insertId: execResult.insertId,
-                        };
-                    },
-                    transaction: () => {
-                        throw new Error(
-                            "Nested transactions are not supported by op-sqlite's web backend.",
-                        );
-                    },
-                };
-                result = await fn(txDriver);
+                result = await fn(makeTxDriver(tx));
             });
             return result;
         },

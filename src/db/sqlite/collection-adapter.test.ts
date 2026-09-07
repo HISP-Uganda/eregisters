@@ -42,8 +42,10 @@ function plain(rows: SimpleRow[]): SimpleRow[] {
 
 async function setUp() {
     const { driver, close } = createNodeSqliteDriver();
+    // CHECK(version > 0) exists purely so a test below can trigger a real
+    // constraint failure partway through a batch write.
     await driver.execute(
-        "CREATE TABLE simple_rows (id TEXT PRIMARY KEY, label TEXT, version INTEGER)",
+        "CREATE TABLE simple_rows (id TEXT PRIMARY KEY, label TEXT, version INTEGER CHECK (version > 0))",
     );
     return { driver, close };
 }
@@ -227,6 +229,41 @@ describe("sqliteCollectionOptions", () => {
         expect(plain(collection.toArray)).toEqual([
             { id: "a", label: "second pull", version: 2 },
         ]);
+    });
+
+    it("wraps a whole bulkInsertLocally batch in one transaction: a later row's constraint failure rolls back an earlier row's write too", async () => {
+        const { driver, close: c } = await setUp();
+        close = c;
+
+        const collection = createCollection(
+            sqliteCollectionOptions<SimpleRow, string>({
+                id: "test-simple-batch-atomic",
+                db: driver,
+                getKey: (row) => row.id,
+                row: simpleRowAdapter(),
+            }),
+        );
+        await collection.toArrayWhenReady();
+
+        const utils = collection.utils as unknown as {
+            bulkInsertLocally: (rows: SimpleRow[]) => Promise<void>;
+        };
+        await expect(
+            utils.bulkInsertLocally([
+                { id: "a", label: "one", version: 1 },
+                // Violates CHECK(version > 0) — fails partway through the
+                // batch, after "a" was already written by an earlier
+                // iteration of the same loop.
+                { id: "b", label: "two", version: -1 },
+            ]),
+        ).rejects.toThrow();
+
+        // Before wrapping the batch in one transaction, "a" would have
+        // committed independently (each row got its own transaction) even
+        // though the overall bulkInsertLocally call failed. With one
+        // transaction for the whole batch, "a" must be rolled back too.
+        const rows = await driver.execute("SELECT * FROM simple_rows");
+        expect(rows.rows).toEqual([]);
     });
 
     it("threads utils.bulkInsertLocally's options through to the row adapter (e.g. source: 'server')", async () => {
