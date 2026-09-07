@@ -60,6 +60,8 @@ import {
     DataPullMode,
     DataPushMode,
     MetadataSyncMode,
+    extractServerDate,
+    resolveNextDataPull,
     shouldContinueDataPull,
     shouldRecordDataPush,
     shouldUseLastDataPull,
@@ -632,7 +634,7 @@ const syncMachine = setup({
             return queryInfo(userInfo);
         }),
         pullData: fromPromise<
-            void,
+            string | undefined,
             {
                 program: string;
                 orgUnit: string;
@@ -644,6 +646,20 @@ const syncMachine = setup({
             async ({
                 input: { lastDataPull, orgUnit, program, engine, dataPullMode },
             }) => {
+                // Mirror the DHIS2 Android SDK: the incremental `updatedAfter`
+                // boundary is the SERVER's clock captured BEFORE the pull
+                // starts, never the device clock captured after it. Reading
+                // system/info up front (a) avoids client/server clock skew and
+                // (b) guarantees that any record edited on the server *during*
+                // this (paged, possibly long-running) pull is re-fetched next
+                // time instead of being skipped. This value is only persisted
+                // once the pull below completes successfully.
+                const serverDate = extractServerDate(
+                    (await engine.query({
+                        info: { resource: "system/info" },
+                    })) as { info?: { serverDate?: string } },
+                );
+
                 let currentPage = 1;
                 // Read fresh from Dexie (not machine context) so a config
                 // change takes effect on the very next pull, without
@@ -762,6 +778,11 @@ const syncMachine = setup({
                     });
                     currentPage++;
                 }
+
+                // The pull succeeded: advance the boundary to the server time
+                // captured before it started. If system/info gave us nothing,
+                // keep the previous boundary rather than the device clock.
+                return resolveNextDataPull(serverDate, lastDataPull);
             },
         ),
         saveMetadata: fromPromise<void, Metadata>(async ({ input }) => {
@@ -1914,19 +1935,21 @@ const syncMachine = setup({
 
                         onDone: {
                             target: "updateLastDataPull",
+                            // Persist the server-clock boundary returned by
+                            // `pullData` (captured before the pull) — not the
+                            // device clock. See the Android SDK parity note in
+                            // the actor above.
+                            actions: assign({
+                                lastDataPull: ({ event }) => event.output,
+                                dataPullMode: () => "incremental",
+                            }),
                         },
 
                         onError: "failure",
                     },
                 },
                 updateLastDataPull: {
-                    entry: [
-                        assign({
-                            lastDataPull: () => new Date().toISOString(),
-                            dataPullMode: () => "incremental",
-                        }),
-                        "persistSyncState",
-                    ],
+                    entry: ["persistSyncState"],
                     always: "waiting",
                 },
 
