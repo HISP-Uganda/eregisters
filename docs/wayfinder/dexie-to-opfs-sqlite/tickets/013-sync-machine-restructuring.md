@@ -128,9 +128,27 @@ ticket's decisions now exist as real, independently-tested code under
   check.
 - Decision #6 (atomic delete-cascade): `delete-cascade.ts`, commit
   `1855eae`.
+- Decision #1/#2 (pull-loop wiring): `collections.ts` + `pull-page.ts`
+  (`writePulledTrackedEntityPage`), commit `5987496` — reuses the real
+  `flattenTrackedEntity`/`flattenEnrollment`/`flattenEvent` and
+  `mergeBulkTrackedEntities`/`mergeBulkEnrollments`/`mergeBulkEvents`
+  unmodified (decision #2 confirmed as-is: merge stays in JS). A
+  `bulkInsertLocally`-always-INSERT bug (re-pulling an already-stored
+  entity threw a UNIQUE error) was found and fixed in the same pass,
+  commit `706cd89`.
+- Decision #1's "inside one transaction" clause specifically: a
+  `/code-review` pass afterwards found this wasn't actually true yet —
+  `collection-adapter.ts`'s `insertLocally`/`updateLocally`/
+  `deleteLocally` looped over rows with no enclosing transaction, while
+  each row adapter opened its own internal transaction per row, so a
+  page write was N transactions, not 1. Fixed in commit `72b87bc` by
+  making both `SqlDriver` implementations' transaction-scoped instances
+  reentrant (a nested `.transaction()` call reuses the active
+  transaction instead of issuing a second `BEGIN`) and wrapping the
+  three batch functions' loops in one outer transaction — no row adapter
+  changed. Verified with a test that a later row's CHECK-constraint
+  failure now rolls back an earlier row's write in the same batch.
 
-Not yet built: decision #1/#2's actual pull-loop/merge wiring (needs the
-real DHIS2 wire-shape → `Flattened*` transform step, `flattenTrackedEntity`/
-etc., which nothing in `src/db/sqlite/` has needed to call yet). Actually
-wiring any of this into `sync.ts` remains this ticket's deferred, separate
-scope — explicitly confirmed with the user before proceeding this far.
+Actually wiring any of this into `sync.ts` remains this ticket's
+deferred, separate scope — explicitly confirmed with the user before
+proceeding this far.
