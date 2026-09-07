@@ -1,8 +1,7 @@
 import { SyncContext } from "../machines";
 import { DataElement, Program, TrackedEntityAttribute } from "../schemas";
-import { queryInfo } from "../utils/utils";
 
-export const useMetadata = (): Awaited<ReturnType<typeof queryInfo>> => {
+export const useMetadata = () => {
     const metadata = SyncContext.useSelector((a) => a.context.metadata);
     const {
         organisationUnits: [{ id, name }],

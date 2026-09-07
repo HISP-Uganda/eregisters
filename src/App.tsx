@@ -1,8 +1,10 @@
 import { useDataEngine, useDataQuery } from "@dhis2/app-runtime";
 import { RouterProvider } from "@tanstack/react-router";
 import { App, ConfigProvider, Typography } from "antd";
-import React, { FC, useEffect } from "react";
+import React, { FC, useEffect, useState } from "react";
 import { Spinner } from "./components/spinner";
+import { initSqlDriver } from "./db/sqlite/instance";
+import type { SqlDriver } from "./db/sqlite/driver-types";
 import { SyncContext } from "./machines/sync";
 import { router } from "./router";
 import { MeData, MeUser } from "./schemas";
@@ -29,11 +31,33 @@ const FullApp: FC<{
 }> = ({ userInfo }) => {
     const engine = useDataEngine();
     const { message } = App.useApp();
+    const [sqlDriver, setSqlDriver] = useState<SqlDriver | null>(null);
+
+    useEffect(() => {
+        // Requires cross-origin isolation (OPFS) — will not resolve until
+        // the COOP/COEP header-injection patch (wayfinder ticket 012) is
+        // deployed and verified in production. Expected to hang in any
+        // environment without it, including today's plain dev server; not
+        // something to chase in this migration phase.
+        initSqlDriver("eregisters-metadata").then(setSqlDriver);
+    }, []);
+
+    if (!sqlDriver) {
+        return (
+            <Spinner
+                component={
+                    <Typography.Text>Preparing local storage…</Typography.Text>
+                }
+            />
+        );
+    }
+
     return (
         <SyncContext.Provider
             options={{
                 input: {
                     engine,
+                    sqlDriver,
                     userInfo,
                     message,
                 },

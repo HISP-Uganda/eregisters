@@ -38,23 +38,25 @@ import {
     eventsCollection,
     trackedEntitiesCollection,
 } from "../collections";
-import { db } from "../db";
 import {
     mergeBulkEnrollments,
     mergeBulkEvents,
     mergeBulkTrackedEntities,
 } from "../db/merge-utils";
+import type { SqlDriver } from "../db/sqlite/driver-types";
+import type {
+    CheckMetadataInfoResult,
+    QueryMetadataInfoResult,
+} from "../db/sqlite/metadata-info";
 import {
     transformEnrollment,
     transformEvent,
     transformTrackedEntity,
 } from "../db/transformers";
 import {
-    checkInfo,
     flattenEnrollment,
     flattenEvent,
     flattenTrackedEntity,
-    queryInfo,
 } from "../utils/utils";
 import {
     DataPullMode,
@@ -67,6 +69,18 @@ import {
     shouldUseLastDataPull,
     shouldUseLastUpdatedFilter,
 } from "./sync-metadata-mode";
+import {
+    checkMetadataSyncStatus,
+    deleteMetadataForResync,
+    getConfiguredPageSize,
+    getMetadataVersionRecord,
+    persistCurrentSyncState,
+    pullStageHierarchyConfig,
+    pullUiConfig,
+    queryMetadata,
+    resetMetadataForRecovery,
+    saveMetadataToSqlite,
+} from "./sync-metadata-actors";
 
 /**
  * Which attribute/data-element ids belong to this program (and, for data
@@ -183,6 +197,7 @@ export interface SyncContext {
     error: Error | null;
     info: string | undefined;
     engine: ReturnType<typeof useDataEngine>;
+    sqlDriver: SqlDriver;
     lastDataPull: string | undefined;
     lastDataPush: string | undefined;
     lastMetadataPull: string | undefined;
@@ -193,7 +208,7 @@ export interface SyncContext {
     validAttributeIds: Set<string>;
     validDataElementsByStage: Map<string, Set<string>>;
     message: MessageInstance;
-    metadata: Partial<Awaited<ReturnType<typeof queryInfo>>>;
+    metadata: Partial<QueryMetadataInfoResult>;
     userInfo: MeUser;
     rawMetadata: Metadata;
     uiConfig: UIConfig;
@@ -552,6 +567,7 @@ const syncMachine = setup({
         events: {} as SyncEvent,
         input: {} as {
             engine: ReturnType<typeof useDataEngine>;
+            sqlDriver: SqlDriver;
             initialLastMetadataPull?: string;
             initialLastDataPull?: string;
             initialLastDataPush?: string;
@@ -578,15 +594,9 @@ const syncMachine = setup({
         }),
 
         persistSyncState: ({ context }) => {
-            db.syncState.put({
-                id: "current",
-                status: "idle",
-                isOnline: true,
-                isSyncing: false,
-                lastPullAt: context.lastDataPull,
-                lastPushAt: context.lastDataPush,
-                pendingCount: 0,
-                updatedAt: new Date().toISOString(),
+            void persistCurrentSyncState(context.sqlDriver, {
+                lastDataPull: context.lastDataPull,
+                lastDataPush: context.lastDataPush,
             });
         },
     },
@@ -622,16 +632,20 @@ const syncMachine = setup({
             const data = await response.json();
             return data as AggregateData;
         }),
-        checkIndexDB: fromPromise<Awaited<ReturnType<typeof checkInfo>>>(
-            async () => {
-                return checkInfo();
-            },
-        ),
+        checkIndexDB: fromPromise<
+            CheckMetadataInfoResult,
+            { sqlDriver: SqlDriver }
+        >(async ({ input: { sqlDriver } }) => {
+            return checkMetadataSyncStatus(sqlDriver);
+        }),
         queryIndexDB: fromPromise<
-            Awaited<ReturnType<typeof queryInfo>>,
-            { userInfo: MeUser }
-        >(async ({ input: { userInfo } }) => {
-            return queryInfo(userInfo);
+            QueryMetadataInfoResult,
+            { sqlDriver: SqlDriver; userInfo: MeUser }
+        >(async ({ input: { sqlDriver, userInfo } }) => {
+            return queryMetadata(
+                sqlDriver,
+                userInfo.organisationUnits[0].path,
+            );
         }),
         pullData: fromPromise<
             string | undefined,
@@ -640,11 +654,19 @@ const syncMachine = setup({
                 orgUnit: string;
                 lastDataPull: string | undefined;
                 engine: ReturnType<typeof useDataEngine>;
+                sqlDriver: SqlDriver;
                 dataPullMode: DataPullMode;
             }
         >(
             async ({
-                input: { lastDataPull, orgUnit, program, engine, dataPullMode },
+                input: {
+                    lastDataPull,
+                    orgUnit,
+                    program,
+                    engine,
+                    sqlDriver,
+                    dataPullMode,
+                },
             }) => {
                 // Mirror the DHIS2 Android SDK: the incremental `updatedAfter`
                 // boundary is the SERVER's clock captured BEFORE the pull
@@ -661,26 +683,15 @@ const syncMachine = setup({
                 );
 
                 let currentPage = 1;
-                // Fetch fresh from the DHIS2 dataStore (not the Dexie mirror
+                // Fetch fresh from the DHIS2 dataStore (not the local mirror
                 // or machine context) so a pageSize change made from any
                 // device takes effect on the very next pull. Fall back to
-                // the Dexie mirror, then the hardcoded default, when the
+                // the local mirror, then the hardcoded default, when the
                 // dataStore is unreachable (offline pull).
-                let configuredPageSize: number | undefined;
-                try {
-                    const result = (await engine.query({
-                        uiConfig: {
-                            resource: "dataStore/eregisters/ui-config",
-                        },
-                    })) as { uiConfig: UIConfig };
-                    configuredPageSize = result.uiConfig.dataPullPageSize;
-                    await db.uiConfig.bulkPut([
-                        { id: "main", config: result.uiConfig },
-                    ]);
-                } catch {
-                    configuredPageSize = (await db.uiConfig.get("main"))
-                        ?.config.dataPullPageSize;
-                }
+                const configuredPageSize = await getConfiguredPageSize(
+                    sqlDriver,
+                    engine,
+                );
                 const pageSize =
                     configuredPageSize ?? DEFAULT_DATA_PULL_PAGE_SIZE;
                 let hasMoreData = true;
@@ -800,100 +811,30 @@ const syncMachine = setup({
                 return resolveNextDataPull(serverDate, lastDataPull);
             },
         ),
-        saveMetadata: fromPromise<void, Metadata>(async ({ input }) => {
-            const succeeded = input.succeededResources ?? new Set<Resource>();
-            const wrote = (resource: Resource) =>
-                succeeded.size === 0 || succeeded.has(resource);
-            if (wrote("organisationUnits")) {
-                await db.organisationUnits.bulkPut(input.organisationUnits);
-            }
-            if (wrote("programs")) {
-                await db.programs.bulkPut(input.programs);
-            }
-            if (wrote("dataElements")) {
-                await db.dataElements.bulkPut(input.dataElements);
-            }
-            if (wrote("programIndicators")) {
-                await db.programIndicators.bulkPut(input.programIndicators);
-            }
-            if (wrote("attributes")) {
-                await db.trackedEntityAttributes.bulkPut(
-                    input.trackedEntityAttributes,
-                );
-            }
-            if (wrote("programRules")) {
-                await db.programRules.bulkPut(input.programRules);
-            }
-            if (wrote("programRuleVariables")) {
-                await db.programRuleVariables.bulkPut(
-                    input.programRuleVariables,
-                );
-            }
-            if (wrote("optionSets")) {
-                await db.optionSets.bulkPut(input.optionSets);
-            }
-            if (wrote("optionGroups")) {
-                await db.optionGroups.bulkPut(input.optionGroups);
-            }
-            if (wrote("dataSets")) {
-                await db.dataSets.bulkPut(input.dataSets);
-            }
-            if (wrote("categoryOptionCombos")) {
-                await db.categoryOptionCombos.bulkPut(
-                    input.categoryOptionCombos,
-                );
-            }
-            // metadata-version bookkeeping always writes — its content only
-            // reflects successful resources thanks to per-resource try/catch.
-            await db.metadataVersions.bulkPut(input.metadataVersion);
+        saveMetadata: fromPromise<
+            void,
+            { sqlDriver: SqlDriver; metadata: Metadata }
+        >(async ({ input: { sqlDriver, metadata } }) => {
+            await saveMetadataToSqlite(sqlDriver, metadata);
         }),
         pullUIConfig: fromPromise<
             UIConfig,
-            { engine: ReturnType<typeof useDataEngine> }
-        >(async ({ input: { engine } }) => {
-            try {
-                const result = (await engine.query({
-                    uiConfig: {
-                        resource: "dataStore/eregisters/ui-config",
-                    },
-                })) as { uiConfig: UIConfig };
-                await db.uiConfig.bulkPut([
-                    { id: "main", config: result.uiConfig },
-                ]);
-                return result.uiConfig;
-            } catch {
-                await db.uiConfig.bulkPut([
-                    { id: "main", config: emptyUIConfig },
-                ]);
-                return emptyUIConfig;
-            }
+            { sqlDriver: SqlDriver; engine: ReturnType<typeof useDataEngine> }
+        >(async ({ input: { sqlDriver, engine } }) => {
+            return pullUiConfig(sqlDriver, engine);
         }),
         pullStageHierarchy: fromPromise<
             StageHierarchyConfig,
-            { engine: ReturnType<typeof useDataEngine> }
-        >(async ({ input: { engine } }) => {
-            try {
-                const result = (await engine.query({
-                    stageHierarchy: {
-                        resource: "dataStore/eregisters/stage-hierarchy",
-                    },
-                })) as { stageHierarchy: StageHierarchyConfig };
-                await db.stageHierarchy.bulkPut([
-                    { id: "main", config: result.stageHierarchy },
-                ]);
-                return result.stageHierarchy;
-            } catch {
-                await db.stageHierarchy.bulkPut([
-                    { id: "main", config: emptyStageHierarchyConfig },
-                ]);
-                return emptyStageHierarchyConfig;
-            }
+            { sqlDriver: SqlDriver; engine: ReturnType<typeof useDataEngine> }
+        >(async ({ input: { sqlDriver, engine } }) => {
+            return pullStageHierarchyConfig(sqlDriver, engine);
         }),
         pullResource: fromPromise<
             Metadata,
             {
                 resources: Resource[];
                 engine: ReturnType<typeof useDataEngine>;
+                sqlDriver: SqlDriver;
                 lastMetadataPull: string | undefined;
                 metadataSyncMode: MetadataSyncMode;
                 userOrgUnit: string;
@@ -902,6 +843,7 @@ const syncMachine = setup({
             const {
                 resources,
                 engine,
+                sqlDriver,
                 lastMetadataPull,
                 metadataSyncMode,
                 userOrgUnit,
@@ -1239,8 +1181,7 @@ const syncMachine = setup({
                             break;
                     }
                     const currentTimestamp = new Date().toISOString();
-                    let version =
-                        await db.metadataVersions.get("metadata-version");
+                    let version = await getMetadataVersionRecord(sqlDriver);
                     if (version === undefined) {
                         version = {
                             id: "metadata-version",
@@ -1262,49 +1203,17 @@ const syncMachine = setup({
             }
             return results;
         }),
-        deleteAllMetadata: fromPromise<void, Metadata>(async ({ input }) => {
-            const succeeded = input.succeededResources ?? new Set<Resource>();
-            const shouldClear = (resource: Resource) =>
-                succeeded.size === 0 || succeeded.has(resource);
-            if (shouldClear("organisationUnits")) {
-                await db.organisationUnits.clear();
-            }
-            if (shouldClear("programs")) {
-                await db.programs.clear();
-            }
-            if (shouldClear("dataElements")) {
-                await db.dataElements.clear();
-            }
-            if (shouldClear("programIndicators")) {
-                await db.programIndicators.clear();
-            }
-            if (shouldClear("attributes")) {
-                await db.trackedEntityAttributes.clear();
-            }
-            if (shouldClear("programRules")) {
-                await db.programRules.clear();
-            }
-            if (shouldClear("programRuleVariables")) {
-                await db.programRuleVariables.clear();
-            }
-            if (shouldClear("optionSets")) {
-                await db.optionSets.clear();
-            }
-            if (shouldClear("optionGroups")) {
-                await db.optionGroups.clear();
-            }
-            if (shouldClear("dataSets")) {
-                await db.dataSets.clear();
-            }
-            if (shouldClear("categoryOptionCombos")) {
-                await db.categoryOptionCombos.clear();
-            }
-            await db.metadataVersions.clear();
+        deleteAllMetadata: fromPromise<
+            void,
+            { sqlDriver: SqlDriver; metadata: Metadata }
+        >(async ({ input: { sqlDriver, metadata } }) => {
+            await deleteMetadataForResync(sqlDriver, metadata);
         }),
-        resetDatabase: fromPromise(async () => {
-            await db.delete();
-            await db.open();
-        }),
+        resetDatabase: fromPromise<void, { sqlDriver: SqlDriver }>(
+            async ({ input: { sqlDriver } }) => {
+                await resetMetadataForRecovery(sqlDriver);
+            },
+        ),
         deleteAllData: fromPromise<void>(async () => {}),
         processBatchSync: fromPromise(
             async ({
@@ -1461,9 +1370,10 @@ const syncMachine = setup({
     /** @xstate-layout N4IgpgJg5mDOIC5SwJ4DsDGA6AtmALgIYSFEDK62AlhADZgDEEA9mmFlWgG7MDW7qTLgLFShCkJr0EnHhlJVWAbQAMAXVVrEoAA7NYVfIrTaQAD0QBmAEwBGLCoAsANgAcrlbduXbAVl+WjgA0ICiItiq+jg6WAJwqAOy2Cc6+7gC+6SGC2HhEJOSUHHSMLGwc3HwCRXmihZIlMpXyRsrqSrZaSCB6Bq0m3RYI1q6WWAmxqd7x1nYJrsGh4bau1uNuNrbxo76Z2TUiBeJFUoxgAE7nzOdYOrSkAGbXOFg5wvliEtSNsswtxppNKZeoZjKYhpsHC53J5vH4AoswghRq4sL55t44o50a5bHsQG9akcvsV6AwyAAVACCACUKQB9ACyAFFqQARKnU+lkACaADkAMJA7og-rgxAJMZRXxeFQqWKWZzWRzykJI2wq6LeVKOWIRWzOTz4wmHT4nEoMABiAFUADK2pmsqkcrm8wXC3T6UGscUISwJLDWVIqDwTZwJXWqpYIPwTcZ2Gx6lRK2LWY0HD71bCwQhcThQRmmohMVjsX78V4ZurHIQ5vNoAtFwhNOQKNoadTAr1iwbhVzOLUq5ypGWWVyxSZq8KOLZYVPjw16xz99NCIlmoQARwArhcUPmAJJoCBgMxsgBCJfK5eqa6bJJ3e8Px9PF5bfzbaEBnZF3bBvZjftB2TEdvHHSdo2SawxiSVwEgSaxYQWFZV1ye8ikfc59wbI8TzPS8LiuG47keZ5KzvTMa2wTDsKgXDX3Pd9-nbD0ej-H0ANmBJfDnZNrAnBUokcCMpxjGcA0cEZJnlDUVyyAkq2JIoT3oIwG0LSirzLSoKxNSiSRUgh8w06smM-b8uk9Pp-1AIYNRGLANWTfwXFiXFHERadLB4zxZliFx7N8FRLFQ95qwMsBVOMpsGEI65bnufAnnOF49PC5TIqM9SmzM-oLK7ayONs6cHKckdXPczzAPHKE3DcqZhLxeS0qU2tKHzLSKh4XTFI3bN2obXKAXaH8rO9AZioQeJYkDXFuPReZfGVBJRLhVFEI8nxJjmSZQvXLNyIwDqym07rbzQ-SihyfMhpYzoCvG313HsJx3GxJUuOE1aZRmraEIWBJImTELmt6g7robWLLnikikrIlq+sOm7fmYr8RsstjCom8xEFWX7HH9cNdQQiMVsgxCeIjYT0RnKIvDTUGKPSoQAHdCFBSHKVpBkWXZTkqW5fkhVGzHHoAgcVHGXFlSW5dlwHVaB2iRqQw8ILrHRXZGYu5nsDZjmoCtO0HV551+cF90RdFGycb9Pw5zSHxcU8Anh0VjysEajaB0CRw9vQ1n2bUw2zFgIh8HYQgHgj84AApDTlFQAEoGARg79eD1jraK23IScNwPC8Hx-ECVaCeiby-A8SwVGg8dQta74yTdAV6WZPkKQPTvmTILP2OxoZEMloLE4NHwh6W0SNcBrA4KCmvnECGW-e1rBG9JRgAAVrTIAAJekXSpPusd9Ie0UTzxF9sCfrCnhesH9dX4lp+CV-2IR19OBhQ-DyPo4uWONdE4pzeJ-Eox8xaTTPiPOUY9r5ykntGWYaRZ7cVrtLSYLgG6IwgFQc4YAMD4C+AwCBPZJrDmcLPfOAkAjcVcL4Ke6I1iP2CsmEm8Etbv2wOvbcdxmDEHzGyPBBD8CdRvIdNeiNeG0H4bghsQj8GENumjDsGNs4D2WIkRyctDQRH8kGMmSJlR2HPkGSwlcogTmwQdaRsjBHCMIVDIiCVSIpQkTwvhAj5EOPwMo-Kv4T7i38p7R+cJF6+FiOiKeKoeJpAicOZc1gOEgy4ZIg6AAjUgGAAAWxCTpdSqO4xGmT8A5K+H49GD0yG2woVQ1yE5aFxKnkGewLCRjX0wc4axVEsAlLKZQJxMNErJVSspYpWTcmUAqaoqpNtB5ynPqPK+N8p4Gh4vxZw8QIiBEiE1VJHiChgFtIQMObIxCb23LAbJJCrb919PAmadg4LcWgvZWIU9861XiJEeYIZfBdNXkcC5tBaAb3JNSOkB9zYt1IXM8IqY5yphWLEQG44FhBm+i9C+iF+KKhed04FoKv42ntFC10QtYU5zsgiicTyUUhjcpJZw0SxgfTiBMOw6sIwEu3CCsFP9SB-xjvHC+ICxlEEJRvSlGiYw0qReOVFjKMVIOCdfaCbkky6lGDyvlDxeW0BpGAB4+CrliJ0udNJhBJV6pBYa41cBsnTOlb6JU0RgrxAjIqccQUGHRi2oGGBgRvJhhSQpD+5z9VYBtQao1JrrlxWIsM+G4qrWRujXauNTrbmBPIcqGIHrXbesiFPJI4wYEazrqkUNoCI18ohobfJ4ia0SsjfWrNai7kAQiEGB+Mo0hJPgp4fsoklqomHBqReE4fCpABfs2toL62DMTa40Z4aW11oGlAdtsyqXhFrpQixqx4KAxWMy6My57AGgnTXaWgRZ1hu4fOrAvDDnHNOfOm5Hac22z0WsGcKoFjCU1L6pEw4eI2FxMXRCY43A6tBRnDqXNIWHwtsLL9kCf1yrpYq9FZ6kRRDGIkSD8o4LeVg4Cp9CHIYkodChmF2aMPUrWLS5FOGmWiUCPYNlE5VjGIVHBrAVGQ5h0FVgKOwqE5yjFWu1NfKhPOq7Vh1jDLcOiV1LEjEQDuKSU1pkeSaBmAnngN0HIO6ZUAFoUGSl1FsaDGsZKiXM3mi+tmBJjn7NWsGVEzO+nMxEcYgQ9SpmCvZvUoluIvU01iHEeyH1hTAfQHzAEEKrRrr9a+Mplz0OSf7S6tZczRUoklyaBphKOXs95bE-FoJVWmDxSSC5a4IRHLl3WWAaLPjwheYrtsKaogCEmSUOpatxGY1JQ0SSgwl1a+vQywcTJHB63ZU9jk57LTcHXQxJVogpD8gTMc3aZuI3rUtxAM4xiKm8v6DVF6FaQUkjtpUyRX42f8kd9OQd8ynYQIvAMgN1PevcGkPD4QUhSjxv8lE813s9IeOzWg258HfeWjNaEHgmX+A1GXa+Dh5jSWPQ1t+cXG7I9q5E-r9S0gzkmMkbpJJTjfZS0gyIqICYorSMFf50E6fKR8V8b7BMeL0KiHQyMkpXCMLK3PVhrD0SeZkySWxXioAKJEd99wqJxzJh02slU7ykGSUlk4A0kTJgymnjzoQfTJmYAFyYtBcphwISCqmKqsxFSoK5cuKmsXm09JfYKt9+Azktqud97wtcQkvM2Sid6zSe1tKSAify96-eEtJ6JRensBKhkTs4LwRO0+RoZwExjiBgm6ieaGeCowRIG61O7lFSKvcCfTbGh1AuvAOCI1sGcIWaYceCmiOIzkfqKh9gJk7pfqlDEA45TwOJFwRGHeemqeoJ38QWPEOIAmA8RyDyH2TtBw8rB4ovEYipZgDiVJnrRMWgHDg877lNkqhOM9vtGKIax-oR419iJIre8OiOYAJ+9CWA5+owH01+H+SIwkzGBeSozy-YkwCQem6QQAA */
     id: "sync",
     type: "parallel",
-    context: ({ input: { engine, message, userInfo } }) => {
+    context: ({ input: { engine, sqlDriver, message, userInfo } }) => {
         return {
             engine,
+            sqlDriver,
             error: null,
             resources: [
                 "programs",
@@ -1600,6 +1510,9 @@ const syncMachine = setup({
                 idle: {
                     invoke: {
                         src: "checkIndexDB",
+                        input: ({ context: { sqlDriver } }) => ({
+                            sqlDriver,
+                        }),
                         onDone: [
                             {
                                 target: "queryingIndexDB",
@@ -1607,14 +1520,19 @@ const syncMachine = setup({
                                     return !event.output.needsSyncing;
                                 },
                                 actions: assign(({ event }) => {
+                                    const syncState = event.output
+                                        .syncState as
+                                        | {
+                                              lastPullAt?: string;
+                                              lastPushAt?: string;
+                                          }
+                                        | undefined;
                                     return {
                                         lastMetadataPull:
                                             event.output.metadataVersion
                                                 ?.lastSync,
-                                        lastDataPull:
-                                            event.output.syncStatus?.lastPullAt,
-                                        lastDataPush:
-                                            event.output.syncStatus?.lastPushAt,
+                                        lastDataPull: syncState?.lastPullAt,
+                                        lastDataPush: syncState?.lastPushAt,
                                         ...deriveValidIds(event.output.program),
                                     };
                                 }),
@@ -1628,7 +1546,7 @@ const syncMachine = setup({
                                 actions: assign(({ event }) => {
                                     const mode =
                                         event.output.hasEmptyTables ||
-                                        event.output.wasIndexedDBDeleted
+                                        event.output.wasDatabaseDeleted
                                             ? "full"
                                             : "incremental";
                                     return {
@@ -1665,8 +1583,8 @@ const syncMachine = setup({
                 savingMetadata: {
                     invoke: {
                         src: "saveMetadata",
-                        input: ({ context: { rawMetadata } }) => {
-                            return rawMetadata;
+                        input: ({ context: { sqlDriver, rawMetadata } }) => {
+                            return { sqlDriver, metadata: rawMetadata };
                         },
                         onDone: {
                             target: "pullingUIConfig",
@@ -1679,6 +1597,9 @@ const syncMachine = setup({
                 resetIndexDB: {
                     invoke: {
                         src: "resetDatabase",
+                        input: ({ context: { sqlDriver } }) => ({
+                            sqlDriver,
+                        }),
                         onDone: {
                             target: "idle",
                         },
@@ -1687,7 +1608,10 @@ const syncMachine = setup({
                 pullingUIConfig: {
                     invoke: {
                         src: "pullUIConfig",
-                        input: ({ context: { engine } }) => ({ engine }),
+                        input: ({ context: { sqlDriver, engine } }) => ({
+                            sqlDriver,
+                            engine,
+                        }),
                         onDone: {
                             target: "pullingStageHierarchy",
                             actions: assign(({ event }) => ({
@@ -1700,7 +1624,10 @@ const syncMachine = setup({
                 pullingStageHierarchy: {
                     invoke: {
                         src: "pullStageHierarchy",
-                        input: ({ context: { engine } }) => ({ engine }),
+                        input: ({ context: { sqlDriver, engine } }) => ({
+                            sqlDriver,
+                            engine,
+                        }),
                         onDone: {
                             target: "queryingIndexDB",
                             actions: assign(({ event }) => ({
@@ -1714,6 +1641,7 @@ const syncMachine = setup({
                     invoke: {
                         src: "queryIndexDB",
                         input: ({ context }) => ({
+                            sqlDriver: context.sqlDriver,
                             userInfo: context.userInfo,
                         }),
                         onDone: {
@@ -1734,7 +1662,10 @@ const syncMachine = setup({
                 deletingMetadata: {
                     invoke: {
                         src: "deleteAllMetadata",
-                        input: ({ context: { rawMetadata } }) => rawMetadata,
+                        input: ({ context: { sqlDriver, rawMetadata } }) => ({
+                            sqlDriver,
+                            metadata: rawMetadata,
+                        }),
                         onDone: "savingMetadata",
                         onError: "failure",
                     },
@@ -1746,6 +1677,7 @@ const syncMachine = setup({
                         input: ({
                             context: {
                                 engine,
+                                sqlDriver,
                                 resources,
                                 lastMetadataPull,
                                 metadataSyncMode,
@@ -1755,6 +1687,7 @@ const syncMachine = setup({
                             return {
                                 resources,
                                 engine,
+                                sqlDriver,
                                 lastMetadataPull,
                                 metadataSyncMode,
                                 userOrgUnit: userInfo.organisationUnits[0].id,
@@ -1933,12 +1866,14 @@ const syncMachine = setup({
                         input: ({
                             context: {
                                 engine,
+                                sqlDriver,
                                 lastDataPull,
                                 userInfo,
                                 dataPullMode,
                             },
                         }) => ({
                             engine,
+                            sqlDriver,
                             lastDataPull,
                             enrollmentsCollection,
                             eventsCollection,

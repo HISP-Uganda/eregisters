@@ -152,3 +152,62 @@ ticket's decisions now exist as real, independently-tested code under
 Actually wiring any of this into `sync.ts` remains this ticket's
 deferred, separate scope — explicitly confirmed with the user before
 proceeding this far.
+
+## Implementation progress: metadata pipeline actually wired in (Phase 1)
+
+On branch `migration/sync-metadata-sqlite-phase1` (not merged to `main` —
+see map.md's phased-cutover note; blocked on ticket "Verify COOP/COEP
+Header-Injection on Real Production DHIS2 and Safari" before it can ship),
+`sync.ts`'s metadata-pipeline actors were rewired to actually call the
+SQLite layer, per an approved implementation plan:
+
+- New `src/machines/sync-metadata-actors.ts` holds the extracted,
+  independently-testable actor bodies (per `sync.ts`'s load-bearing/
+  fragile status — root `CLAUDE.md`), each taking an explicit `SqlDriver`
+  rather than a module singleton. `sync.ts`'s `fromPromise` actors are now
+  thin calls into these functions; actor names/invoke wiring unchanged.
+- New `src/db/sqlite/config-rows.ts` (`getConfigRow`/`putConfigRow`) and
+  `reactive-config.ts` (same-tab pub/sub, since op-sqlite has no
+  change-notification API) cover the three single-row config tables
+  (`ui_config`, `stage_hierarchy`, `sync_state`).
+- New `src/db/sqlite/delete-metadata.ts` and `reset-metadata-database.ts`
+  fill the two gaps flagged in this ticket's readiness table
+  (`deleteAllMetadata`, `resetDatabase`) — both one-transaction, both
+  independently tested. `resetMetadataDatabase` is deliberately narrower
+  than Dexie's `db.delete()+open()`: metadata tables only, tracker tables
+  untouched — confirmed with the user before building it (today's Dexie
+  version wipes tracker data too, which would be a real behavior
+  regression once tracker data is on this same file; unnecessary now
+  since tracker data isn't yet cut over).
+- `checkIndexDB`/`queryIndexDB` now call `checkMetadataInfo`/
+  `queryMetadataInfo` directly; `sync.ts`'s consumers of their output were
+  updated for the field renames (`wasIndexedDBDeleted` →
+  `wasDatabaseDeleted`, `syncStatus` → `syncState`).
+- `src/App.tsx` gains an async bootstrap (`initSqlDriver`, new
+  `src/db/sqlite/instance.ts` singleton) before `SyncContext.Provider`
+  mounts — this hangs in any environment without cross-origin isolation
+  (today's dev server included) until ticket 012's COOP/COEP patch is
+  deployed; expected, not a bug to chase in this phase.
+- `src/hooks/useUIConfig.ts`/`useStageHierarchyConfig.ts` (previously
+  Dexie `liveQuery`) and the three admin routes that write `ui_config`/
+  `stage_hierarchy` directly (`admin.app-settings.tsx`,
+  `admin.section-layout.tsx`, `admin.stage-relations.tsx`) now go through
+  a new `src/hooks/useSqliteConfigRow.ts` / `putConfigRow`. Confirmed
+  accepted regression: same-tab-only reactivity (no cross-tab
+  `BroadcastChannel`), since Dexie's `liveQuery` reacted across tabs.
+- `src/hooks/useMetadata.ts` no longer imports `queryInfo` — its
+  explicit return-type annotation was dropped in favor of inference from
+  its own return object, which already matched `queryInfo`'s field names.
+- Found and fixed a real latent type bug while wiring this up: the
+  `organisation-units.ts` row adapter's `OrgUnitRow.parent` was typed as
+  `string`, but `saveMetadata`'s `saveOrganisationUnits` always stores the
+  real DHIS2 `OU.parent` shape (`{id: string}`) — `src/routes/reports.tsx`
+  reading `.parent?.id` surfaced the mismatch at typecheck time. Fixed the
+  type to `{id: string} | undefined`, matching what was already being
+  stored at runtime.
+- Tracker collections (`pullData`'s TE/enrollment/event pull, `processBatchSync`/push,
+  `syncReportToLocal`, `syncDeleteToLocal`) remain untouched, still Dexie —
+  separate later phase, per map.md's phasing note.
+- Verification: `pnpm exec tsc --noEmit -p tsconfig.json` clean, full
+  `pnpm exec vitest run` passing (38 files / 206 tests). No real-browser/
+  OPFS verification attempted — blocked the same way ticket 012 is.

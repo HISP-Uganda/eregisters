@@ -11,7 +11,7 @@ export type OrgUnitRow = {
     name: string;
     code?: string;
     path: string;
-    parent?: string;
+    parent?: { id: string };
 };
 
 type SqlRow = {

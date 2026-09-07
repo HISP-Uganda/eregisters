@@ -2,7 +2,8 @@ import { useDataEngine } from "@dhis2/app-runtime";
 import { createRoute } from "@tanstack/react-router";
 import { Button, Flex, message, Select, Table, Typography } from "antd";
 import React, { useState } from "react";
-import { db } from "../db";
+import { putConfigRow } from "../db/sqlite/config-rows";
+import { getSqlDriver } from "../db/sqlite/instance";
 import { useMetadata } from "../hooks/useMetadata";
 import { useStageHierarchyConfig } from "../hooks/useStageHierarchyConfig";
 import type { StagePair } from "../schemas";
@@ -81,7 +82,10 @@ function StageRelations() {
                     data: { key: "stage-hierarchy", value: pairs },
                 });
             }
-            await db.stageHierarchy.put({ id: "main", config: pairs });
+            await putConfigRow(getSqlDriver(), "stage_hierarchy", {
+                id: "main",
+                config: pairs,
+            });
             setDirty(false);
             message.success("Stage relations saved");
         } catch {

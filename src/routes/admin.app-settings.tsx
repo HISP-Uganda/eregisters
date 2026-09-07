@@ -11,7 +11,8 @@ import {
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
 import React, { useEffect, useState } from "react";
-import { db } from "../db";
+import { putConfigRow } from "../db/sqlite/config-rows";
+import { getSqlDriver } from "../db/sqlite/instance";
 import { useUIConfig } from "../hooks/useUIConfig";
 import { DEFAULT_DATA_PULL_PAGE_SIZE } from "../schemas";
 import { AdminRoute } from "./admin";
@@ -54,7 +55,7 @@ function AppSettings() {
                 data: { key: "ui-config", value: updated },
             });
         }
-        await db.uiConfig.put({ id: "main", config: updated });
+        await putConfigRow(getSqlDriver(), "ui_config", { id: "main", config: updated });
     }
 
     async function savePageSize() {
@@ -96,7 +97,7 @@ function AppSettings() {
                     data: { key: "ui-config", value: updated },
                 });
             }
-            await db.uiConfig.put({ id: "main", config: updated });
+            await putConfigRow(getSqlDriver(), "ui_config", { id: "main", config: updated });
             message.success("Broadcast sent");
         } catch {
             message.error("Failed to broadcast signal");

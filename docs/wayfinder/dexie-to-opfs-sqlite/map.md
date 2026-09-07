@@ -68,6 +68,22 @@ in production, old Dexie databases are gone, and `pnpm test:vitest` /
   tracker. Open tickets live as files under `tickets/`; a ticket is
   "unclaimed" if its frontmatter has no `assignee`, and "unblocked" if its
   `blocked_by` list is empty or every listed ticket is `status: closed`.
+- **Phased cutover, not one big-bang commit** (revises the Destination's
+  "one big-bang cutover of all 5 databases" framing): the actual wiring-in
+  of `src/machines/sync.ts` to the SQLite layer is happening as a real
+  sequence of separate branches/PRs, metadata pipeline first
+  (`saveMetadata`/`checkIndexDB`/`queryIndexDB`/`pullUIConfig`/
+  `pullStageHierarchy`/`deleteAllMetadata`/`resetDatabase`/
+  `persistSyncState` — branch `migration/sync-metadata-sqlite-phase1`),
+  tracker collections (`pullData`/`processBatchSync`/`syncReportToLocal`/
+  `syncDeleteToLocal`, 3 form machines, 10+ components/routes) as a
+  separate later phase. Reasons: (1) blast radius — tracker-collection
+  consumers are far larger than metadata's; (2) ticket 012's production
+  COOP/COEP+Safari verification is still open, so nothing here goes live
+  until it passes regardless of code-readiness. The big-bang preference
+  above still holds for what ships to *users* — no dual Dexie/SQLite
+  reads in production — this only phases the *development* sequence
+  across branches, none merged to `main` until ticket 012 passes.
 
 ## Decisions so far
 

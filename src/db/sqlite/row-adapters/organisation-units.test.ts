@@ -64,12 +64,17 @@ describe("organisationUnitsRowAdapter", () => {
             id: "ou-1",
             name: "New Name",
             path: "/ou-1",
-            parent: "ou-0",
+            parent: { id: "ou-0" },
         });
 
         let rows = await organisationUnitsRowAdapter.loadAll(driver);
         expect(rows).toEqual([
-            { id: "ou-1", name: "New Name", path: "/ou-1", parent: "ou-0" },
+            {
+                id: "ou-1",
+                name: "New Name",
+                path: "/ou-1",
+                parent: { id: "ou-0" },
+            },
         ]);
 
         await organisationUnitsRowAdapter.deleteRow(driver, "ou-1");
