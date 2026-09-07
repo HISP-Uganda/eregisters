@@ -661,11 +661,26 @@ const syncMachine = setup({
                 );
 
                 let currentPage = 1;
-                // Read fresh from Dexie (not machine context) so a config
-                // change takes effect on the very next pull, without
-                // waiting for the machine's cached uiConfig to refresh.
-                const configuredPageSize = (await db.uiConfig.get("main"))
-                    ?.config.dataPullPageSize;
+                // Fetch fresh from the DHIS2 dataStore (not the Dexie mirror
+                // or machine context) so a pageSize change made from any
+                // device takes effect on the very next pull. Fall back to
+                // the Dexie mirror, then the hardcoded default, when the
+                // dataStore is unreachable (offline pull).
+                let configuredPageSize: number | undefined;
+                try {
+                    const result = (await engine.query({
+                        uiConfig: {
+                            resource: "dataStore/eregisters/ui-config",
+                        },
+                    })) as { uiConfig: UIConfig };
+                    configuredPageSize = result.uiConfig.dataPullPageSize;
+                    await db.uiConfig.bulkPut([
+                        { id: "main", config: result.uiConfig },
+                    ]);
+                } catch {
+                    configuredPageSize = (await db.uiConfig.get("main"))
+                        ?.config.dataPullPageSize;
+                }
                 const pageSize =
                     configuredPageSize ?? DEFAULT_DATA_PULL_PAGE_SIZE;
                 let hasMoreData = true;
