@@ -110,20 +110,27 @@ the original ticket only covered pull/metadata):
 
 ## Implementation progress (standalone, not wired into sync.ts)
 
-Per decision #7 (incremental per-actor development), three of this
+Per decision #7 (incremental per-actor development), four of this
 ticket's decisions now exist as real, independently-tested code under
 `src/db/sqlite/`, none of it touching `src/machines/sync.ts` itself yet:
 
 - Decision #3 (`saveMetadata` consolidation): `save-metadata.ts`, commit
   `3ced120`.
+- Decision #4 (`checkIndexDB`/`queryInfo` restructuring): `metadata-info.ts`
+  (`checkMetadataInfo`/`queryMetadataInfo`), commit `67a8e20` — includes a
+  safe-fallback `try`/`catch` matching `checkInfo`'s error handling
+  (commit `29d2423`; the corrupted-database delete-and-reopen recovery
+  itself is explicitly deferred, not silently dropped — see the code
+  comment).
 - Decision #5 (atomic push write-back): `push-results.ts`, commit
-  `1855eae` — verified with a real CHECK-constraint-triggered rollback
-  test, not just a happy-path check.
-- Decision #6 (atomic delete-cascade): `delete-cascade.ts`, same commit.
+  `1855eae`, `lastSynced` stamping fixed in `29d2423` — verified with a
+  real CHECK-constraint-triggered rollback test, not just a happy-path
+  check.
+- Decision #6 (atomic delete-cascade): `delete-cascade.ts`, commit
+  `1855eae`.
 
-Not yet built: decision #4 (`checkIndexDB`/`queryInfo` restructuring) and
-decision #1/#2's actual pull-loop/merge wiring (these need the real
-DHIS2 wire-shape → `Flattened*` transform step, `flattenTrackedEntity`/
+Not yet built: decision #1/#2's actual pull-loop/merge wiring (needs the
+real DHIS2 wire-shape → `Flattened*` transform step, `flattenTrackedEntity`/
 etc., which nothing in `src/db/sqlite/` has needed to call yet). Actually
 wiring any of this into `sync.ts` remains this ticket's deferred, separate
 scope — explicitly confirmed with the user before proceeding this far.
