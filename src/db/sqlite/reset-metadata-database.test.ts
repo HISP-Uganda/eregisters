@@ -51,6 +51,23 @@ describe("resetMetadataDatabase", () => {
         expect(trackedEntities.rows).toHaveLength(1);
     });
 
+    it("does not touch hmis_drafts (unsynced local user data, not resyncable metadata)", async () => {
+        const { driver, close: c } = createNodeSqliteDriver();
+        close = c;
+        await createSchema(driver);
+        await saveMetadataTable(
+            driver,
+            "hmis_drafts",
+            [{ id: "draft-1" }],
+            (r) => r.id,
+        );
+
+        await resetMetadataDatabase(driver);
+
+        const drafts = await driver.execute("SELECT * FROM hmis_drafts");
+        expect(drafts.rows).toHaveLength(1);
+    });
+
     it("wraps the whole reset in one transaction", async () => {
         const { driver, close: c } = createNodeSqliteDriver();
         close = c;

@@ -211,3 +211,12 @@ SQLite layer, per an approved implementation plan:
 - Verification: `pnpm exec tsc --noEmit -p tsconfig.json` clean, full
   `pnpm exec vitest run` passing (38 files / 206 tests). No real-browser/
   OPFS verification attempted — blocked the same way ticket 012 is.
+- A `/code-review` pass afterwards (Standards + Spec axes) found one real
+  gap: `resetMetadataDatabase`'s table list came from
+  `UNIFORM_METADATA_TABLES` unfiltered, which includes `hmis_drafts` —
+  unsynced local HMIS-form draft data, not DHIS2-sourced metadata, even
+  though it shares the uniform schema shape for convenience. A
+  metadata-save failure would have wiped those drafts too, the same
+  "throw away unsynced local data for no reason" mistake already avoided
+  for tracker tables. Fixed by excluding `hmis_drafts` from the reset
+  list, with a test proving it survives a reset.

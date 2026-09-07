@@ -8,21 +8,25 @@ import { UNIFORM_METADATA_TABLES } from "./schema";
  * (`metadataSync.resetIndexDB` state).
  *
  * Deliberately narrower than Dexie's version: today's `db.delete()` wipes
- * the ENTIRE `MOHRegisterDB` database. This clears only the metadata
- * tables — every `UNIFORM_METADATA_TABLES` entry (including `sync_state`/
- * `ui_config`/`stage_hierarchy`/`hmis_drafts`, all genuinely part of
- * `MOHRegisterDB` today) plus the three real-schema metadata tables
- * (`organisation_units`/`option_sets`/`option_groups`). Tracker tables
- * (`tracked_entities`, `enrollments`, `events`, `rule_results`) and
- * `indicator_evaluations` (tracker-linked per ticket 004's own reasoning,
- * not a metadata-sync concern) are NOT touched — tracker data stays on
- * Dexie in this migration phase, and even once it's cut over, resetting it
- * because metadata failed to save would throw away unsynced local edits
- * for no reason. This narrowing was confirmed with the user before
- * building it, not assumed.
+ * the ENTIRE `MOHRegisterDB` database. This clears only the genuinely
+ * resyncable metadata tables — `UNIFORM_METADATA_TABLES` minus
+ * `hmis_drafts` (see below) — plus the three real-schema metadata tables
+ * (`organisation_units`/`option_sets`/`option_groups`). NOT touched:
+ * tracker tables (`tracked_entities`, `enrollments`, `events`,
+ * `rule_results` — stay on Dexie in this migration phase, and even once
+ * cut over, resetting them because metadata failed to save would throw
+ * away unsynced local edits for no reason), `indicator_evaluations`
+ * (tracker-linked per ticket 004's own reasoning, not a metadata-sync
+ * concern), and `hmis_drafts` — a code-review pass on this caught that
+ * `hmis_drafts` holds unsynced local HMIS-form drafts (user data), not
+ * DHIS2-sourced metadata, even though it's grouped under
+ * `UNIFORM_METADATA_TABLES` for schema convenience — wiping it on a
+ * metadata-save failure would be the same "throw away unsynced local
+ * data for no reason" mistake as wiping tracker tables. This narrowing
+ * was confirmed with the user before building it, not assumed.
  */
 const METADATA_TABLES_TO_RESET: readonly string[] = [
-    ...UNIFORM_METADATA_TABLES,
+    ...UNIFORM_METADATA_TABLES.filter((table) => table !== "hmis_drafts"),
     "organisation_units",
     "option_sets",
     "option_groups",
