@@ -107,3 +107,23 @@ the original ticket only covered pull/metadata):
   pending set goes in one tracker-import call) — this ticket doesn't
   change that; revisit only if real data volumes (ticket 007) show it's
   a problem.
+
+## Implementation progress (standalone, not wired into sync.ts)
+
+Per decision #7 (incremental per-actor development), three of this
+ticket's decisions now exist as real, independently-tested code under
+`src/db/sqlite/`, none of it touching `src/machines/sync.ts` itself yet:
+
+- Decision #3 (`saveMetadata` consolidation): `save-metadata.ts`, commit
+  `3ced120`.
+- Decision #5 (atomic push write-back): `push-results.ts`, commit
+  `1855eae` — verified with a real CHECK-constraint-triggered rollback
+  test, not just a happy-path check.
+- Decision #6 (atomic delete-cascade): `delete-cascade.ts`, same commit.
+
+Not yet built: decision #4 (`checkIndexDB`/`queryInfo` restructuring) and
+decision #1/#2's actual pull-loop/merge wiring (these need the real
+DHIS2 wire-shape → `Flattened*` transform step, `flattenTrackedEntity`/
+etc., which nothing in `src/db/sqlite/` has needed to call yet). Actually
+wiring any of this into `sync.ts` remains this ticket's deferred, separate
+scope — explicitly confirmed with the user before proceeding this far.
