@@ -18,11 +18,19 @@ queries (`src/analytics/parent-event-dataset.ts`) can eventually use real SQL
 joins/aggregation instead of hand-rolled JS. `MOHRegisterDB`'s simpler
 reference/metadata tables get a simpler schema.
 
-Migration safety is belt-and-suspenders: require a full successful sync
-(push pending, pull latest) before migrating, AND copy-and-verify row counts
-into the new SQLite DB before dropping the old IndexedDB databases. Priority
-is protecting unsynced local tracker edits — metadata is just a resyncable
-cache and is lower risk.
+Migration safety is copy-and-verify: every row is copied from all 5 Dexie
+databases into the new SQLite schema regardless of `syncStatus`, row counts
+(and content spot-checks) verified before dropping the old IndexedDB
+databases, old data left untouched and the copy retried from scratch on any
+verification failure or interruption. (Revised by ticket "Migration and
+Cutover Procedure Design": an earlier "require a full successful sync before
+migrating" gate was dropped — there's no combined "fully synced" signal in
+the sync machine, and requiring one would strand exactly the
+highest-unsynced-data devices this migration exists to protect. Copy-and-
+verify alone provides the protection; the unmodified sync machine keeps
+pushing carried-over pending/failed rows afterward.) Priority is protecting
+unsynced local tracker edits — metadata is just a resyncable cache and is
+lower risk.
 
 OPFS has no clean deployment path on DHIS2's app hosting today (DHIS2 core
 serves installed apps via a fixed-header Java servlet with no per-app
@@ -65,6 +73,7 @@ in production, old Dexie databases are gone, and `pnpm test:vitest` /
 - [Prototype COOP/COEP Service-Worker Header Injection Against Production DHIS2](tickets/001-coop-coep-prototype.md) — core mechanism proven in real headless Chrome against a server sending no COOP/COEP headers (simulating DHIS2): SW registers, one-time reload, `crossOriginIsolated` becomes true purely from the SW, OPFS/op-sqlite work under it, second visit needs no further reload. Also found a real multi-tab OPFS access-handle conflict relevant to ticket 011. Production/Safari/PWA-update verification still needs a human with deployment access — surfaced as ticket 012. Spike on branch `spike/coop-coep-header-injection`, not merged.
 - [Normalized SQLite Schema for Tracker Collections](tickets/003-tracker-schema-design.md) — parent tables (trackedEntities/enrollments/events) + per-field child tables (attributes/dataValues) with a `source: local|server` column replicating today's per-key merge granularity; shared `users` lookup table for createdBy/updatedBy; per-value audit fields (currently silently dropped) now preserved; indexes matching the actual analytics/sync query patterns; `ruleResults` stays a simple JSON-blob table (computed cache, never synced). Full DDL in the ticket.
 - [SQLite Schema for MOHRegisterDB Metadata Tables](tickets/004-metadata-schema-design.md) — confirmed 15 of 18 tables are whole-table-only reads/writes today (no secondary filtering anywhere), so they all get one uniform `id TEXT PRIMARY KEY, data TEXT` shape as separate clearly-named tables; `organisationUnits` is the one exception (real `id`/`name`/`path` columns, path indexed, for its genuine prefix-search use); dropped the confirmed-dead `metadataSyncProgress`; kept `indicatorEvaluations` minimal for its two delete-cascade call sites. Full DDL in the ticket.
+- [Migration and Cutover Procedure Design](tickets/006-migration-cutover-procedure.md) — dropped the "require full sync first" gate (revises map's original Q7 — see Destination above); settled on flag+presence-check detection, copy-and-verify with restart-from-scratch on any failure/interruption (no partial-resume logic), and a non-blocking progress banner reusing this app's existing sync-status UI conventions.
 
 ## Not yet specified
 
