@@ -3,7 +3,7 @@ title: Normalized SQLite Schema for Tracker Collections
 type: wayfinder:grilling
 status: open
 assignee: null
-blocked_by: [009-persisted-collection-storage-scheme]
+blocked_by: []
 ---
 
 ## Question
@@ -31,9 +31,11 @@ Needs to cover:
 
 Invoke `/grilling` and `/domain-modeling`.
 
-**Blocked on ticket 009** (persisted-collection storage scheme): ticket
-002's resolution flagged that `db-sqlite-persistence-core`'s
-`sqlite-core-adapter.ts` may impose its own row-versioning/tombstone table
-layout that constrains — or conflicts with — normalizing attributes/
-dataValues into separate child tables. Need that answered before finalizing
-this schema.
+**Resolved by ticket 009**: `persistedCollectionOptions` owns an opaque
+blob/tombstone table per collection with no extension point — it must NOT
+be expected to store the normalized data itself. This schema design is for
+a separate, app-owned "read-model" (`tracked_entity_attributes`,
+`event_data_values`, etc.) living in the same OPFS database, refreshed
+transactionally on every write and queried directly via raw SQL for
+analytics — the framework's tables remain the authoritative sync/mutation
+store, untouched by this design.
