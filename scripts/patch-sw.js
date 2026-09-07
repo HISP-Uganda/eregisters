@@ -63,6 +63,45 @@ if (!sw.includes(NAV_SENTINEL)) {
     console.log('[patch-sw] Patch 2 already applied — skipping')
 }
 
+// ── Patch 3: Inject COOP/COEP headers onto the navigation response ────────────
+// DHIS2 core serves installed apps via a fixed-header servlet with no per-app
+// COOP/COEP mechanism (see docs/wayfinder/dexie-to-opfs-sqlite/tickets/001-
+// coop-coep-prototype.md) — OPFS (needed for the SQLite/OPFS migration)
+// requires the top-level document response to carry
+// Cross-Origin-Opener-Policy: same-origin and Cross-Origin-Embedder-Policy:
+// require-corp. This patch wraps ONLY the navigation response patch 2 already
+// locates — not a second competing `fetch` listener, which would race
+// Workbox's own routing (already modified by patch 2) for `respondWith()`.
+// Same-origin subresources (scripts, workers, wasm) don't need CORP headers
+// under COEP require-corp — only the document response needs these two
+// headers for `window.crossOriginIsolated` to become true.
+//
+// Verified end-to-end (real headless Chrome, server sending no COOP/COEP of
+// its own) in wayfinder ticket 001 / branch spike/coop-coep-header-injection:
+// one-time reload after install, crossOriginIsolated becomes true, OPFS/
+// op-sqlite work under it. NOT yet verified against the real DHIS2 servlet,
+// a PWA update (vs. fresh install), or Safari — see ticket 012.
+const COI_SENTINEL = '__patch_coi_headers__'
+
+if (!sw.includes(COI_SENTINEL)) {
+    // Matches patch 2's own output exactly — only applies if patch 2 already
+    // ran (COI without the network-first fix would just re-isolate stale
+    // precached HTML, which is pointless).
+    const coiPattern = /"opaqueredirect"===(\w+)\.type\|\|!\1\.ok\?([\w()]+):\1\)/
+    if (coiPattern.test(sw)) {
+        sw = sw.replace(coiPattern, (match, varName, precacheFn) =>
+            `"opaqueredirect"===${varName}.type||!${varName}.ok?${precacheFn}:__patch_addCoiHeaders(${varName}))`
+        )
+        sw += `\n// ${COI_SENTINEL}\nfunction __patch_addCoiHeaders(response) {\n    if (!response || response.status === 0 || response.type === 'opaque') return response;\n    const headers = new Headers(response.headers);\n    headers.set('Cross-Origin-Opener-Policy', 'same-origin');\n    headers.set('Cross-Origin-Embedder-Policy', 'require-corp');\n    return new Response(response.body, { status: response.status, statusText: response.statusText, headers });\n}\n`
+        modified = true
+        console.log('[patch-sw] Applied patch 3: COOP/COEP headers injected onto navigation response')
+    } else {
+        console.warn('[patch-sw] Patch 3: navigation handler pattern not found (needs patch 2 applied first) — skipping')
+    }
+} else {
+    console.log('[patch-sw] Patch 3 already applied — skipping')
+}
+
 // ── Write patched file ────────────────────────────────────────────────────────
 if (modified) {
     fs.writeFileSync(swPath, sw)
