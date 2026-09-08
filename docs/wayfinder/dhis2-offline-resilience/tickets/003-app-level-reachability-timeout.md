@@ -1,8 +1,8 @@
 ---
 title: How Should sync.ts's Reachability Check Handle Timeouts and Failure-Type Distinctions?
 type: wayfinder:grilling
-status: open
-assignee: null
+status: closed
+assignee: claude-session-01PcWUcXQiieqFWmoKvZKBtH
 blocked_by: []
 ---
 
@@ -69,3 +69,85 @@ Needs deciding:
   does that belong entirely to ticket 004's UX decision?
 
 Invoke `/grilling` and `/domain-modeling`.
+
+## Resolution
+
+Verified the SDK mechanics directly against the installed
+`@dhis2/data-engine@3.17.0`/`@dhis2/app-runtime@3.17.4` before deciding:
+
+- `DataEngine.query(query, options?: QueryExecuteOptions)` and
+  `.mutate(mutation, { variables, signal, onComplete, onError })` both
+  accept a real `signal?: AbortSignal`
+  (`@dhis2/data-engine/build/types/types/ExecuteOptions.d.ts`), threaded
+  all the way to the underlying `fetch()` call
+  (`fetchData.js:64`, `signal: requestOptions.signal`). `useDataEngine()`
+  returns this `DataEngine` instance directly with no wrapping — nothing
+  strips `signal` out before it reaches `sync-tracker-actors.ts`.
+- `FetchErrorTypeName` is `'network' | 'unknown' | 'access' | 'aborted'`
+  — but this installed version's `fetchData.js:106-111` only ever throws
+  `type: 'network'` for *any* rejected fetch, including one caused by our
+  own `AbortController` — it never actually produces `'aborted'`. The
+  raw caught error (a `DOMException` with `name: "AbortError"` when a
+  signal fires) is preserved verbatim in `error.details`. So
+  distinguishing "I timed out" from "genuinely unreachable" requires
+  checking `error.details?.name === "AbortError"` ourselves — `error.type`
+  alone can't tell them apart in this version.
+- `'unknown'` is where non-2xx statuses (including 5xx) land, matching
+  the map's charting research.
+
+**Decisions**:
+
+1. **Timeout: 5 seconds** for `isDhis2Reachable`'s ping specifically —
+   shorter than ticket 002's 8-second SW app-shell timeout, since this
+   is a quick health probe, not something that should tolerate a full
+   slow-page-load duration before deciding "unreachable."
+2. **New reusable helper**, `withAbortTimeout`, in a new shared file
+   `src/machines/network-reachability.ts` (not buried inside
+   `sync-tracker-actors.ts`, since `sync.ts`'s other 12+ unprotected
+   `engine.query`/`.mutate` call sites — metadata pulls, the
+   tracker-import submission — are expected to adopt the same helper
+   later, per this ticket's "does this generalize" question):
+   ```ts
+   export async function withAbortTimeout<T>(
+       timeoutMs: number,
+       fn: (signal: AbortSignal) => Promise<T>,
+   ): Promise<T> {
+       const controller = new AbortController();
+       const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+       try {
+           return await fn(controller.signal);
+       } finally {
+           clearTimeout(timeoutId);
+       }
+   }
+   ```
+3. **Richer return shape**, replacing today's plain `boolean`:
+   ```ts
+   export type ReachabilityFailureReason =
+       "timeout" | "network" | "server-error" | "access";
+   export type ReachabilityResult =
+       | { reachable: true }
+       | { reachable: false; reason: ReachabilityFailureReason };
+   ```
+   with a `classifyFetchError(error: unknown): ReachabilityFailureReason`
+   helper (also in `network-reachability.ts`) implementing the
+   `error.details?.name === "AbortError"` check above (mapping to
+   `"timeout"`), `FetchError.type === "access"` → `"access"`,
+   `FetchError.type === "unknown"` → `"server-error"`, anything else →
+   `"network"`.
+4. **`isDhis2Reachable`'s existing callers change minimally**:
+   `if (!reachable)` becomes `if (!reachability.reachable)` — the sync
+   machine's actual gating behavior (early-return with zero counts) is
+   unchanged, matching the destination's "reuse the existing retry loop,
+   don't build new retry logic." The new `.reason` field is plumbed
+   through only as far as needed to return it from `syncReportToLocal`/
+   the delete-cascade sync path's result — ticket 004 decides whether/how
+   it reaches the UI, not this ticket.
+5. **Scope confirmed**: this ticket fixes `isDhis2Reachable` only, using
+   the new shared helper. Retrofitting the other 12+ `engine.query`/
+   `.mutate` call sites in `sync.ts`/`sync-metadata-actors.ts` to use
+   `withAbortTimeout` too is real, separate follow-up work — graduates
+   the map's "Not yet specified" note about this into a decision: **yes,
+   it generalizes**, but as its own later ticket, not bundled into this
+   one's implementation.
+

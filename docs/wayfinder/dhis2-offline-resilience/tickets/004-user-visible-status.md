@@ -3,7 +3,7 @@ title: What Should the User See for Degraded-Server vs. Offline vs. Healthy?
 type: wayfinder:grilling
 status: open
 assignee: null
-blocked_by: ["003-app-level-reachability-timeout.md"]
+blocked_by: []
 ---
 
 ## Question

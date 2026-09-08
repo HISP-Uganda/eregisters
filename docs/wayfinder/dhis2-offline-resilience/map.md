@@ -70,6 +70,7 @@ just unit tests.
 
 - [Can Vite Config Reach the Service Worker's Caching Strategies?](tickets/001-vite-config-reach-sw.md) — no. The SW is built by a fully separate webpack pass (`@dhis2/cli-app-scripts`'s `compileServiceWorker.js`), sharing nothing with the Vite config `viteConfigExtensions.mts` returns. The only SW-adjacent config surface is `d2.config.js`'s documented `pwa.caching.*` (precache manifest filtering only, no strategy/timeout control). Post-build patching (`scripts/patch-sw.js`) is the only lever for anything beyond that — confirmed against the installed package's actual source, not assumed.
 - [How Should patch-sw.js Handle Timeouts and 5xx Responses?](tickets/002-sw-timeout-and-5xx-handling.md) — one shared Workbox plugin (`fetchDidSucceed` throws on `!response.ok`), spliced into all 4 strategies' shared `plugins:[we]` array at once (confirmed via the real built bundle: exactly 4 occurrences), ordered before `dhis2ConnectionStatusPlugin` so it also fixes that plugin's "reports connected for a 5xx" bug as a side effect — no separate patch needed there. Timeout via Workbox's own `networkTimeoutSeconds:8` on the app-shell `NetworkFirst` strategy only (GET-safe); explicitly not applied to the default handler that also carries tracker-import POST/mutate calls, to avoid aborting a legitimately slow upload. The navigation handler needs its own separate small timeout patch (hand-written code, not part of the plugin system).
+- [How Should sync.ts's Reachability Check Handle Timeouts and Failure-Type Distinctions?](tickets/003-app-level-reachability-timeout.md) — `isDhis2Reachable` gets a 5s timeout via a new reusable `withAbortTimeout` helper (`src/machines/network-reachability.ts`, meant to generalize to `sync.ts`'s other unprotected call sites later) and returns a richer `{reachable, reason?: "timeout"|"network"|"server-error"|"access"}` instead of a bare boolean — `error.details?.name === "AbortError"` is the only way to detect a timeout, since the installed `@dhis2/data-engine` version collapses aborts into `type: 'network'`. Existing callers change only `if (!reachable)` → `if (!reachability.reachable)`; the sync loop's gating behavior is unchanged.
 
 ## Not yet specified
 
@@ -77,12 +78,12 @@ just unit tests.
   migration's pending COOP/COEP `patch-sw.js` patch (`task/coi-sw-patch-
   integration`) beyond "don't clobber each other's sentinels" — not sharp
   enough to ticket until both are closer to landing.
-- Whether the app-level timeout/failure-type work (tickets 003/004)
-  should also touch `sync.ts`'s other direct `engine.query`/`engine.mutate`
-  calls beyond `isDhis2Reachable` (e.g. the tracker-import submission
-  itself, metadata pulls) — the initial research only looked at
-  `isDhis2Reachable` in depth; whether the same blind spot exists
-  elsewhere in `sync.ts` needs a look once ticket 003 is underway.
+- Retrofitting `sync.ts`'s/`sync-metadata-actors.ts`'s other 12+
+  unprotected `engine.query`/`engine.mutate` call sites (metadata pulls,
+  the tracker-import submission itself) to use the new `withAbortTimeout`
+  helper from ticket 003 — confirmed as in-scope/desirable, not yet
+  ticketed since it's a mechanical follow-up rather than an open
+  decision.
 
 ## Out of scope
 
