@@ -37,6 +37,7 @@ import {
     getEventsCollection,
     getTrackedEntitiesCollection,
 } from "../db/sqlite/tracker-collections-instance";
+import { MigrationProgressBanner } from "../components/migration-progress-banner";
 import { Spinner } from "../components/spinner";
 import { SyncFailuresModal } from "../components/sync-failures-modal";
 import { useMetadata } from "../hooks/useMetadata";
@@ -843,6 +844,7 @@ function LayoutWithDrafts() {
             >
                 {navItems(true)}
             </Drawer>
+            <MigrationProgressBanner />
             {showAppReload && (
                 <Alert
                     type="warning"
