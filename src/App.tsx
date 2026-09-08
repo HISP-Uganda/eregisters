@@ -86,8 +86,9 @@ const FullApp: FC<{
             <Spinner
                 component={
                     <Typography.Text>
-                        This app is already open in another tab. Switching
-                        you to it…
+                        This app is already open in another tab. Look for
+                        the tab titled "🔴 Switch to this tab" and switch to
+                        it — you can close this one.
                     </Typography.Text>
                 }
             />

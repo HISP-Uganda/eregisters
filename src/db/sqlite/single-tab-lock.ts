@@ -10,11 +10,15 @@
  * lock auto-releases the instant that tab closes or crashes, no
  * heartbeat/timeout logic needed. A tab that doesn't get the lock is the
  * duplicate; it never calls `initSqlDriver`, and instead posts a
- * `BroadcastChannel` message asking the primary tab to bring itself to
- * the foreground (`window.focus()` on a background tab isn't guaranteed
- * to work in every browser without a recent user gesture there, so this
- * is a best-effort convenience, not something the duplicate tab's own UI
- * should depend on — it must still show its own clear message).
+ * `BroadcastChannel` message asking the primary tab to make itself
+ * findable. Confirmed in practice (not just in theory): browsers
+ * deliberately block/ignore a background tab's own `window.focus()` call
+ * without a direct user gesture there, specifically to stop pages from
+ * stealing focus unsolicited — so the primary tab can't reliably jump to
+ * the foreground on its own. Instead it flashes its `document.title`
+ * (and the duplicate tab's own message tells the user to look for it) —
+ * this actually works everywhere, since changing a background tab's own
+ * title needs no permission or gesture.
  *
  * Falls back to "always primary" in an environment with no Web Locks API
  * (there is no coordination need without it — nothing else in that
@@ -34,9 +38,46 @@
 const LOCK_NAME = "eregisters-single-tab";
 const CHANNEL_NAME = "eregisters-single-tab-focus";
 const FOCUS_MESSAGE = { type: "focus-primary" } as const;
+const FLASH_TITLE = "🔴 Switch to this tab";
+const FLASH_INTERVAL_MS = 1000;
 
 let isPrimaryTab = false;
 let primaryTabPromise: Promise<boolean> | null = null;
+let flashIntervalId: ReturnType<typeof setInterval> | null = null;
+let originalTitle: string | null = null;
+
+function stopFlashingTitle(): void {
+    if (flashIntervalId === null) return;
+    clearInterval(flashIntervalId);
+    flashIntervalId = null;
+    if (originalTitle !== null) {
+        document.title = originalTitle;
+        originalTitle = null;
+    }
+}
+
+function startFlashingTitle(): void {
+    if (flashIntervalId !== null || typeof document === "undefined") return;
+    originalTitle = document.title;
+    let showingFlash = false;
+    flashIntervalId = setInterval(() => {
+        showingFlash = !showingFlash;
+        document.title = showingFlash
+            ? FLASH_TITLE
+            : (originalTitle ?? FLASH_TITLE);
+    }, FLASH_INTERVAL_MS);
+    // Stop as soon as the user actually comes back to this tab.
+    window.addEventListener("focus", stopFlashingTitle, { once: true });
+    document.addEventListener(
+        "visibilitychange",
+        function onVisible() {
+            if (!document.hidden) {
+                stopFlashingTitle();
+                document.removeEventListener("visibilitychange", onVisible);
+            }
+        },
+    );
+}
 
 const channel =
     typeof BroadcastChannel !== "undefined"
@@ -45,7 +86,10 @@ const channel =
 
 channel?.addEventListener("message", (event: MessageEvent) => {
     if (isPrimaryTab && event.data?.type === FOCUS_MESSAGE.type) {
+        // Best-effort, free to attempt — sometimes honored depending on
+        // browser/context, but never relied on (see module doc comment).
         window.focus();
+        startFlashingTitle();
     }
 });
 
@@ -83,7 +127,10 @@ export function requestPrimaryTab(): Promise<boolean> {
     return primaryTabPromise;
 }
 
-/** Called by a duplicate tab to ask the primary tab to focus itself. */
+/**
+ * Called by a duplicate tab to ask the primary tab to make itself
+ * findable (flashing title, plus a best-effort `window.focus()` attempt).
+ */
 export function notifyPrimaryTabToFocus(): void {
     channel?.postMessage(FOCUS_MESSAGE);
 }
