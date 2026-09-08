@@ -4,13 +4,9 @@ import {
     CategoryOptionCombo,
     DataElement,
     DataSet,
-    Dhis2Report,
     DEFAULT_DATA_PULL_PAGE_SIZE,
     emptyStageHierarchyConfig,
     emptyUIConfig,
-    Enrollment,
-    Event,
-    FlattenedEnrollment,
     FlattenedEvent,
     FlattenedOptionSet,
     FlattenedTrackedEntity,
@@ -31,33 +27,18 @@ import {
 import type { useDataEngine } from "@dhis2/app-runtime";
 import { createActorContext } from "@xstate/react";
 import { MessageInstance } from "antd/es/message/interface";
-import { Table } from "dexie";
 import { isEmpty } from "lodash";
-import {
-    enrollmentsCollection,
-    eventsCollection,
-    trackedEntitiesCollection,
-} from "../collections";
-import {
-    mergeBulkEnrollments,
-    mergeBulkEvents,
-    mergeBulkTrackedEntities,
-} from "../db/merge-utils";
 import type { SqlDriver } from "../db/sqlite/driver-types";
 import type {
     CheckMetadataInfoResult,
     QueryMetadataInfoResult,
 } from "../db/sqlite/metadata-info";
+import { writePulledTrackedEntityPage } from "../db/sqlite/pull-page";
 import {
-    transformEnrollment,
-    transformEvent,
-    transformTrackedEntity,
-} from "../db/transformers";
-import {
-    flattenEnrollment,
-    flattenEvent,
-    flattenTrackedEntity,
-} from "../utils/utils";
+    getEnrollmentsCollection,
+    getEventsCollection,
+    getTrackedEntitiesCollection,
+} from "../db/sqlite/tracker-collections-instance";
 import {
     DataPullMode,
     DataPushMode,
@@ -81,6 +62,7 @@ import {
     resetMetadataForRecovery,
     saveMetadataToSqlite,
 } from "./sync-metadata-actors";
+import { processBatchSync as processBatchSyncImpl } from "./sync-tracker-actors";
 
 /**
  * Which attribute/data-element ids belong to this program (and, for data
@@ -125,74 +107,6 @@ export function deriveValidIds(program: Program | undefined): {
     };
 }
 
-async function isDhis2Reachable(engine: ReturnType<typeof useDataEngine>) {
-    if (typeof navigator !== "undefined" && !navigator.onLine) {
-        return false;
-    }
-
-    try {
-        await engine.query({
-            ping: {
-                resource: "me",
-                params: {
-                    fields: "id",
-                },
-            },
-        });
-        return true;
-    } catch {
-        return false;
-    }
-}
-
-async function submitTrackerImportAndWaitForReport({
-    engine,
-    data,
-    params,
-}: {
-    engine: ReturnType<typeof useDataEngine>;
-    data: any;
-    params: Record<string, any>;
-}) {
-    const response = (await engine.mutate({
-        resource: "tracker",
-        type: "create",
-        data,
-        params: {
-            ...params,
-            async: false,
-        },
-    })) as unknown as Dhis2Report;
-
-    return response;
-    // const jobId = extractTrackerJobId(response);
-    // const startedAt = Date.now();
-
-    // while (Date.now() - startedAt < timeoutMs) {
-    //     const jobResponse = (await engine.query({
-    //         job: {
-    //             resource: `tracker/jobs/${jobId}`,
-    //         },
-    //     })) as { job: unknown };
-
-    //     if (isTrackerJobComplete(jobResponse.job)) {
-    //         const reportResponse = (await engine.query({
-    //             report: {
-    //                 resource: `tracker/jobs/${jobId}/report`,
-    //                 params: {
-    //                     reportMode: "FULL",
-    //                 },
-    //             },
-    //         })) as { report: Dhis2Report };
-    //         return reportResponse.report;
-    //     }
-
-    //     await sleep(pollIntervalMs);
-    // }
-
-    // throw new Error(`Timed out waiting for DHIS2 tracker job ${jobId}`);
-}
-
 export interface SyncContext {
     error: Error | null;
     info: string | undefined;
@@ -219,318 +133,6 @@ export interface SyncContext {
     aggregateData?: Map<string, string>;
     periodType?: string;
 }
-
-const syncReportToLocal = async ({
-    entities,
-    engine,
-    validAttributeIds,
-    validDataElementsByStage,
-    dataElements,
-    trackedEntityAttributes,
-    optionSets,
-}: {
-    entities: Array<
-        FlattenedTrackedEntity | FlattenedEnrollment | FlattenedEvent
-    >;
-    engine: ReturnType<typeof useDataEngine>;
-    validAttributeIds: Set<string>;
-    validDataElementsByStage: Map<string, Set<string>>;
-    dataElements: Map<string, DataElement> | undefined;
-    trackedEntityAttributes: Map<string, TrackedEntityAttribute> | undefined;
-    optionSets: Map<string, FlattenedOptionSet[]> | undefined;
-}) => {
-    const reachable = await isDhis2Reachable(engine);
-    if (!reachable) {
-        return { processed: 0, succeeded: 0, failed: 0 };
-    }
-
-    const payload = entities.reduce<{
-        trackedEntities: TrackedEntity[];
-        enrollments: Enrollment[];
-        events: Event[];
-    }>(
-        (acc, entity) => {
-            if ("trackedEntityType" in entity) {
-                acc.trackedEntities.push(
-                    transformTrackedEntity(
-                        entity,
-                        validAttributeIds,
-                        trackedEntityAttributes,
-                        optionSets,
-                    ),
-                );
-            } else if ("enrolledAt" in entity) {
-                acc.enrollments.push(
-                    transformEnrollment(
-                        entity,
-                        validAttributeIds,
-                        trackedEntityAttributes,
-                        optionSets,
-                    ),
-                );
-            } else if ("event" in entity) {
-                const stageIds =
-                    validDataElementsByStage.get(entity.programStage) ??
-                    new Set<string>();
-                acc.events.push(
-                    transformEvent(entity, stageIds, dataElements, optionSets),
-                );
-            }
-            return acc;
-        },
-        {
-            trackedEntities: [],
-            enrollments: [],
-            events: [],
-        },
-    );
-    const response = await submitTrackerImportAndWaitForReport({
-        engine,
-        data: payload,
-        params: {
-            importStrategy: "CREATE_AND_UPDATE",
-            atomicMode: "OBJECT",
-            skipPatternValidation: "true",
-            skipSideEffects: "true",
-        },
-    });
-    const failedResponses = new Map<string, string>();
-    for (const err of response.validationReport.errorReports) {
-        const line = err.errorCode
-            ? `[${err.errorCode}] ${err.message}`
-            : err.message;
-        const existing = failedResponses.get(err.uid);
-        failedResponses.set(err.uid, existing ? `${existing}\n${line}` : line);
-    }
-
-    const syncedEvents = new Set(
-        response.bundleReport.typeReportMap.EVENT.objectReports.map(
-            (a) => a.uid,
-        ),
-    );
-    const syncedEnrollments = new Set(
-        response.bundleReport.typeReportMap.ENROLLMENT.objectReports.map(
-            (a) => a.uid,
-        ),
-    );
-
-    const syncedEntities = new Set(
-        response.bundleReport.typeReportMap.TRACKED_ENTITY.objectReports.map(
-            (a) => a.uid,
-        ),
-    );
-
-    const updatedEntities: FlattenedTrackedEntity[] = entities.flatMap((a) => {
-        if ("trackedEntityType" in a && failedResponses.has(a.trackedEntity)) {
-            return {
-                ...a,
-                syncStatus: "failed",
-                lastSynced: new Date().toISOString(),
-                syncError: failedResponses.get(a.trackedEntity),
-            };
-        } else if (
-            "trackedEntityType" in a &&
-            syncedEntities.has(a.trackedEntity)
-        ) {
-            return {
-                ...a,
-                syncStatus: "synced",
-                lastSynced: new Date().toISOString(),
-                syncError: null,
-            };
-        }
-        return [];
-    });
-
-    const updatedEnrolments: FlattenedEnrollment[] = entities.flatMap((a) => {
-        if ("enrolledAt" in a && failedResponses.has(a.enrollment)) {
-            return {
-                ...a,
-                syncStatus: "failed",
-                lastSynced: new Date().toISOString(),
-                syncError: failedResponses.get(a.enrollment),
-            };
-        } else if ("enrolledAt" in a && syncedEnrollments.has(a.enrollment)) {
-            return {
-                ...a,
-                syncStatus: "synced",
-                lastSynced: new Date().toISOString(),
-                syncError: null,
-            };
-        }
-        return [];
-    });
-
-    const updatedEvents: FlattenedEvent[] = entities.flatMap((a) => {
-        if ("event" in a && failedResponses.has(a.event)) {
-            return {
-                ...a,
-                syncStatus: "failed",
-                lastSynced: new Date().toISOString(),
-                syncError: failedResponses.get(a.event),
-            };
-        } else if ("event" in a && syncedEvents.has(a.event)) {
-            return {
-                ...a,
-                syncStatus: "synced",
-                lastSynced: new Date().toISOString(),
-                syncError: null,
-            };
-        }
-        return [];
-    });
-
-    await trackedEntitiesCollection.utils.bulkUpdateLocally(updatedEntities);
-    await enrollmentsCollection.utils.bulkUpdateLocally(updatedEnrolments);
-    await eventsCollection.utils.bulkUpdateLocally(updatedEvents);
-
-    return {
-        processed: entities.length,
-        succeeded:
-            syncedEntities.size + syncedEnrollments.size + syncedEvents.size,
-        failed: failedResponses.size,
-    };
-};
-
-const syncDeleteToLocal = async ({
-    deletedEvents,
-    deletedTrackedEntities,
-    deletedEnrollments,
-    engine,
-}: {
-    deletedEvents: FlattenedEvent[];
-    deletedTrackedEntities: FlattenedTrackedEntity[];
-    deletedEnrollments: FlattenedEnrollment[];
-    engine: ReturnType<typeof useDataEngine>;
-}): Promise<{ succeeded: number; failed: number }> => {
-    const hasAnything =
-        deletedEvents.length > 0 ||
-        deletedTrackedEntities.length > 0 ||
-        deletedEnrollments.length > 0;
-    if (!hasAnything) return { succeeded: 0, failed: 0 };
-
-    const reachable = await isDhis2Reachable(engine);
-    if (!reachable) {
-        return { succeeded: 0, failed: 0 };
-    }
-
-    const deletedTeIds = new Set(
-        deletedTrackedEntities.map((te) => te.trackedEntity),
-    );
-
-    const payload: Record<string, unknown> = {};
-    if (deletedTrackedEntities.length > 0) {
-        payload.trackedEntities = deletedTrackedEntities.map((te) => ({
-            trackedEntity: te.trackedEntity,
-        }));
-    }
-    if (deletedEnrollments.length > 0) {
-        payload.enrollments = deletedEnrollments
-            .filter((e) => !deletedTeIds.has(e.trackedEntity))
-            .map((e) => ({ enrollment: e.enrollment }));
-    }
-    if (deletedEvents.length > 0) {
-        payload.events = deletedEvents
-            .filter((e) => !deletedTeIds.has(e.trackedEntity))
-            .map((e) => ({ event: e.event }));
-    }
-
-    const response = await submitTrackerImportAndWaitForReport({
-        engine,
-        data: payload,
-        params: {
-            importStrategy: "DELETE",
-            atomicMode: "OBJECT",
-        },
-    });
-
-    // E1114 = TE already deleted, E1082 = Event already deleted, E1113 = Enrollment already deleted
-    const ALREADY_DELETED_CODES = new Set(["E1082", "E1113", "E1114"]);
-
-    const cleanupTeUids = new Set(
-        response.bundleReport.typeReportMap.TRACKED_ENTITY.objectReports.map(
-            (r) => r.uid,
-        ),
-    );
-    const cleanupEnrollmentUids = new Set(
-        response.bundleReport.typeReportMap.ENROLLMENT.objectReports.map(
-            (r) => r.uid,
-        ),
-    );
-    const cleanupEventUids = new Set(
-        response.bundleReport.typeReportMap.EVENT.objectReports.map(
-            (r) => r.uid,
-        ),
-    );
-
-    let realFailures = 0;
-    for (const err of response.validationReport.errorReports) {
-        if (ALREADY_DELETED_CODES.has(err.errorCode)) {
-            if (err.trackerType === "TRACKED_ENTITY")
-                cleanupTeUids.add(err.uid);
-            else if (err.trackerType === "ENROLLMENT")
-                cleanupEnrollmentUids.add(err.uid);
-            else if (err.trackerType === "EVENT") cleanupEventUids.add(err.uid);
-        } else {
-            realFailures++;
-        }
-    }
-    const eventTable = eventsCollection.utils.getTable() as Table<
-        FlattenedEvent,
-        string
-    >;
-    const enrollTable = enrollmentsCollection.utils.getTable() as Table<
-        FlattenedEnrollment,
-        string
-    >;
-
-    for (const te of deletedTrackedEntities) {
-        if (cleanupTeUids.has(te.trackedEntity)) {
-            const childEnrollments = await enrollTable
-                .filter((e) => e.trackedEntity === te.trackedEntity)
-                .toArray();
-            for (const enr of childEnrollments) {
-                const childEvents = await eventTable
-                    .filter((e) => e.enrollment === enr.enrollment)
-                    .toArray();
-                for (const ev of childEvents) {
-                    await eventsCollection.delete(ev.event).isPersisted.promise;
-                }
-                await enrollmentsCollection.delete(enr.enrollment).isPersisted
-                    .promise;
-            }
-            await trackedEntitiesCollection.delete(te.trackedEntity).isPersisted
-                .promise;
-        }
-    }
-
-    for (const enrollment of deletedEnrollments) {
-        if (
-            cleanupEnrollmentUids.has(enrollment.enrollment) &&
-            !deletedTeIds.has(enrollment.trackedEntity)
-        ) {
-            await enrollmentsCollection.delete(enrollment.enrollment)
-                .isPersisted.promise;
-        }
-    }
-
-    for (const event of deletedEvents) {
-        if (
-            cleanupEventUids.has(event.event) &&
-            !deletedTeIds.has(event.trackedEntity)
-        ) {
-            await eventsCollection.delete(event.event).isPersisted.promise;
-        }
-    }
-
-    return {
-        succeeded:
-            cleanupTeUids.size +
-            cleanupEnrollmentUids.size +
-            cleanupEventUids.size,
-        failed: realFailures,
-    };
-};
 
 type SyncEvent =
     | {
@@ -732,70 +334,15 @@ const syncMachine = setup({
                         response.trackedEntities;
                     const pager = response.trackedEntities.pager;
 
-                    const serverTrackedEntities =
-                        instances.map(flattenTrackedEntity);
-                    const serverEvents = instances.flatMap(({ enrollments }) =>
-                        (enrollments ?? []).flatMap(({ events }) =>
-                            (events ?? [])
-                                .filter((event) => event.occurredAt)
-                                .map(flattenEvent),
-                        ),
-                    );
-                    const serverEnrollments = instances.flatMap(
-                        ({ enrollments }) => {
-                            return (enrollments ?? []).map(flattenEnrollment);
-                        },
-                    );
-
-                    const teTable =
-                        trackedEntitiesCollection.utils.getTable() as Table<
-                            FlattenedTrackedEntity,
-                            string
-                        >;
-                    const eventTable =
-                        eventsCollection.utils.getTable() as Table<
-                            FlattenedEvent,
-                            string
-                        >;
-                    const enrollTable =
-                        enrollmentsCollection.utils.getTable() as Table<
-                            FlattenedEnrollment,
-                            string
-                        >;
-
-                    const mergedTrackedEntities =
-                        await mergeBulkTrackedEntities(
-                            serverTrackedEntities,
-                            async (id) => {
-                                const result = await teTable.get(id);
-                                return result;
-                            },
-                        );
-
-                    const mergedEvents = await mergeBulkEvents(
-                        serverEvents,
-                        async (id) => {
-                            const result = await eventTable.get(id);
-                            return result;
-                        },
-                    );
-
-                    const mergedEnrollments = await mergeBulkEnrollments(
-                        serverEnrollments,
-                        async (id) => {
-                            const result = await enrollTable.get(id);
-                            return result;
-                        },
-                    );
-                    await enrollmentsCollection.utils.bulkInsertLocally(
-                        mergedEnrollments,
-                    );
-                    await trackedEntitiesCollection.utils.bulkInsertLocally(
-                        mergedTrackedEntities,
-                    );
-                    await eventsCollection.utils.bulkInsertLocally(
-                        mergedEvents,
-                    );
+                    // Flatten, merge (local-wins-per-key against the
+                    // already-stored row), and write this page — see
+                    // pull-page.ts's own doc comment for why the merge
+                    // logic and write order live there, standalone-tested.
+                    await writePulledTrackedEntityPage(sqlDriver, instances, {
+                        trackedEntities: getTrackedEntitiesCollection(),
+                        enrollments: getEnrollmentsCollection(),
+                        events: getEventsCollection(),
+                    });
 
                     hasMoreData = shouldContinueDataPull({
                         receivedCount: instances.length,
@@ -1221,6 +768,7 @@ const syncMachine = setup({
             }: {
                 input: {
                     engine: ReturnType<typeof useDataEngine>;
+                    sqlDriver: SqlDriver;
                     validAttributeIds: Set<string>;
                     validDataElementsByStage: Map<string, Set<string>>;
                     dataElements: Map<string, DataElement> | undefined;
@@ -1230,122 +778,7 @@ const syncMachine = setup({
                     optionSets: Map<string, FlattenedOptionSet[]> | undefined;
                 };
             }) => {
-                const {
-                    engine,
-                    validAttributeIds,
-                    validDataElementsByStage,
-                    dataElements,
-                    trackedEntityAttributes,
-                    optionSets,
-                } = input;
-
-                const teTable =
-                    trackedEntitiesCollection.utils.getTable() as Table<
-                        FlattenedTrackedEntity,
-                        string
-                    >;
-                const eventTable = eventsCollection.utils.getTable() as Table<
-                    FlattenedEvent,
-                    string
-                >;
-                const enrollTable =
-                    enrollmentsCollection.utils.getTable() as Table<
-                        FlattenedEnrollment,
-                        string
-                    >;
-
-                const pendingTEs = await teTable
-                    .filter(
-                        (e) =>
-                            e.syncStatus === "pending" ||
-                            e.syncStatus === "failed",
-                    )
-                    .toArray();
-
-                const pendingEnrollments = await enrollTable
-                    .filter(
-                        (e) =>
-                            (e.syncStatus === "pending" ||
-                                e.syncStatus === "failed") &&
-                            !!e.enrolledAt,
-                    )
-                    .toArray();
-
-                const pendingEvents = await eventTable
-                    .filter(
-                        (e) =>
-                            (e.syncStatus === "pending" ||
-                                e.syncStatus === "failed") &&
-                            !!e.occurredAt,
-                    )
-                    .toArray();
-
-                const deletedEvents = await eventTable
-                    .filter((e) => e.syncStatus === "deleted")
-                    .toArray();
-
-                const deletedTEs = await teTable
-                    .filter((e) => e.syncStatus === "deleted")
-                    .toArray();
-
-                const deletedEnrollments = await enrollTable
-                    .filter((e) => e.syncStatus === "deleted")
-                    .toArray();
-
-                if (
-                    pendingTEs.length === 0 &&
-                    pendingEnrollments.length === 0 &&
-                    pendingEvents.length === 0 &&
-                    deletedEvents.length === 0 &&
-                    deletedTEs.length === 0 &&
-                    deletedEnrollments.length === 0
-                ) {
-                    return { processed: 0, succeeded: 0, failed: 0 };
-                }
-
-                let upsertResult = { processed: 0, succeeded: 0, failed: 0 };
-                if (
-                    pendingTEs.length > 0 ||
-                    pendingEnrollments.length > 0 ||
-                    pendingEvents.length > 0
-                ) {
-                    upsertResult = await syncReportToLocal({
-                        entities: [
-                            ...pendingTEs,
-                            ...pendingEnrollments,
-                            ...pendingEvents,
-                        ],
-                        engine,
-                        validAttributeIds,
-                        validDataElementsByStage,
-                        dataElements,
-                        trackedEntityAttributes,
-                        optionSets,
-                    });
-                }
-
-                let deleteResult = { succeeded: 0, failed: 0 };
-                if (
-                    deletedEvents.length > 0 ||
-                    deletedTEs.length > 0 ||
-                    deletedEnrollments.length > 0
-                ) {
-                    deleteResult = await syncDeleteToLocal({
-                        deletedEvents,
-                        deletedTrackedEntities: deletedTEs,
-                        deletedEnrollments,
-                        engine,
-                    });
-                }
-
-                return {
-                    processed:
-                        upsertResult.processed +
-                        deleteResult.succeeded +
-                        deleteResult.failed,
-                    succeeded: upsertResult.succeeded + deleteResult.succeeded,
-                    failed: upsertResult.failed + deleteResult.failed,
-                };
+                return processBatchSyncImpl(input);
             },
         ),
     },
@@ -1389,9 +822,6 @@ const syncMachine = setup({
                 "organisationUnits",
             ] as Resource[],
 
-            enrollmentsCollection,
-            eventsCollection,
-            trackedEntitiesCollection,
             lastDataPull: undefined,
             lastDataPush: undefined,
             lastMetadataPull: undefined,
@@ -1781,6 +1211,7 @@ const syncMachine = setup({
                         src: "processBatchSync",
                         input: ({ context }) => ({
                             engine: context.engine,
+                            sqlDriver: context.sqlDriver,
                             validAttributeIds: context.validAttributeIds,
                             validDataElementsByStage:
                                 context.validDataElementsByStage,
@@ -1875,11 +1306,8 @@ const syncMachine = setup({
                             engine,
                             sqlDriver,
                             lastDataPull,
-                            enrollmentsCollection,
-                            eventsCollection,
                             orgUnit: userInfo.organisationUnits[0].id,
                             program: "ueBhWkWll5v",
-                            trackedEntitiesCollection,
                             dataPullMode,
                         }),
 
