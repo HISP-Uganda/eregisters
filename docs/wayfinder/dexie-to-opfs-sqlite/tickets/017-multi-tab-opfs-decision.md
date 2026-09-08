@@ -99,3 +99,24 @@ needs a real reload (not just picking up the code fix via Fast Refresh)
 to release the stale lock the browser is still holding from the buggy
 first request — the fix prevents new occurrences, it can't retroactively
 free a lock already granted in a live session.
+
+### Follow-up fix: `window.focus()` confirmed unreliable, switched to title-flashing
+
+After the above fix, the user confirmed in a real browser that the
+primary tab still never actually came to the foreground — not a bug,
+but the exact browser restriction flagged as a risk when this was built:
+Chrome (and others) deliberately block/ignore a background tab's own
+`window.focus()` call without a direct user gesture there, to stop pages
+from stealing focus unsolicited. There is no reliable pure-JS way around
+this specific restriction.
+
+Fixed by having the primary tab flash its `document.title` ("🔴 Switch
+to this tab") when it receives the focus-request broadcast instead —
+changing a background tab's own title needs no permission or gesture, so
+this works everywhere, unlike `window.focus()` (still attempted first,
+since it's free and occasionally honored, but nothing depends on it
+succeeding anymore). Flashing stops as soon as the user actually
+switches to that tab. The duplicate tab's own message was updated to
+match: it tells the user to find and switch to the flashing tab
+themselves, rather than promising an automatic switch that couldn't be
+guaranteed.
