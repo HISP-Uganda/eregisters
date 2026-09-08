@@ -930,6 +930,18 @@ const syncMachine = setup({
                 userOrgUnit,
             } = input;
 
+            // Mirror pullData's lastDataPull boundary: capture the SERVER's
+            // clock once, before any resource is pulled, rather than the
+            // device clock per-resource — avoids client/server clock skew
+            // and guarantees a resource updated on the server *during* this
+            // (possibly long-running) sync is re-fetched next time instead
+            // of being skipped.
+            const serverDate = extractServerDate(
+                (await engine.query({
+                    info: { resource: "system/info" },
+                })) as { info?: { serverDate?: string } },
+            );
+
             const results: Metadata = {
                 dataElements: [],
                 optionGroups: [],
@@ -1261,7 +1273,15 @@ const syncMachine = setup({
                             results.optionGroups = flattenedOptionGroups;
                             break;
                     }
-                    const currentTimestamp = new Date().toISOString();
+                    // Prefer the server clock captured above; fall back to
+                    // the previous boundary (don't advance with an
+                    // untrusted timestamp — same rule as resolveNextDataPull)
+                    // and only to the device clock as a last resort, since
+                    // MetadataVersion.lastSync requires a string.
+                    const currentTimestamp =
+                        serverDate ??
+                        lastMetadataPull ??
+                        new Date().toISOString();
                     let version =
                         await db.metadataVersions.get("metadata-version");
                     if (version === undefined) {
