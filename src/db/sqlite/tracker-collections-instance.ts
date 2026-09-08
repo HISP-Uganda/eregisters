@@ -64,3 +64,17 @@ export function getEnrollmentsCollection(): EnrollmentsCollection {
 export function getEventsCollection(): EventsCollection {
     return requireInitialized(eventsCollection, "eventsCollection");
 }
+
+/**
+ * Test-only escape hatch: clears the singletons so a test file can call
+ * `initTrackerCollections(freshDriver)` again against a different driver.
+ * Never called from application code (`App.tsx` initializes exactly once
+ * per page load) — only from tests that need multiple independent
+ * driver/collection sets within one process (e.g. exercising a
+ * once-per-device flag's first-run vs. already-run behavior).
+ */
+export function resetTrackerCollectionsForTests(): void {
+    trackedEntitiesCollection = null;
+    enrollmentsCollection = null;
+    eventsCollection = null;
+}
