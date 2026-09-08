@@ -71,6 +71,7 @@ just unit tests.
 - [Can Vite Config Reach the Service Worker's Caching Strategies?](tickets/001-vite-config-reach-sw.md) — no. The SW is built by a fully separate webpack pass (`@dhis2/cli-app-scripts`'s `compileServiceWorker.js`), sharing nothing with the Vite config `viteConfigExtensions.mts` returns. The only SW-adjacent config surface is `d2.config.js`'s documented `pwa.caching.*` (precache manifest filtering only, no strategy/timeout control). Post-build patching (`scripts/patch-sw.js`) is the only lever for anything beyond that — confirmed against the installed package's actual source, not assumed.
 - [How Should patch-sw.js Handle Timeouts and 5xx Responses?](tickets/002-sw-timeout-and-5xx-handling.md) — one shared Workbox plugin (`fetchDidSucceed` throws on `!response.ok`), spliced into all 4 strategies' shared `plugins:[we]` array at once (confirmed via the real built bundle: exactly 4 occurrences), ordered before `dhis2ConnectionStatusPlugin` so it also fixes that plugin's "reports connected for a 5xx" bug as a side effect — no separate patch needed there. Timeout via Workbox's own `networkTimeoutSeconds:8` on the app-shell `NetworkFirst` strategy only (GET-safe); explicitly not applied to the default handler that also carries tracker-import POST/mutate calls, to avoid aborting a legitimately slow upload. The navigation handler needs its own separate small timeout patch (hand-written code, not part of the plugin system).
 - [How Should sync.ts's Reachability Check Handle Timeouts and Failure-Type Distinctions?](tickets/003-app-level-reachability-timeout.md) — `isDhis2Reachable` gets a 5s timeout via a new reusable `withAbortTimeout` helper (`src/machines/network-reachability.ts`, meant to generalize to `sync.ts`'s other unprotected call sites later) and returns a richer `{reachable, reason?: "timeout"|"network"|"server-error"|"access"}` instead of a bare boolean — `error.details?.name === "AbortError"` is the only way to detect a timeout, since the installed `@dhis2/data-engine` version collapses aborts into `type: 'network'`. Existing callers change only `if (!reachable)` → `if (!reachability.reachable)`; the sync loop's gating behavior is unchanged.
+- [What Should the User See for Degraded-Server vs. Offline vs. Healthy?](tickets/004-user-visible-status.md) — a 3-state `connectivityStatus` (`"healthy"|"degraded"|"offline"`) on `SyncContext`, mapped from ticket 003's `{reachable, reason}` (network→offline, timeout/server-error/access→degraded), extending `tracked-entity.tsx:463`'s existing conditional tag rather than adding a new toolbar element. Instant `"offline"` via `window` online/offline events; `"degraded"` only discoverable via the periodic sync actors' own ping (no new polling). No SW-broadcast wiring — app-level ping only. Reuses `sync-status-comp.tsx`'s color conventions (amber=degraded, red=offline, hidden when healthy).
 
 ## Not yet specified
 
@@ -84,6 +85,11 @@ just unit tests.
   helper from ticket 003 — confirmed as in-scope/desirable, not yet
   ticketed since it's a mechanical follow-up rather than an open
   decision.
+- Whether the SW-broadcast connection status (ticket 002's fixed
+  `dhis2ConnectionStatusPlugin`) is worth wiring into the app UI as a
+  second signal later, now that ticket 004 has deliberately deferred it —
+  not sharp enough to ticket unless the app-level-only signal (ticket 004)
+  proves insufficient once implemented and used.
 
 ## Out of scope
 
