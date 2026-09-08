@@ -1,0 +1,91 @@
+---
+label: wayfinder:map
+tracker: local-markdown
+---
+
+# DHIS2 Offline/Network-Resilience Hardening
+
+## Destination
+
+Make this app resilient to every realistic DHIS2-server failure mode —
+hanging/slow responses, 5xx errors, and true offline — not just the
+"truly unreachable" case the current `@dhis2/pwa`-generated service
+worker and this app's own sync code already handle. Concretely:
+
+1. No DHIS2 network call — service-worker-intercepted or app-level via
+   `@dhis2/data-engine` — can block indefinitely; every one gets a
+   bounded timeout.
+2. A 5xx response is treated as a failure worth falling back on (cache,
+   at the SW layer) or reporting accurately (at the app layer), not
+   silently treated the same as a healthy 200 the way it is today.
+3. The user/sync-loop gets an accurate, distinct signal for "server
+   slow/degraded" vs "truly offline" vs "healthy," reusing the app's
+   existing periodic sync-retry cadence rather than building a new
+   retry/backoff engine.
+
+Done = `scripts/patch-sw.js` no longer lets a hanging or 5xx-returning
+server behave identically to a healthy one, `isDhis2Reachable` (and
+anything else gating the sync loop) has a real timeout and distinguishes
+failure types, and the user sees an accurate status for each case —
+verified in a real browser against a simulated slow/502/503 server, not
+just unit tests.
+
+## Notes
+
+- Domain: `scripts/patch-sw.js` (post-build service-worker patching —
+  the ONLY lever that can reach `@dhis2/pwa`'s hardcoded Workbox
+  strategies; confirmed via `@dhis2/cli-app-scripts@12.11.4`'s own
+  source that `viteConfigExtensions.mts`/any Vite-level config has zero
+  influence on the SW, which is built via a fully separate webpack pass
+  — see ticket "Can Vite Config Reach the Service Worker's Caching
+  Strategies?"), `src/machines/sync-tracker-actors.ts`
+  (`isDhis2Reachable`), `src/machines/sync.ts`, `@dhis2/data-engine`'s
+  `FetchError.type` (`'network' | 'access' | 'unknown'`, the last being
+  where 4xx/5xx status-code failures land) as the source of truth for
+  distinguishing failure modes at the app level.
+- Standing constraint: this app's sync design is already built for
+  outreach/no-connectivity scenarios with a periodic retry cadence
+  (30-60min push, 1-3h pull, per `sync.ts`'s `delays`) — the destination
+  reuses that cadence rather than building new retry/backoff logic.
+- `scripts/patch-sw.js` is explicitly load-bearing per root `CLAUDE.md`;
+  any new patch must be idempotent and sentinel-guarded like the
+  existing two (a third, unrelated COOP/COEP patch is pending elsewhere
+  on `task/coi-sw-patch-integration`, part of the separate Dexie-to-SQLite
+  migration map — coordinate sentinel naming/patch ordering with that
+  branch when merging either).
+- Real-browser/SW verification is required for anything touching
+  `scripts/patch-sw.js` — this repo's own precedent (Dexie-to-SQLite
+  migration map, tickets 001/008/011) is real headless-Chrome
+  verification against a simulated server, not just unit tests; likely
+  reusable technique for simulating slow/502/503 responses here too.
+- Separate effort from `docs/wayfinder/dexie-to-opfs-sqlite/` (storage
+  migration) — no dependency either direction, though both touch
+  `scripts/patch-sw.js` and should be merged with awareness of each
+  other's patches.
+- Invoke `/grilling` and `/domain-modeling` for any grilling-type ticket.
+- No issue tracker is configured for this repo; using the local-markdown
+  tracker, same convention as the Dexie-to-SQLite migration map.
+
+## Decisions so far
+
+- [Can Vite Config Reach the Service Worker's Caching Strategies?](tickets/001-vite-config-reach-sw.md) — no. The SW is built by a fully separate webpack pass (`@dhis2/cli-app-scripts`'s `compileServiceWorker.js`), sharing nothing with the Vite config `viteConfigExtensions.mts` returns. The only SW-adjacent config surface is `d2.config.js`'s documented `pwa.caching.*` (precache manifest filtering only, no strategy/timeout control). Post-build patching (`scripts/patch-sw.js`) is the only lever for anything beyond that — confirmed against the installed package's actual source, not assumed.
+
+## Not yet specified
+
+- Whether any of this needs coordinating with the Dexie-to-SQLite
+  migration's pending COOP/COEP `patch-sw.js` patch (`task/coi-sw-patch-
+  integration`) beyond "don't clobber each other's sentinels" — not sharp
+  enough to ticket until both are closer to landing.
+- Whether the app-level timeout/failure-type work (tickets 003/004)
+  should also touch `sync.ts`'s other direct `engine.query`/`engine.mutate`
+  calls beyond `isDhis2Reachable` (e.g. the tracker-import submission
+  itself, metadata pulls) — the initial research only looked at
+  `isDhis2Reachable` in depth; whether the same blind spot exists
+  elsewhere in `sync.ts` needs a look once ticket 003 is underway.
+
+## Out of scope
+
+- Building a new retry/backoff engine beyond the app's existing periodic
+  sync-retry cadence — ruled out during charting; the destination
+  explicitly reuses `sync.ts`'s existing timers rather than adding new
+  ones.
