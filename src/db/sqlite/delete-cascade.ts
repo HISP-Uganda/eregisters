@@ -7,9 +7,12 @@ import type { SqlDriver } from "./driver-types";
  * `src/machines/sync.ts:472-509`) loops record-by-record with individually
  * awaited promises, including nested loops for cascading enrollment/event
  * deletes. The schema's real `REFERENCES` foreign keys (ticket "Normalized
- * SQLite Schema for Tracker Collections") make a single atomic cascading
- * transaction both faster and safer than a loop that could partially
- * complete.
+ * SQLite Schema for Tracker Collections") make it possible to know exactly
+ * which child tables to clean up here — but they are NOT declared
+ * `ON DELETE CASCADE`, so each function below still issues its own explicit
+ * ordered `DELETE`s; wrapping them in one transaction (rather than SQLite
+ * doing the cascade automatically) is what makes this both faster and
+ * safer than a loop that could partially complete.
  */
 
 export async function deleteTrackedEntityCascade(
