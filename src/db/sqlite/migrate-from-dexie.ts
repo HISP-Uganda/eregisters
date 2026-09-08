@@ -68,6 +68,16 @@ function chunk<T>(items: T[], size: number): T[][] {
     return chunks;
 }
 
+async function forEachIdChunk(
+    ids: string[],
+    fn: (idsChunk: string[], placeholders: string) => Promise<void>,
+): Promise<void> {
+    for (const idsChunk of chunk(ids, ID_CHUNK_SIZE)) {
+        if (idsChunk.length === 0) continue;
+        await fn(idsChunk, idsChunk.map(() => "?").join(", "));
+    }
+}
+
 async function countMatchingIds(
     db: SqlDriver,
     table: string,
@@ -75,15 +85,13 @@ async function countMatchingIds(
     ids: string[],
 ): Promise<number> {
     let total = 0;
-    for (const idsChunk of chunk(ids, ID_CHUNK_SIZE)) {
-        if (idsChunk.length === 0) continue;
-        const placeholders = idsChunk.map(() => "?").join(", ");
+    await forEachIdChunk(ids, async (idsChunk, placeholders) => {
         const result = await db.execute<{ count: number }>(
             `SELECT COUNT(*) as count FROM ${table} WHERE ${idColumn} IN (${placeholders})`,
             idsChunk,
         );
         total += result.rows[0]?.count ?? 0;
-    }
+    });
     return total;
 }
 
@@ -93,14 +101,14 @@ async function deleteMatchingIds(
     idColumn: string,
     ids: string[],
 ): Promise<void> {
-    for (const idsChunk of chunk(ids, ID_CHUNK_SIZE)) {
-        if (idsChunk.length === 0) continue;
-        const placeholders = idsChunk.map(() => "?").join(", ");
-        await db.execute(
-            `DELETE FROM ${table} WHERE ${idColumn} IN (${placeholders})`,
-            idsChunk,
-        );
-    }
+    await forEachIdChunk(ids, (idsChunk, placeholders) =>
+        db
+            .execute(
+                `DELETE FROM ${table} WHERE ${idColumn} IN (${placeholders})`,
+                idsChunk,
+            )
+            .then(() => undefined),
+    );
 }
 
 type WrittenKeys = {
@@ -109,6 +117,38 @@ type WrittenKeys = {
     events: string[];
     hmisDrafts: string[];
 };
+
+/**
+ * Reads one table's rows, publishes before/after progress, writes them
+ * (skipped entirely for an empty table — nothing to insert), and returns
+ * the ids actually written, for `WrittenKeys`/verification/cleanup. All
+ * four tables in `runDexieMigrationIfNeeded` follow exactly this shape;
+ * this is the one place that shape is spelled out.
+ */
+async function copyTable<T>(descriptor: {
+    label: string;
+    read: () => Promise<T[]>;
+    write: (rows: T[]) => Promise<void>;
+    idOf: (row: T) => string;
+}): Promise<string[]> {
+    const rows = await descriptor.read();
+    publishMigrationProgress({
+        phase: "copying",
+        table: descriptor.label,
+        copied: 0,
+        total: rows.length,
+    });
+    if (rows.length > 0) {
+        await descriptor.write(rows);
+    }
+    publishMigrationProgress({
+        phase: "copying",
+        table: descriptor.label,
+        copied: rows.length,
+        total: rows.length,
+    });
+    return rows.map(descriptor.idOf);
+}
 
 async function cleanUpPartialWrite(
     db: SqlDriver,
@@ -166,91 +206,41 @@ export async function runDexieMigrationIfNeeded(
     };
 
     try {
-        const trackedEntities = await source.readTrackedEntities();
-        publishMigrationProgress({
-            phase: "copying",
-            table: "trackedEntities",
-            copied: 0,
-            total: trackedEntities.length,
-        });
-        if (trackedEntities.length > 0) {
-            await getTrackedEntitiesCollection().utils.bulkInsertLocally(
-                trackedEntities,
-                { source: "local" },
-            );
-        }
-        written.trackedEntities = trackedEntities.map(
-            (r) => r.trackedEntity,
-        );
-        publishMigrationProgress({
-            phase: "copying",
-            table: "trackedEntities",
-            copied: trackedEntities.length,
-            total: trackedEntities.length,
+        written.trackedEntities = await copyTable({
+            label: "trackedEntities",
+            read: () => source.readTrackedEntities(),
+            write: (rows) =>
+                getTrackedEntitiesCollection().utils.bulkInsertLocally(rows, {
+                    source: "local",
+                }),
+            idOf: (r) => r.trackedEntity,
         });
 
-        const enrollments = await source.readEnrollments();
-        publishMigrationProgress({
-            phase: "copying",
-            table: "enrollments",
-            copied: 0,
-            total: enrollments.length,
-        });
-        if (enrollments.length > 0) {
-            await getEnrollmentsCollection().utils.bulkInsertLocally(
-                enrollments,
-                { source: "local" },
-            );
-        }
-        written.enrollments = enrollments.map((r) => r.enrollment);
-        publishMigrationProgress({
-            phase: "copying",
-            table: "enrollments",
-            copied: enrollments.length,
-            total: enrollments.length,
+        written.enrollments = await copyTable({
+            label: "enrollments",
+            read: () => source.readEnrollments(),
+            write: (rows) =>
+                getEnrollmentsCollection().utils.bulkInsertLocally(rows, {
+                    source: "local",
+                }),
+            idOf: (r) => r.enrollment,
         });
 
-        const events = await source.readEvents();
-        publishMigrationProgress({
-            phase: "copying",
-            table: "events",
-            copied: 0,
-            total: events.length,
-        });
-        if (events.length > 0) {
-            await getEventsCollection().utils.bulkInsertLocally(events, {
-                source: "local",
-            });
-        }
-        written.events = events.map((r) => r.event);
-        publishMigrationProgress({
-            phase: "copying",
-            table: "events",
-            copied: events.length,
-            total: events.length,
+        written.events = await copyTable({
+            label: "events",
+            read: () => source.readEvents(),
+            write: (rows) =>
+                getEventsCollection().utils.bulkInsertLocally(rows, {
+                    source: "local",
+                }),
+            idOf: (r) => r.event,
         });
 
-        const hmisDrafts = await source.readHmisDrafts();
-        publishMigrationProgress({
-            phase: "copying",
-            table: "hmisDrafts",
-            copied: 0,
-            total: hmisDrafts.length,
-        });
-        if (hmisDrafts.length > 0) {
-            await saveMetadataTable(
-                db,
-                "hmis_drafts",
-                hmisDrafts,
-                (r) => r.id,
-            );
-        }
-        written.hmisDrafts = hmisDrafts.map((r) => r.id);
-        publishMigrationProgress({
-            phase: "copying",
-            table: "hmisDrafts",
-            copied: hmisDrafts.length,
-            total: hmisDrafts.length,
+        written.hmisDrafts = await copyTable({
+            label: "hmisDrafts",
+            read: () => source.readHmisDrafts(),
+            write: (rows) => saveMetadataTable(db, "hmis_drafts", rows, (r) => r.id),
+            idOf: (r) => r.id,
         });
 
         publishMigrationProgress({ phase: "verifying" });
