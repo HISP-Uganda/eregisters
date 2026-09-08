@@ -69,6 +69,7 @@ just unit tests.
 ## Decisions so far
 
 - [Can Vite Config Reach the Service Worker's Caching Strategies?](tickets/001-vite-config-reach-sw.md) — no. The SW is built by a fully separate webpack pass (`@dhis2/cli-app-scripts`'s `compileServiceWorker.js`), sharing nothing with the Vite config `viteConfigExtensions.mts` returns. The only SW-adjacent config surface is `d2.config.js`'s documented `pwa.caching.*` (precache manifest filtering only, no strategy/timeout control). Post-build patching (`scripts/patch-sw.js`) is the only lever for anything beyond that — confirmed against the installed package's actual source, not assumed.
+- [How Should patch-sw.js Handle Timeouts and 5xx Responses?](tickets/002-sw-timeout-and-5xx-handling.md) — one shared Workbox plugin (`fetchDidSucceed` throws on `!response.ok`), spliced into all 4 strategies' shared `plugins:[we]` array at once (confirmed via the real built bundle: exactly 4 occurrences), ordered before `dhis2ConnectionStatusPlugin` so it also fixes that plugin's "reports connected for a 5xx" bug as a side effect — no separate patch needed there. Timeout via Workbox's own `networkTimeoutSeconds:8` on the app-shell `NetworkFirst` strategy only (GET-safe); explicitly not applied to the default handler that also carries tracker-import POST/mutate calls, to avoid aborting a legitimately slow upload. The navigation handler needs its own separate small timeout patch (hand-written code, not part of the plugin system).
 
 ## Not yet specified
 
