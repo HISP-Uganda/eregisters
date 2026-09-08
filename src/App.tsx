@@ -3,8 +3,10 @@ import { RouterProvider } from "@tanstack/react-router";
 import { App, ConfigProvider, Typography } from "antd";
 import React, { FC, useEffect, useState } from "react";
 import { Spinner } from "./components/spinner";
-import { initSqlDriver } from "./db/sqlite/instance";
+import { realDexieMigrationSource } from "./db/sqlite/dexie-migration-source";
 import type { SqlDriver } from "./db/sqlite/driver-types";
+import { initSqlDriver } from "./db/sqlite/instance";
+import { runDexieMigrationIfNeeded } from "./db/sqlite/migrate-from-dexie";
 import { initTrackerCollections } from "./db/sqlite/tracker-collections-instance";
 import { SyncContext } from "./machines/sync";
 import { router } from "./router";
@@ -42,6 +44,15 @@ const FullApp: FC<{
         // something to chase in this migration phase.
         initSqlDriver("eregisters-metadata").then((driver) => {
             initTrackerCollections(driver);
+            // Fire-and-forget (wayfinder ticket "Migration and Cutover
+            // Procedure Design" decision 4: non-blocking) — copying an
+            // existing device's Dexie data into SQLite runs in the
+            // background; the app renders immediately, and a banner
+            // (subscribed to migration-progress.ts) reports status
+            // independently. A fresh install resolves this instantly
+            // (nothing to copy). This never throws — failures are caught
+            // internally and published as progress, not rejected.
+            void runDexieMigrationIfNeeded(driver, realDexieMigrationSource);
             setSqlDriver(driver);
         });
     }, []);
