@@ -78,6 +78,13 @@ if (!sw.includes(NAV_SENTINEL)) {
 // effect, since it never sees the bad response as a success.
 const THROW_5XX_SENTINEL = '__patch_5xx_throw__'
 
+// Confirmed against a real build (as of this writing) that every one of the
+// 4 Workbox strategies shares this same plugin array — if a future
+// @dhis2/pwa version changes that count, still apply the patch to whatever
+// is found (an incomplete fix is better than none), but warn loudly so a
+// structural change doesn't silently go unnoticed.
+const EXPECTED_PLUGINS_ARRAY_COUNT = 4
+
 if (!sw.includes(THROW_5XX_SENTINEL)) {
     const pluginsPattern = /plugins:\[(\w+)\]/g
     const occurrences = (sw.match(pluginsPattern) || []).length
@@ -89,6 +96,9 @@ if (!sw.includes(THROW_5XX_SENTINEL)) {
         )
         modified = true
         console.log(`[patch-sw] Applied patch 3: 5xx-throws-as-failure plugin spliced into ${occurrences} strategy plugin array(s)`)
+        if (occurrences !== EXPECTED_PLUGINS_ARRAY_COUNT) {
+            console.warn(`[patch-sw] Patch 3: expected ${EXPECTED_PLUGINS_ARRAY_COUNT} plugins:[X] arrays, found ${occurrences} — SW strategy structure may have changed, some strategies may be unpatched`)
+        }
     } else {
         console.warn('[patch-sw] Patch 3: no plugins:[X] arrays found — skipping (SW structure may have changed)')
     }

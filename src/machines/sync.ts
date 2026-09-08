@@ -116,6 +116,18 @@ export function deriveValidIds(program: Program | undefined): {
     };
 }
 
+/**
+ * Only the periodic push/delete-sync actors can discover a degraded/offline
+ * server — a batch with nothing pending never checks reachability, so its
+ * output has no opinion on connectivityStatus and the prior value should
+ * carry forward rather than being reset to "healthy" by default.
+ */
+function nextConnectivityStatus(
+    context: SyncContext,
+    event: { output: { connectivityStatus?: ConnectivityStatus } },
+): ConnectivityStatus {
+    return event.output.connectivityStatus ?? context.connectivityStatus;
+}
 
 async function submitTrackerImportAndWaitForReport({
     engine,
@@ -192,6 +204,18 @@ export interface SyncContext {
     connectivityStatus: ConnectivityStatus;
 }
 
+/**
+ * connectivityStatus is only ever set here (from the isDhis2Reachable check
+ * this sub-call ran), never on the "nothing to do" early-return paths —
+ * see nextConnectivityStatus's doc comment for why that's on purpose.
+ */
+type SyncSubResult = {
+    succeeded: number;
+    failed: number;
+    connectivityStatus?: ConnectivityStatus;
+};
+type SyncUpsertResult = SyncSubResult & { processed: number };
+
 const syncReportToLocal = async ({
     entities,
     engine,
@@ -210,7 +234,7 @@ const syncReportToLocal = async ({
     dataElements: Map<string, DataElement> | undefined;
     trackedEntityAttributes: Map<string, TrackedEntityAttribute> | undefined;
     optionSets: Map<string, FlattenedOptionSet[]> | undefined;
-}) => {
+}): Promise<SyncUpsertResult> => {
     const reachability = await isDhis2Reachable(engine);
     if (!reachability.reachable) {
         return {
@@ -380,11 +404,7 @@ const syncDeleteToLocal = async ({
     deletedTrackedEntities: FlattenedTrackedEntity[];
     deletedEnrollments: FlattenedEnrollment[];
     engine: ReturnType<typeof useDataEngine>;
-}): Promise<{
-    succeeded: number;
-    failed: number;
-    connectivityStatus?: ConnectivityStatus;
-}> => {
+}): Promise<SyncSubResult> => {
     const hasAnything =
         deletedEvents.length > 0 ||
         deletedTrackedEntities.length > 0 ||
@@ -1397,12 +1417,11 @@ const syncMachine = setup({
                     return { processed: 0, succeeded: 0, failed: 0 };
                 }
 
-                let upsertResult: {
-                    processed: number;
-                    succeeded: number;
-                    failed: number;
-                    connectivityStatus?: ConnectivityStatus;
-                } = { processed: 0, succeeded: 0, failed: 0 };
+                let upsertResult: SyncUpsertResult = {
+                    processed: 0,
+                    succeeded: 0,
+                    failed: 0,
+                };
                 if (
                     pendingTEs.length > 0 ||
                     pendingEnrollments.length > 0 ||
@@ -1423,11 +1442,10 @@ const syncMachine = setup({
                     });
                 }
 
-                let deleteResult: {
-                    succeeded: number;
-                    failed: number;
-                    connectivityStatus?: ConnectivityStatus;
-                } = { succeeded: 0, failed: 0 };
+                let deleteResult: SyncSubResult = {
+                    succeeded: 0,
+                    failed: 0,
+                };
                 if (
                     deletedEvents.length > 0 ||
                     deletedTEs.length > 0 ||
@@ -1885,23 +1903,21 @@ const syncMachine = setup({
                                     shouldRecordDataPush(event.output),
                                 target: "updateLastDataPush",
                                 actions: assign({
-                                    connectivityStatus: ({
-                                        context,
-                                        event,
-                                    }) =>
-                                        event.output.connectivityStatus ??
-                                        context.connectivityStatus,
+                                    connectivityStatus: ({ context, event }) =>
+                                        nextConnectivityStatus(
+                                            context,
+                                            event,
+                                        ),
                                 }),
                             },
                             {
                                 target: "idle",
                                 actions: assign({
-                                    connectivityStatus: ({
-                                        context,
-                                        event,
-                                    }) =>
-                                        event.output.connectivityStatus ??
-                                        context.connectivityStatus,
+                                    connectivityStatus: ({ context, event }) =>
+                                        nextConnectivityStatus(
+                                            context,
+                                            event,
+                                        ),
                                 }),
                             },
                         ],
