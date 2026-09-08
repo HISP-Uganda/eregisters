@@ -19,6 +19,16 @@
  * Falls back to "always primary" in an environment with no Web Locks API
  * (there is no coordination need without it — nothing else in that
  * environment can be racing for the same lock either).
+ *
+ * `requestPrimaryTab()`'s result is cached per tab (module-scoped
+ * promise) rather than re-requested on every call — React's effect that
+ * calls it can legitimately re-run without a real page reload (dev-mode
+ * Fast Refresh re-runs effects on hot update; a future remount of the
+ * calling component would too), and a second `navigator.locks.request()`
+ * call from the SAME tab would see its own first, still-held-forever
+ * request as "unavailable" and wrongly conclude it's a duplicate tab —
+ * permanently, since nothing ever released that orphaned first request.
+ * Caching means every call after the first just replays the same result.
  */
 
 const LOCK_NAME = "eregisters-single-tab";
@@ -26,6 +36,7 @@ const CHANNEL_NAME = "eregisters-single-tab-focus";
 const FOCUS_MESSAGE = { type: "focus-primary" } as const;
 
 let isPrimaryTab = false;
+let primaryTabPromise: Promise<boolean> | null = null;
 
 const channel =
     typeof BroadcastChannel !== "undefined"
@@ -44,15 +55,20 @@ function hasWebLocks(): boolean {
 
 /**
  * Resolves `true` if this tab won the race (safe to initialize SQLite),
- * `false` if another tab already holds it. Never resolves a second time
- * for the same tab — the winning tab holds the lock until it unloads.
+ * `false` if another tab already holds it. Only ever issues one real
+ * lock request per tab, however many times it's called — see the module
+ * doc comment above.
  */
 export function requestPrimaryTab(): Promise<boolean> {
+    if (primaryTabPromise) return primaryTabPromise;
+
     if (!hasWebLocks()) {
         isPrimaryTab = true;
-        return Promise.resolve(true);
+        primaryTabPromise = Promise.resolve(true);
+        return primaryTabPromise;
     }
-    return new Promise((resolve) => {
+
+    primaryTabPromise = new Promise((resolve) => {
         navigator.locks.request(LOCK_NAME, { ifAvailable: true }, (lock) => {
             if (!lock) {
                 resolve(false);
@@ -64,6 +80,7 @@ export function requestPrimaryTab(): Promise<boolean> {
             return new Promise<void>(() => {});
         });
     });
+    return primaryTabPromise;
 }
 
 /** Called by a duplicate tab to ask the primary tab to focus itself. */

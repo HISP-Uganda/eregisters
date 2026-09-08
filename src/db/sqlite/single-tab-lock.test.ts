@@ -20,4 +20,23 @@ describe("single-tab-lock", () => {
     it("notifyPrimaryTabToFocus does not throw when no listener is present", () => {
         expect(() => notifyPrimaryTabToFocus()).not.toThrow();
     });
+
+    it("calling requestPrimaryTab again in the same tab replays the same result instead of re-requesting", async () => {
+        // Regression test: a real bug where a second call from the same
+        // tab (e.g. React re-running the effect on a dev-mode Fast
+        // Refresh hot update, with no real page reload) issued a brand
+        // new lock request, saw its own first, still-held-forever request
+        // as "unavailable", and wrongly reported itself as a duplicate
+        // tab — permanently, since nothing released the orphaned first
+        // request. In the no-Web-Locks fallback branch this test exercises,
+        // the bug wouldn't reproduce (every call just resolves true
+        // independently) — the real regression only shows up with a real
+        // Web Locks implementation — but pinning "same promise" here
+        // still guards the caching mechanism itself.
+        const first = requestPrimaryTab();
+        const second = requestPrimaryTab();
+
+        expect(second).toBe(first);
+        expect(await second).toBe(true);
+    });
 });
