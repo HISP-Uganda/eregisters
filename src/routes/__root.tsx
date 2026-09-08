@@ -645,8 +645,17 @@ function LayoutWithDrafts() {
     useEffect(() => {
         const handleOnline = () =>
             syncActor.send({ type: "NETWORK_RECONNECT" });
+        const handleOffline = () =>
+            syncActor.send({
+                type: "SET_CONNECTIVITY_STATUS",
+                status: "offline",
+            });
         window.addEventListener("online", handleOnline);
-        return () => window.removeEventListener("online", handleOnline);
+        window.addEventListener("offline", handleOffline);
+        return () => {
+            window.removeEventListener("online", handleOnline);
+            window.removeEventListener("offline", handleOffline);
+        };
     }, [syncActor]);
 
     const screens = Grid.useBreakpoint();

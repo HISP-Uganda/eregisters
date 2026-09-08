@@ -67,6 +67,11 @@ import {
     shouldUseLastDataPull,
     shouldUseLastUpdatedFilter,
 } from "./sync-metadata-mode";
+import {
+    isDhis2Reachable,
+    toConnectivityStatus,
+    type ConnectivityStatus,
+} from "./network-reachability";
 
 /**
  * Which attribute/data-element ids belong to this program (and, for data
@@ -111,25 +116,6 @@ export function deriveValidIds(program: Program | undefined): {
     };
 }
 
-async function isDhis2Reachable(engine: ReturnType<typeof useDataEngine>) {
-    if (typeof navigator !== "undefined" && !navigator.onLine) {
-        return false;
-    }
-
-    try {
-        await engine.query({
-            ping: {
-                resource: "me",
-                params: {
-                    fields: "id",
-                },
-            },
-        });
-        return true;
-    } catch {
-        return false;
-    }
-}
 
 async function submitTrackerImportAndWaitForReport({
     engine,
@@ -203,6 +189,7 @@ export interface SyncContext {
     orgUnit?: string;
     aggregateData?: Map<string, string>;
     periodType?: string;
+    connectivityStatus: ConnectivityStatus;
 }
 
 const syncReportToLocal = async ({
@@ -224,9 +211,14 @@ const syncReportToLocal = async ({
     trackedEntityAttributes: Map<string, TrackedEntityAttribute> | undefined;
     optionSets: Map<string, FlattenedOptionSet[]> | undefined;
 }) => {
-    const reachable = await isDhis2Reachable(engine);
-    if (!reachable) {
-        return { processed: 0, succeeded: 0, failed: 0 };
+    const reachability = await isDhis2Reachable(engine);
+    if (!reachability.reachable) {
+        return {
+            processed: 0,
+            succeeded: 0,
+            failed: 0,
+            connectivityStatus: toConnectivityStatus(reachability),
+        };
     }
 
     const payload = entities.reduce<{
@@ -374,6 +366,7 @@ const syncReportToLocal = async ({
         succeeded:
             syncedEntities.size + syncedEnrollments.size + syncedEvents.size,
         failed: failedResponses.size,
+        connectivityStatus: "healthy" as const,
     };
 };
 
@@ -387,16 +380,24 @@ const syncDeleteToLocal = async ({
     deletedTrackedEntities: FlattenedTrackedEntity[];
     deletedEnrollments: FlattenedEnrollment[];
     engine: ReturnType<typeof useDataEngine>;
-}): Promise<{ succeeded: number; failed: number }> => {
+}): Promise<{
+    succeeded: number;
+    failed: number;
+    connectivityStatus?: ConnectivityStatus;
+}> => {
     const hasAnything =
         deletedEvents.length > 0 ||
         deletedTrackedEntities.length > 0 ||
         deletedEnrollments.length > 0;
     if (!hasAnything) return { succeeded: 0, failed: 0 };
 
-    const reachable = await isDhis2Reachable(engine);
-    if (!reachable) {
-        return { succeeded: 0, failed: 0 };
+    const reachability = await isDhis2Reachable(engine);
+    if (!reachability.reachable) {
+        return {
+            succeeded: 0,
+            failed: 0,
+            connectivityStatus: toConnectivityStatus(reachability),
+        };
     }
 
     const deletedTeIds = new Set(
@@ -514,6 +515,7 @@ const syncDeleteToLocal = async ({
             cleanupEnrollmentUids.size +
             cleanupEventUids.size,
         failed: realFailures,
+        connectivityStatus: "healthy" as const,
     };
 };
 
@@ -534,6 +536,7 @@ type SyncEvent =
     | { type: "FULL_INDICATOR_SYNC" }
     | { type: "CANCEL" }
     | { type: "NETWORK_RECONNECT" }
+    | { type: "SET_CONNECTIVITY_STATUS"; status: ConnectivityStatus }
     | { type: "PARENT_READY" }
     | { type: "SET_PERIOD"; period?: string }
     | { type: "SET_DATASET"; dataSet?: string; periodType?: string }
@@ -1394,7 +1397,12 @@ const syncMachine = setup({
                     return { processed: 0, succeeded: 0, failed: 0 };
                 }
 
-                let upsertResult = { processed: 0, succeeded: 0, failed: 0 };
+                let upsertResult: {
+                    processed: number;
+                    succeeded: number;
+                    failed: number;
+                    connectivityStatus?: ConnectivityStatus;
+                } = { processed: 0, succeeded: 0, failed: 0 };
                 if (
                     pendingTEs.length > 0 ||
                     pendingEnrollments.length > 0 ||
@@ -1415,7 +1423,11 @@ const syncMachine = setup({
                     });
                 }
 
-                let deleteResult = { succeeded: 0, failed: 0 };
+                let deleteResult: {
+                    succeeded: number;
+                    failed: number;
+                    connectivityStatus?: ConnectivityStatus;
+                } = { succeeded: 0, failed: 0 };
                 if (
                     deletedEvents.length > 0 ||
                     deletedTEs.length > 0 ||
@@ -1436,6 +1448,9 @@ const syncMachine = setup({
                         deleteResult.failed,
                     succeeded: upsertResult.succeeded + deleteResult.succeeded,
                     failed: upsertResult.failed + deleteResult.failed,
+                    connectivityStatus:
+                        deleteResult.connectivityStatus ??
+                        upsertResult.connectivityStatus,
                 };
             },
         ),
@@ -1461,10 +1476,18 @@ const syncMachine = setup({
     /** @xstate-layout N4IgpgJg5mDOIC5SwJ4DsDGA6AtmALgIYSFEDK62AlhADZgDEEA9mmFlWgG7MDW7qTLgLFShCkJr0EnHhlJVWAbQAMAXVVrEoAA7NYVfIrTaQAD0QBmAEwBGLCoAsANgAcrlbduXbAVl+WjgA0ICiItiq+jg6WAJwqAOy2Cc6+7gC+6SGC2HhEJOSUHHSMLGwc3HwCRXmihZIlMpXyRsrqSrZaSCB6Bq0m3RYI1q6WWAmxqd7x1nYJrsGh4bau1uNuNrbxo76Z2TUiBeJFUoxgAE7nzOdYOrSkAGbXOFg5wvliEtSNsswtxppNKZeoZjKYhpsHC53J5vH4AoswghRq4sL55t44o50a5bHsQG9akcvsV6AwyAAVACCACUKQB9ACyAFFqQARKnU+lkACaADkAMJA7og-rgxAJMZRXxeFQqWKWZzWRzykJI2wq6LeVKOWIRWzOTz4wmHT4nEoMABiAFUADK2pmsqkcrm8wXC3T6UGscUISwJLDWVIqDwTZwJXWqpYIPwTcZ2Gx6lRK2LWY0HD71bCwQhcThQRmmohMVjsX78V4ZurHIQ5vNoAtFwhNOQKNoadTAr1iwbhVzOLUq5ypGWWVyxSZq8KOLZYVPjw16xz99NCIlmoQARwArhcUPmAJJoCBgMxsgBCJfK5eqa6bJJ3e8Px9PF5bfzbaEBnZF3bBvZjftB2TEdvHHSdo2SawxiSVwEgSaxYQWFZV1ye8ikfc59wbI8TzPS8LiuG47keZ5KzvTMa2wTDsKgXDX3Pd9-nbD0ej-H0ANmBJfDnZNrAnBUokcCMpxjGcA0cEZJnlDUVyyAkq2JIoT3oIwG0LSirzLSoKxNSiSRUgh8w06smM-b8uk9Pp-1AIYNRGLANWTfwXFiXFHERadLB4zxZliFx7N8FRLFQ95qwMsBVOMpsGEI65bnufAnnOF49PC5TIqM9SmzM-oLK7ayONs6cHKckdXPczzAPHKE3DcqZhLxeS0qU2tKHzLSKh4XTFI3bN2obXKAXaH8rO9AZioQeJYkDXFuPReZfGVBJRLhVFEI8nxJjmSZQvXLNyIwDqym07rbzQ-SihyfMhpYzoCvG313HsJx3GxJUuOE1aZRmraEIWBJImTELmt6g7robWLLnikikrIlq+sOm7fmYr8RsstjCom8xEFWX7HH9cNdQQiMVsgxCeIjYT0RnKIvDTUGKPSoQAHdCFBSHKVpBkWXZTkqW5fkhVGzHHoAgcVHGXFlSW5dlwHVaB2iRqQw8ILrHRXZGYu5nsDZjmoCtO0HV551+cF90RdFGycb9Pw5zSHxcU8Anh0VjysEajaB0CRw9vQ1n2bUw2zFgIh8HYQgHgj84AApDTlFQAEoGARg79eD1jraK23IScNwPC8Hx-ECVaCeiby-A8SwVGg8dQta74yTdAV6WZPkKQPTvmTILP2OxoZEMloLE4NHwh6W0SNcBrA4KCmvnECGW-e1rBG9JRgAAVrTIAAJekXSpPusd9Ie0UTzxF9sCfrCnhesH9dX4lp+CV-2IR19OBhQ-DyPo4uWONdE4pzeJ-Eox8xaTTPiPOUY9r5ykntGWYaRZ7cVrtLSYLgG6IwgFQc4YAMD4C+AwCBPZJrDmcLPfOAkAjcVcL4Ke6I1iP2CsmEm8Etbv2wOvbcdxmDEHzGyPBBD8CdRvIdNeiNeG0H4bghsQj8GENumjDsGNs4D2WIkRyctDQRH8kGMmSJlR2HPkGSwlcogTmwQdaRsjBHCMIVDIiCVSIpQkTwvhAj5EOPwMo-Kv4T7i38p7R+cJF6+FiOiKeKoeJpAicOZc1gOEgy4ZIg6AAjUgGAAAWxCTpdSqO4xGmT8A5K+H49GD0yG2woVQ1yE5aFxKnkGewLCRjX0wc4axVEsAlLKZQJxMNErJVSspYpWTcmUAqaoqpNtB5ynPqPK+N8p4Gh4vxZw8QIiBEiE1VJHiChgFtIQMObIxCb23LAbJJCrb919PAmadg4LcWgvZWIU9861XiJEeYIZfBdNXkcC5tBaAb3JNSOkB9zYt1IXM8IqY5yphWLEQG44FhBm+i9C+iF+KKhed04FoKv42ntFC10QtYU5zsgiicTyUUhjcpJZw0SxgfTiBMOw6sIwEu3CCsFP9SB-xjvHC+ICxlEEJRvSlGiYw0qReOVFjKMVIOCdfaCbkky6lGDyvlDxeW0BpGAB4+CrliJ0udNJhBJV6pBYa41cBsnTOlb6JU0RgrxAjIqccQUGHRi2oGGBgRvJhhSQpD+5z9VYBtQao1JrrlxWIsM+G4qrWRujXauNTrbmBPIcqGIHrXbesiFPJI4wYEazrqkUNoCI18ohobfJ4ia0SsjfWrNai7kAQiEGB+Mo0hJPgp4fsoklqomHBqReE4fCpABfs2toL62DMTa40Z4aW11oGlAdtsyqXhFrpQixqx4KAxWMy6My57AGgnTXaWgRZ1hu4fOrAvDDnHNOfOm5Hac22z0WsGcKoFjCU1L6pEw4eI2FxMXRCY43A6tBRnDqXNIWHwtsLL9kCf1yrpYq9FZ6kRRDGIkSD8o4LeVg4Cp9CHIYkodChmF2aMPUrWLS5FOGmWiUCPYNlE5VjGIVHBrAVGQ5h0FVgKOwqE5yjFWu1NfKhPOq7Vh1jDLcOiV1LEjEQDuKSU1pkeSaBmAnngN0HIO6ZUAFoUGSl1FsaDGsZKiXM3mi+tmBJjn7NWsGVEzO+nMxEcYgQ9SpmCvZvUoluIvU01iHEeyH1hTAfQHzAEEKrRrr9a+Mplz0OSf7S6tZczRUoklyaBphKOXs95bE-FoJVWmDxSSC5a4IRHLl3WWAaLPjwheYrtsKaogCEmSUOpatxGY1JQ0SSgwl1a+vQywcTJHB63ZU9jk57LTcHXQxJVogpD8gTMc3aZuI3rUtxAM4xiKm8v6DVF6FaQUkjtpUyRX42f8kd9OQd8ynYQIvAMgN1PevcGkPD4QUhSjxv8lE813s9IeOzWg258HfeWjNaEHgmX+A1GXa+Dh5jSWPQ1t+cXG7I9q5E-r9S0gzkmMkbpJJTjfZS0gyIqICYorSMFf50E6fKR8V8b7BMeL0KiHQyMkpXCMLK3PVhrD0SeZkySWxXioAKJEd99wqJxzJh02slU7ykGSUlk4A0kTJgymnjzoQfTJmYAFyYtBcphwISCqmKqsxFSoK5cuKmsXm09JfYKt9+Azktqud97wtcQkvM2Sid6zSe1tKSAify96-eEtJ6JRensBKhkTs4LwRO0+RoZwExjiBgm6ieaGeCowRIG61O7lFSKvcCfTbGh1AuvAOCI1sGcIWaYceCmiOIzkfqKh9gJk7pfqlDEA45TwOJFwRGHeemqeoJ38QWPEOIAmA8RyDyH2TtBw8rB4ovEYipZgDiVJnrRMWgHDg877lNkqhOM9vtGKIax-oR419iJIre8OiOYAJ+9CWA5+owH01+H+SIwkzGBeSozy-YkwCQem6QQAA */
     id: "sync",
     type: "parallel",
+    on: {
+        SET_CONNECTIVITY_STATUS: {
+            actions: assign({
+                connectivityStatus: ({ event }) => event.status,
+            }),
+        },
+    },
     context: ({ input: { engine, message, userInfo } }) => {
         return {
             engine,
             error: null,
+            connectivityStatus: "healthy",
             resources: [
                 "programs",
                 "programStages",
@@ -1861,9 +1884,25 @@ const syncMachine = setup({
                                 guard: ({ event }) =>
                                     shouldRecordDataPush(event.output),
                                 target: "updateLastDataPush",
+                                actions: assign({
+                                    connectivityStatus: ({
+                                        context,
+                                        event,
+                                    }) =>
+                                        event.output.connectivityStatus ??
+                                        context.connectivityStatus,
+                                }),
                             },
                             {
                                 target: "idle",
+                                actions: assign({
+                                    connectivityStatus: ({
+                                        context,
+                                        event,
+                                    }) =>
+                                        event.output.connectivityStatus ??
+                                        context.connectivityStatus,
+                                }),
                             },
                         ],
                         onError: {

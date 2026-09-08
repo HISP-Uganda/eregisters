@@ -107,6 +107,9 @@ function renderTags(text: string | string[] | undefined, color: string) {
 
 function TrackedEntityComponent() {
     const syncActor = SyncContext.useActorRef();
+    const connectivityStatus = SyncContext.useSelector(
+        (a) => a.context.connectivityStatus,
+    );
     const { data, isOpen, isNew, openModal, closeModal } =
         useModalState<FlattenedEvent>();
 
@@ -451,7 +454,12 @@ function TrackedEntityComponent() {
                 <Space>
                     <CalendarOutlined />
                     <span>Client Visits</span>
-                    {!navigator.onLine && <Tag color="orange">Offline</Tag>}
+                    {connectivityStatus === "offline" && (
+                        <Tag color="red">Offline</Tag>
+                    )}
+                    {connectivityStatus === "degraded" && (
+                        <Tag color="orange">Server slow — retrying</Tag>
+                    )}
                 </Space>
             }
             extra={
