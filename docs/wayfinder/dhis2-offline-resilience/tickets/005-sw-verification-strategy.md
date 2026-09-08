@@ -79,7 +79,42 @@ standing infrastructure the map never asked for.
      already covered by `network-reachability.test.ts`'s fake-timer test
      (no browser needed for that half of ticket 003's work).
 
-**Not yet run**: this ticket records the verification *design*, matching
-this map's other grilling tickets' scope. Actually running the spike and
-recording its outcome is separate follow-up work for a session with time to
-build the stand-in server and drive the browser tooling end-to-end.
+**Run and passed.** Built the spike exactly as designed: a plain Node `http`
+stand-in server (no Express needed after all — `http` sufficed) serving a
+copy of a real `pnpm build` output (the actual patched `build/app/`,
+including its real precache manifest), plus a minimal `test.html` that
+registers `./service-worker.js` directly (decoupled from the real app's own
+bootstrap, which needs a live DHIS2 backend this spike doesn't have) and a
+custom `probe-asset.js` deliberately kept out of the precache manifest so a
+live fetch to it exercises the app-shell `NetworkFirst` route rather than
+Workbox's separate precache route. Driven via the `mcp__claude-in-chrome`
+tools, against the real patched `service-worker.js` — not a reimplementation.
+
+Results, in order:
+1. **`clients.claim()` (existing patch 1) confirmed still working**: the
+   very first page load showed `controller=false` at the moment
+   `navigator.serviceWorker.ready` resolved, but `true` ~1.5s later with no
+   manual reload — the SW claimed the client on activation as designed.
+2. **5xx → cache fallback (patch 3)**: primed the cache with one successful
+   fetch of `/probe-asset.js` (200, real content). Switched the server to
+   return 503 for that path, fetched again — result was `{ok:true, status:200,
+   text:"...ok-content..."}`, i.e. the cached response, not the 503. Server
+   log confirmed the 503 was actually served (`[server] 503 /probe-asset.js`),
+   so this is a genuine fallback, not an accidental bypass.
+3. **App-shell timeout (patch 4)**: switched the server to hang (never
+   respond) for `/probe-asset.js`, fetched again — resolved in **8003.7ms**,
+   matching the configured `networkTimeoutSeconds:8` almost to the
+   millisecond, returning the cached content rather than hanging.
+4. **Navigation timeout (patch 5)**: switched the server to hang for
+   `/index.html` specifically, then navigated the tab there directly (a real
+   browser navigation, required since Workbox's navigation route only
+   matches `request.mode === "navigate"`, not a plain `fetch()`). The
+   navigation completed (title "eregisters | DHIS2", real precached HTML
+   body, not a browser network-error page) within the observed tool
+   round-trip (~13.5s wall-clock including tooling overhead) — bounded, not
+   hung, consistent with the same ~8s SW-side race plus overhead.
+
+All four assertions from this ticket's pass/fail bar (decision 3) hold
+against the real, patched artifact. Spike lived entirely in the scratchpad
+directory and was torn down (server stopped, tab closed) — nothing committed
+to the repo, per decision 2.
