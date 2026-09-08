@@ -1,4 +1,3 @@
-import { createOpSqliteDriver } from "./op-sqlite-driver";
 import { createSchema } from "./schema";
 import type { SqlDriver } from "./driver-types";
 
@@ -10,12 +9,22 @@ import type { SqlDriver } from "./driver-types";
  * run before `initSqlDriver` has resolved (i.e. anything outside
  * `src/App.tsx`'s bootstrap) must use `getSqlDriver()`, which throws if
  * called too early — there is no safe synchronous fallback.
+ *
+ * `op-sqlite-driver.ts` (which statically imports the real
+ * `@op-engineering/op-sqlite` package) is imported dynamically, inside
+ * `initSqlDriver`, rather than at module scope — this module (and
+ * `getSqlDriver`'s type) is reached transitively from plain utility code
+ * (`src/utils/utils.ts`, `src/machines/sync-tracker-actors.ts`) that also
+ * gets imported by `node:sqlite`-backed unit tests; a static import here
+ * would drag the real op-sqlite package into every one of those tests,
+ * which don't have (and don't need) its native/web build available.
  */
 
 let driver: SqlDriver | null = null;
 
 export async function initSqlDriver(name: string): Promise<SqlDriver> {
     if (driver) return driver;
+    const { createOpSqliteDriver } = await import("./op-sqlite-driver");
     const created = await createOpSqliteDriver(name);
     await createSchema(created);
     driver = created;

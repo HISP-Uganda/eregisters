@@ -1,6 +1,5 @@
 import { FormItemProps, TableProps } from "antd";
 import dayjs from "dayjs";
-import { Table as DexieTable } from "dexie";
 import { groupBy, isEmpty } from "lodash";
 import {
     Enrollment,
@@ -28,12 +27,25 @@ export type EventForRules = {
     dataValues: Record<string, any>;
 };
 
-import {
-    enrollmentsCollection,
-    eventsCollection,
-    trackedEntitiesCollection,
-} from "../collections";
 import { db } from "../db";
+import { getSqlDriver } from "../db/sqlite/instance";
+import {
+    findEnrollmentsByTrackedEntity,
+} from "../db/sqlite/row-adapters/enrollments";
+import {
+    findEventsByParentEvent,
+    findEventsByTrackedEntity,
+    getEventById,
+} from "../db/sqlite/row-adapters/events";
+import {
+    findTrackedEntitiesByParentEntity,
+    getTrackedEntityById,
+} from "../db/sqlite/row-adapters/tracked-entities";
+import {
+    getEnrollmentsCollection,
+    getEventsCollection,
+    getTrackedEntitiesCollection,
+} from "../db/sqlite/tracker-collections-instance";
 
 const GRID_TOTAL = 24;
 
@@ -1190,67 +1202,52 @@ async function deleteRecursiveDraftSubtree(
     eventId: string | undefined,
     trackedEntityId: string | undefined,
 ): Promise<void> {
-    const eventsTable = eventsCollection.utils.getTable() as DexieTable<
-        FlattenedEvent,
-        string
-    >;
-    const tETable = trackedEntitiesCollection.utils.getTable() as DexieTable<
-        FlattenedTrackedEntity,
-        string
-    >;
-    const enrollmentsTable =
-        enrollmentsCollection.utils.getTable() as DexieTable<
-            FlattenedEnrollment,
-            string
-        >;
+    const sqlDriver = getSqlDriver();
 
     if (eventId) {
-        const childEvents = await eventsTable
-            .filter(
-                (e) => e.parentEvent === eventId && e.syncStatus === "draft",
-            )
-            .toArray();
+        const childEvents = (
+            await findEventsByParentEvent(sqlDriver, eventId)
+        ).filter((e) => e.syncStatus === "draft");
         for (const child of childEvents) {
             await deleteRecursiveDraftSubtree(child.event, undefined);
-            const tx = eventsCollection.delete(child.event);
+            const tx = getEventsCollection().delete(child.event);
             await tx.isPersisted.promise;
         }
     }
 
     if (trackedEntityId) {
-        const childTEs = await tETable
-            .filter(
-                (te) =>
-                    te.parentEntity === trackedEntityId &&
-                    te.syncStatus === "draft",
-            )
-            .toArray();
+        const childTEs = (
+            await findTrackedEntitiesByParentEntity(sqlDriver, trackedEntityId)
+        ).filter((te) => te.syncStatus === "draft");
         for (const childTE of childTEs) {
             // Delete enrollments for this child TE
-            const childEnrollments = await enrollmentsTable
-                .where("trackedEntity")
-                .equals(childTE.trackedEntity)
-                .toArray();
+            const childEnrollments = await findEnrollmentsByTrackedEntity(
+                sqlDriver,
+                childTE.trackedEntity,
+            );
             for (const enrollment of childEnrollments) {
-                const tx = enrollmentsCollection.delete(enrollment.enrollment);
+                const tx = getEnrollmentsCollection().delete(
+                    enrollment.enrollment,
+                );
                 await tx.isPersisted.promise;
             }
             // Delete events for this child TE (recurse into their children first)
-            const childEvents = await eventsTable
-                .filter(
-                    (e) =>
-                        e.trackedEntity === childTE.trackedEntity &&
-                        e.syncStatus === "draft",
+            const childEvents = (
+                await findEventsByTrackedEntity(
+                    sqlDriver,
+                    childTE.trackedEntity,
                 )
-                .toArray();
+            ).filter((e) => e.syncStatus === "draft");
             for (const event of childEvents) {
                 await deleteRecursiveDraftSubtree(event.event, undefined);
-                const tx = eventsCollection.delete(event.event);
+                const tx = getEventsCollection().delete(event.event);
                 await tx.isPersisted.promise;
             }
             // Recurse into child TE's own children, then delete the child TE
             await deleteRecursiveDraftSubtree(undefined, childTE.trackedEntity);
-            const tx = trackedEntitiesCollection.delete(childTE.trackedEntity);
+            const tx = getTrackedEntitiesCollection().delete(
+                childTE.trackedEntity,
+            );
             await tx.isPersisted.promise;
         }
     }
@@ -1265,65 +1262,55 @@ async function deleteRecursiveDraftSubtree(
 export async function deleteEventWithChildren(
     eventId: string,
 ): Promise<{ markedDeleted: FlattenedEvent[] }> {
-    const eventsTable = eventsCollection.utils.getTable() as DexieTable<
-        FlattenedEvent,
-        string
-    >;
-    const teTable = trackedEntitiesCollection.utils.getTable() as DexieTable<
-        FlattenedTrackedEntity,
-        string
-    >;
-    const enrollmentsTable =
-        enrollmentsCollection.utils.getTable() as DexieTable<
-            FlattenedEnrollment,
-            string
-        >;
-
+    const sqlDriver = getSqlDriver();
     const markedDeleted: FlattenedEvent[] = [];
 
     // Get the root event to know its trackedEntity (needed for TE-children dimension)
-    const rootEvent = await eventsTable.get(eventId);
+    const rootEvent = await getEventById(sqlDriver, eventId);
     if (!rootEvent) return { markedDeleted };
 
     // --- Recursive helper ---
     async function processEvent(event: FlattenedEvent): Promise<void> {
         // 1. Event-children dimension: events whose parentEvent === this event
-        const directChildEvents = await eventsTable
-            .filter((e) => e.parentEvent === event.event)
-            .toArray();
+        const directChildEvents = await findEventsByParentEvent(
+            sqlDriver,
+            event.event,
+        );
         for (const child of directChildEvents) {
             await processEvent(child);
         }
 
         // 2. TE-children dimension: TEs whose parentEntity === this event's trackedEntity
         //    then process all events belonging to those child TEs
-        const childTEs = await teTable
-            .filter((te) => te.parentEntity === event.trackedEntity)
-            .toArray();
+        const childTEs = await findTrackedEntitiesByParentEntity(
+            sqlDriver,
+            event.trackedEntity,
+        );
         for (const childTE of childTEs) {
             // Find all events for this child TE
-            const childTEEvents = await eventsTable
-                .filter((e) => e.trackedEntity === childTE.trackedEntity)
-                .toArray();
+            const childTEEvents = await findEventsByTrackedEntity(
+                sqlDriver,
+                childTE.trackedEntity,
+            );
             for (const childTEEvent of childTEEvents) {
                 await processEvent(childTEEvent);
             }
             // Clean up the child TE's enrollments
-            const childEnrollments = await enrollmentsTable
-                .where("trackedEntity")
-                .equals(childTE.trackedEntity)
-                .toArray();
+            const childEnrollments = await findEnrollmentsByTrackedEntity(
+                sqlDriver,
+                childTE.trackedEntity,
+            );
             for (const enrollment of childEnrollments) {
                 if (
                     enrollment.syncStatus === "draft" ||
                     enrollment.syncStatus === "pending"
                 ) {
-                    const tx = enrollmentsCollection.delete(
+                    const tx = getEnrollmentsCollection().delete(
                         enrollment.enrollment,
                     );
                     await tx.isPersisted.promise;
                 } else {
-                    const tx = enrollmentsCollection.update(
+                    const tx = getEnrollmentsCollection().update(
                         enrollment.enrollment,
                         (d) => {
                             d.syncStatus = "deleted";
@@ -1337,12 +1324,12 @@ export async function deleteEventWithChildren(
                 childTE.syncStatus === "draft" ||
                 childTE.syncStatus === "pending"
             ) {
-                const tx = trackedEntitiesCollection.delete(
+                const tx = getTrackedEntitiesCollection().delete(
                     childTE.trackedEntity,
                 );
                 await tx.isPersisted.promise;
             } else {
-                const tx = trackedEntitiesCollection.update(
+                const tx = getTrackedEntitiesCollection().update(
                     childTE.trackedEntity,
                     (d) => {
                         d.syncStatus = "deleted";
@@ -1352,16 +1339,14 @@ export async function deleteEventWithChildren(
             }
         }
 
-        // 3. Now handle this event itself (after its children are processed)
+        // 3. Now handle this event itself (after its children are processed).
+        // indicator_evaluations cleanup happens automatically inside
+        // eventsRowAdapter.deleteRow — no separate call needed here.
         if (event.syncStatus === "draft" || event.syncStatus === "pending") {
-            const tx = eventsCollection.delete(event.event);
+            const tx = getEventsCollection().delete(event.event);
             await tx.isPersisted.promise;
-            await db.indicatorEvaluations
-                .where("eventId")
-                .equals(event.event)
-                .delete();
         } else {
-            const tx = eventsCollection.update(event.event, (d) => {
+            const tx = getEventsCollection().update(event.event, (d) => {
                 d.syncStatus = "deleted";
             });
             await tx.isPersisted.promise;
@@ -1376,67 +1361,60 @@ export async function deleteEventWithChildren(
 export async function deleteTrackedEntityWithChildren(
     trackedEntityId: string,
 ): Promise<{ needsSync: boolean }> {
-    const eventsTable = eventsCollection.utils.getTable() as DexieTable<
-        FlattenedEvent,
-        string
-    >;
-    const enrollmentsTable =
-        enrollmentsCollection.utils.getTable() as DexieTable<
-            FlattenedEnrollment,
-            string
-        >;
-    const teTable = trackedEntitiesCollection.utils.getTable() as DexieTable<
-        FlattenedTrackedEntity,
-        string
-    >;
+    const sqlDriver = getSqlDriver();
 
-    const rootTE = await teTable.get(trackedEntityId);
+    const rootTE = await getTrackedEntityById(sqlDriver, trackedEntityId);
     if (!rootTE) return { needsSync: false };
 
     let needsSync = false;
 
-    const allEvents = await eventsTable
-        .filter((e) => e.trackedEntity === trackedEntityId)
-        .toArray();
+    const allEvents = await findEventsByTrackedEntity(
+        sqlDriver,
+        trackedEntityId,
+    );
 
     for (const event of allEvents) {
         if (event.syncStatus === "draft" || event.syncStatus === "pending") {
-            await eventsCollection.delete(event.event).isPersisted.promise;
-            await db.indicatorEvaluations
-                .filter((e) => e.eventId === event.event)
-                .delete();
+            // indicator_evaluations cleanup happens automatically inside
+            // eventsRowAdapter.deleteRow.
+            await getEventsCollection().delete(event.event).isPersisted
+                .promise;
         } else {
-            await eventsCollection.update(event.event, (d) => {
+            await getEventsCollection().update(event.event, (d) => {
                 d.syncStatus = "deleted";
             }).isPersisted.promise;
             needsSync = true;
         }
     }
 
-    const enrollments = await enrollmentsTable
-        .filter((e) => e.trackedEntity === trackedEntityId)
-        .toArray();
+    const enrollments = await findEnrollmentsByTrackedEntity(
+        sqlDriver,
+        trackedEntityId,
+    );
 
     for (const enrollment of enrollments) {
         if (
             enrollment.syncStatus === "draft" ||
             enrollment.syncStatus === "pending"
         ) {
-            await enrollmentsCollection.delete(enrollment.enrollment)
+            await getEnrollmentsCollection().delete(enrollment.enrollment)
                 .isPersisted.promise;
         } else {
-            await enrollmentsCollection.update(enrollment.enrollment, (d) => {
-                d.syncStatus = "deleted";
-            }).isPersisted.promise;
+            await getEnrollmentsCollection().update(
+                enrollment.enrollment,
+                (d) => {
+                    d.syncStatus = "deleted";
+                },
+            ).isPersisted.promise;
             needsSync = true;
         }
     }
 
     if (rootTE.syncStatus === "draft" || rootTE.syncStatus === "pending") {
-        await trackedEntitiesCollection.delete(trackedEntityId).isPersisted
-            .promise;
+        await getTrackedEntitiesCollection().delete(trackedEntityId)
+            .isPersisted.promise;
     } else {
-        await trackedEntitiesCollection.update(trackedEntityId, (d) => {
+        await getTrackedEntitiesCollection().update(trackedEntityId, (d) => {
             d.syncStatus = "deleted";
         }).isPersisted.promise;
         needsSync = true;
@@ -1465,33 +1443,32 @@ export async function cancelDataModal(
     if ("event" in data) {
         // FlattenedEvent branch
         if (data.syncStatus === "draft") {
-            const tx = eventsCollection.delete(data.event);
+            const tx = getEventsCollection().delete(data.event);
             await tx.isPersisted.promise;
         } else {
-            await eventsCollection.utils.insertLocally(data);
+            await getEventsCollection().utils.insertLocally(data);
         }
         await deleteRecursiveDraftSubtree(data.event, undefined);
     } else if ("trackedEntityType" in data) {
         // FlattenedTrackedEntity branch
         if (data.syncStatus === "draft") {
-            const tx = trackedEntitiesCollection.delete(data.trackedEntity);
+            const tx = getTrackedEntitiesCollection().delete(
+                data.trackedEntity,
+            );
             await tx.isPersisted.promise;
             // Delete the linked enrollment (guard: enrollment may not exist)
-            const enrollmentsTable =
-                enrollmentsCollection.utils.getTable() as DexieTable<
-                    FlattenedEnrollment,
-                    string
-                >;
-            const enrollment = await enrollmentsTable
-                .where("trackedEntity")
-                .equals(data.trackedEntity)
-                .first();
+            const [enrollment] = await findEnrollmentsByTrackedEntity(
+                getSqlDriver(),
+                data.trackedEntity,
+            );
             if (enrollment) {
-                const etx = enrollmentsCollection.delete(enrollment.enrollment);
+                const etx = getEnrollmentsCollection().delete(
+                    enrollment.enrollment,
+                );
                 await etx.isPersisted.promise;
             }
         } else {
-            await trackedEntitiesCollection.utils.insertLocally(data);
+            await getTrackedEntitiesCollection().utils.insertLocally(data);
         }
         await deleteRecursiveDraftSubtree(undefined, data.trackedEntity);
     }
