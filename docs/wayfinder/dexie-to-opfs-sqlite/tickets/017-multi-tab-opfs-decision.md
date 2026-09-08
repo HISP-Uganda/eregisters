@@ -82,3 +82,20 @@ blocked on ticket 012 specifically.
 
 Doesn't block anything already built — Phases 1-3 remain unaffected;
 this sits in front of their existing bootstrap sequence in `App.tsx`.
+
+### Follow-up fix: self-conflict on repeat calls
+
+Shortly after landing, hit exactly the failure mode this feature exists
+to prevent — against itself: `requestPrimaryTab()` issued a brand new
+`navigator.locks.request()` on every call, so a *second* call from the
+same tab (dev-mode Vite Fast Refresh re-running `App.tsx`'s effect on a
+hot update, with no real page reload — or any future legitimate remount)
+saw its own first, still-held-forever request as unavailable and
+concluded it was a duplicate tab, permanently, since nothing released
+the orphaned first request. Fixed by caching the request as one
+module-scoped promise per tab, so every call after the first just
+replays the same result. A currently-stuck tab that hit the old bug
+needs a real reload (not just picking up the code fix via Fast Refresh)
+to release the stale lock the browser is still holding from the buggy
+first request — the fix prevents new occurrences, it can't retroactively
+free a lock already granted in a live session.
