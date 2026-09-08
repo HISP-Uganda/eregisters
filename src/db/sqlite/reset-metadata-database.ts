@@ -23,10 +23,17 @@ import { UNIFORM_METADATA_TABLES } from "./schema";
  * `UNIFORM_METADATA_TABLES` for schema convenience — wiping it on a
  * metadata-save failure would be the same "throw away unsynced local
  * data for no reason" mistake as wiping tracker tables. This narrowing
- * was confirmed with the user before building it, not assumed.
+ * was confirmed with the user before building it, not assumed. Same
+ * reasoning excludes `migration_status` (Phase 3's one-time
+ * Dexie-copy-complete flag) — wiping it would make a device re-run the
+ * Dexie migration scan on its next metadata-failure recovery for no
+ * reason (harmless once Dexie data is already dropped, but still the
+ * wrong table to touch here).
  */
 const METADATA_TABLES_TO_RESET: readonly string[] = [
-    ...UNIFORM_METADATA_TABLES.filter((table) => table !== "hmis_drafts"),
+    ...UNIFORM_METADATA_TABLES.filter(
+        (table) => table !== "hmis_drafts" && table !== "migration_status",
+    ),
     "organisation_units",
     "option_sets",
     "option_groups",

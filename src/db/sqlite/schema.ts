@@ -169,6 +169,7 @@ export const UNIFORM_METADATA_TABLES: readonly string[] = [
     "ui_config",
     "stage_hierarchy",
     "hmis_drafts",
+    "migration_status",
 ];
 
 export const METADATA_SCHEMA_STATEMENTS: readonly string[] = [

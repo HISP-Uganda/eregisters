@@ -68,6 +68,25 @@ describe("resetMetadataDatabase", () => {
         expect(drafts.rows).toHaveLength(1);
     });
 
+    it("does not touch migration_status (Phase 3's one-time Dexie-copy flag)", async () => {
+        const { driver, close: c } = createNodeSqliteDriver();
+        close = c;
+        await createSchema(driver);
+        await saveMetadataTable(
+            driver,
+            "migration_status",
+            [{ id: "dexie-migration", completedAt: "2026-01-01" }],
+            (r) => r.id,
+        );
+
+        await resetMetadataDatabase(driver);
+
+        const status = await driver.execute(
+            "SELECT * FROM migration_status",
+        );
+        expect(status.rows).toHaveLength(1);
+    });
+
     it("wraps the whole reset in one transaction", async () => {
         const { driver, close: c } = createNodeSqliteDriver();
         close = c;
