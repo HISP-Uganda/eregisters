@@ -104,3 +104,62 @@ trackedEntities/enrollments/events. This becomes an informational
    continues unmodified against the new SQLite-backed collections —
    pending/failed rows carried over keep getting pushed exactly as
    before, just from a different underlying store.
+
+## Implementation progress: procedure actually built (Phase 3)
+
+On branch `migration/dexie-data-copy-phase3` (built on top of Phase 2's
+branch, not merged to `main` — same ticket-012 blocker as Phases 1-2),
+this procedure was implemented, with two scope refinements confirmed
+with the user against real facts gathered during implementation:
+
+- **What actually gets copied**: `MOHRegister_TrackedEntities`/
+  `_Enrollments`/`_Events` (every row, any `syncStatus`) and
+  `MOHRegisterDB.hmisDrafts` (genuine irreplaceable local draft data).
+  **Not** copied: every DHIS2-metadata table in `MOHRegisterDB` (Phase 1
+  already re-pulls these fresh — copying old rows would just get
+  overwritten) and `indicatorEvaluations` (a computed cache, confirmed
+  with the user to recompute rather than migrate, same treatment as
+  metadata). `MOHRegister_RuleResults` is confirmed always-empty on every
+  real device (dead code, zero writers ever, per git history) — still
+  dropped during cleanup for tidiness, never read from. This narrows
+  "all 5 Dexie databases" in decision/procedure-summary language above to
+  4 genuinely-copied tables plus a 5th dropped-but-never-read database.
+- New `src/db/sqlite/migrate-from-dexie.ts`: `runDexieMigrationIfNeeded(db,
+  source)` — flag check, presence check, copy (via a `copyTable` helper
+  shared across all 4 tables), verify (row counts for exactly the ids
+  just written, not a blind table count — a concurrent sync-machine pull
+  could otherwise be writing to the same tables), mark complete + drop
+  Dexie on success, or clean up exactly what was written (via the real
+  `deleteTrackedEntityCascade`/`deleteEnrollmentCascade`/
+  `deleteEventCascade` — a raw `DELETE FROM` would skip child-table
+  cleanup and trip FK constraints in the wrong order) and leave the flag
+  unset on failure, per decision 3's no-partial-resume rule.
+- `DexieMigrationSource` is an injected interface — the orchestration
+  logic above is unit-tested against a fake; the real implementation
+  (`dexie-migration-source.ts`) uses `Dexie.exists()` for the presence
+  check (never creates a database that isn't there), and opens the 3
+  tracker databases schema-less (`new Dexie(name)` + `.open()` with no
+  `.version().stores()` declared) rather than reverse-engineering the
+  index string `tanstack-dexie-db-collection` set up privately for them.
+- New `migration_status` single-row flag table (via the existing
+  `getConfigRow`/`putConfigRow` pattern) and `migration-progress.ts` (a
+  same-tab pub/sub, same shape as `reactive-config.ts`) back a new
+  non-blocking `<Alert>` banner (`migration-progress-banner.tsx`, wired
+  into `__root.tsx`) — matches decision 4, reusing the exact banner
+  pattern the existing `showAppReload`/`showMetadataReload` alerts use.
+- Wired into `src/App.tsx`'s bootstrap as fire-and-forget, right after
+  `initTrackerCollections` resolves and before `setSqlDriver` — the app
+  renders immediately regardless of copy progress, matching decision 4's
+  non-blocking requirement.
+- A `/code-review` pass afterwards (Standards + Spec axes) found no
+  correctness gaps — only one worthwhile duplication smell (4
+  near-identical copy blocks), collapsed into a shared `copyTable` helper
+  with no behavior change.
+- Verification: `pnpm exec tsc --noEmit -p tsconfig.json` clean, full
+  `pnpm exec vitest run` passing (42 files / 242 tests). No real-browser/
+  IndexedDB testing attempted — `dexie-migration-source.ts`'s actual
+  `Dexie.exists`/schema-less-open/`Dexie.delete` calls can only be
+  verified by hand against real leftover Dexie data; flagged as a manual
+  smoke-test item for whoever eventually deploys, not blocked on ticket
+  012 specifically (this piece doesn't need OPFS/COOP-COEP to be
+  testable, just a real browser with real Dexie data).
