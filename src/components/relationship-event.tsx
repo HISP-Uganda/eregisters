@@ -7,10 +7,10 @@ import Relation from "./relation";
 import { SyncStatusComp } from "./sync-status-comp";
 
 import {
-    enrollmentsCollection,
-    eventsCollection,
-    trackedEntitiesCollection,
-} from "../collections";
+    getEnrollmentsCollection,
+    getEventsCollection,
+    getTrackedEntitiesCollection,
+} from "../db/sqlite/tracker-collections-instance";
 
 const RELATIONSHIP_TABS_CLASS = "eregisters-relationship-tabs";
 const RELATIONSHIP_TABS_CSS = `
@@ -66,6 +66,9 @@ export default function RelationshipEvent({
     mainEvent: FlattenedEvent;
 }) {
     const [activeKey, setActiveKey] = useState<string>("");
+    const trackedEntitiesCollection = getTrackedEntitiesCollection();
+    const eventsCollection = getEventsCollection();
+    const enrollmentsCollection = getEnrollmentsCollection();
 
     const { data: children } = useLiveSuspenseQuery((q) =>
         q

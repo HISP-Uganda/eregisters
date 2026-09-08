@@ -13,7 +13,7 @@ import {
     programRuleResultsEqual,
 } from "../utils/utils";
 import { applyRuleResultsToForm, FormEvent } from "./common";
-import { trackedEntitiesCollection } from "../collections";
+import { getTrackedEntitiesCollection } from "../db/sqlite/tracker-collections-instance";
 
 const trackedEntityFormMachine = setup({
     types: {
@@ -98,7 +98,7 @@ const trackedEntityFormMachine = setup({
                     formData: Record<string, any>;
                 };
             }) => {
-                await trackedEntitiesCollection.utils.insertLocally({
+                await getTrackedEntitiesCollection().utils.insertLocally({
                     ...data,
                     attributes: {
                         ...data.attributes,
@@ -133,7 +133,6 @@ const trackedEntityFormMachine = setup({
             form,
             persistenceError: null,
             previousAssignments: {},
-            trackedEntitiesCollection,
         };
     },
     states: {

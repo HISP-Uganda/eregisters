@@ -37,9 +37,9 @@ import { TrackedEntityContext } from "../machines";
 import { SyncContext } from "../machines/sync";
 import { useMetadata } from "../hooks/useMetadata";
 import {
-    enrollmentsCollection,
-    trackedEntitiesCollection,
-} from "../collections";
+    getEnrollmentsCollection,
+    getTrackedEntitiesCollection,
+} from "../db/sqlite/tracker-collections-instance";
 
 const { Text } = Typography;
 export const TrackedEntitiesIndexRoute = createRoute({
@@ -59,6 +59,8 @@ function TrackedEntitiesSearch() {
         orgUnitName,
     } = useMetadata();
     const navigate = TrackedEntitiesIndexRoute.useNavigate();
+    const trackedEntitiesCollection = getTrackedEntitiesCollection();
+    const enrollmentsCollection = getEnrollmentsCollection();
     const mainStageDataElements = useMemo(
         () =>
             new Set(

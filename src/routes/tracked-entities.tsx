@@ -19,7 +19,7 @@ import { ClientSchema } from "../schemas";
 import { RootRoute } from "./__root";
 
 import dayjs from "dayjs";
-import { trackedEntitiesCollection } from "../collections";
+import { getTrackedEntitiesCollection } from "../db/sqlite/tracker-collections-instance";
 import { useMetadata } from "../hooks/useMetadata";
 
 const { Content } = Layout;
@@ -42,6 +42,7 @@ export const TrackedEntitiesRoute = createRoute({
 function TrackedEntities() {
     const { program, trackedEntityAttributes, optionSets, orgUnit } =
         useMetadata();
+    const trackedEntitiesCollection = getTrackedEntitiesCollection();
 
     const [form] = Form.useForm();
 
