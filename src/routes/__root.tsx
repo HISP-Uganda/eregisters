@@ -28,6 +28,7 @@ import {
 } from "antd";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
+import utc from "dayjs/plugin/utc";
 import React, { useEffect, useState } from "react";
 
 import { eq, or, useLiveSuspenseQuery } from "@tanstack/react-db";
@@ -54,6 +55,21 @@ import type {
 } from "../schemas";
 
 dayjs.extend(relativeTime);
+dayjs.extend(utc);
+
+/**
+ * DHIS2's system/info.serverDate (the source of lastDataPull/lastMetadataPull,
+ * see sync.ts's extractServerDate) is a naive timestamp with no timezone
+ * marker (e.g. "2024-01-15T10:30:00.000") that represents the server's UTC
+ * clock — plain dayjs(...) would otherwise parse it as browser-local time,
+ * which is wrong by the browser's UTC offset (this app's users are in
+ * Africa/Kampala, UTC+3, while the DHIS2 server's JVM runs UTC). lastDataPush
+ * is unaffected: it's set client-side via new Date().toISOString(), which
+ * already carries an explicit "Z".
+ */
+function fromServerTime(serverTimestamp: string) {
+    return dayjs.utc(serverTimestamp).fromNow();
+}
 
 type DataEngine = ReturnType<typeof import("@dhis2/app-runtime").useDataEngine>;
 
@@ -698,7 +714,7 @@ function LayoutWithDrafts() {
                 idleLabel="Pull Data"
                 loadingLabel="Pulling..."
                 lastTime={
-                    lastDataPull ? dayjs(lastDataPull).fromNow() : undefined
+                    lastDataPull ? fromServerTime(lastDataPull) : undefined
                 }
                 primaryAction={() =>
                     syncActor.send({ type: "START_DATA_SYNC" })
@@ -721,7 +737,7 @@ function LayoutWithDrafts() {
                 loadingLabel="Syncing..."
                 lastTime={
                     lastMetadataPull
-                        ? dayjs(lastMetadataPull).fromNow()
+                        ? fromServerTime(lastMetadataPull)
                         : undefined
                 }
                 primaryAction={() =>
