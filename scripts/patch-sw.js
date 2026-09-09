@@ -1,8 +1,11 @@
 // scripts/patch-sw.js
 // Runs after d2-app-scripts build via the "postbuild" npm hook.
-// Applies two patches to build/app/service-worker.js:
+// Applies five patches to build/app/service-worker.js:
 //   1. Appends clients.claim() so controllerchange fires → page reloads after SW update
 //   2. Fixes navigation handler to serve fresh index.html from network (not old precache)
+//   3. Throws on !response.ok so a 5xx is treated as a failure, not a success
+//   4. Adds an 8s timeout to the app-shell NetworkFirst strategy
+//   5. Adds an 8s timeout to the navigation handler's fetch
 
 const fs = require('fs')
 const path = require('path')
@@ -61,6 +64,91 @@ if (!sw.includes(NAV_SENTINEL)) {
     }
 } else {
     console.log('[patch-sw] Patch 2 already applied — skipping')
+}
+
+// ── Patch 3: Throw on !response.ok so 5xx is treated as a failure ────────────
+// Workbox's NetworkFirst/NetworkAndTryCache strategies only fall back to
+// cache when fetch() itself rejects — a resolved 502/503 Response is passed
+// straight through as "success". Every strategy shares one plugins array
+// (plugins:[we], confirmed 4 occurrences in the built bundle), where `we` is
+// dhis2ConnectionStatusPlugin. Inserting a plugin BEFORE it whose
+// fetchDidSucceed throws on !response.ok makes Workbox route the failure to
+// every plugin's fetchDidFail instead — which also fixes
+// dhis2ConnectionStatusPlugin's "reports connected for a 5xx" bug as a side
+// effect, since it never sees the bad response as a success.
+const THROW_5XX_SENTINEL = '__patch_5xx_throw__'
+
+// Confirmed against a real build (as of this writing) that every one of the
+// 4 Workbox strategies shares this same plugin array — if a future
+// @dhis2/pwa version changes that count, still apply the patch to whatever
+// is found (an incomplete fix is better than none), but warn loudly so a
+// structural change doesn't silently go unnoticed.
+const EXPECTED_PLUGINS_ARRAY_COUNT = 4
+
+if (!sw.includes(THROW_5XX_SENTINEL)) {
+    const pluginsPattern = /plugins:\[(\w+)\]/g
+    const occurrences = (sw.match(pluginsPattern) || []).length
+    if (occurrences > 0) {
+        const definition = `// ${THROW_5XX_SENTINEL}\n// Thrown from fetchDidSucceed on a non-ok response so Workbox treats a 5xx the same as a rejected fetch (cache fallback + fetchDidFail on every plugin, incl. dhis2ConnectionStatusPlugin).\nconst __patch5xxPlugin={fetchDidSucceed:async({response})=>{if(!response.ok){throw new Error('${THROW_5XX_SENTINEL}:'+response.status)}return response;}};\n`
+        sw = definition + sw
+        sw = sw.replace(pluginsPattern, (match, pluginVar) =>
+            `plugins:[__patch5xxPlugin,${pluginVar}]`
+        )
+        modified = true
+        console.log(`[patch-sw] Applied patch 3: 5xx-throws-as-failure plugin spliced into ${occurrences} strategy plugin array(s)`)
+        if (occurrences !== EXPECTED_PLUGINS_ARRAY_COUNT) {
+            console.warn(`[patch-sw] Patch 3: expected ${EXPECTED_PLUGINS_ARRAY_COUNT} plugins:[X] arrays, found ${occurrences} — SW strategy structure may have changed, some strategies may be unpatched`)
+        }
+    } else {
+        console.warn('[patch-sw] Patch 3: no plugins:[X] arrays found — skipping (SW structure may have changed)')
+    }
+} else {
+    console.log('[patch-sw] Patch 3 already applied — skipping')
+}
+
+// ── Patch 4: Timeout the app-shell NetworkFirst strategy ─────────────────────
+// Scoped to the app-shell cache only (GET-only, idempotent) — deliberately
+// NOT applied to the default handler, which also carries tracker-import
+// POST/mutate calls; a blanket timeout there risks aborting a legitimately
+// slow upload on rural connectivity.
+const APP_SHELL_TIMEOUT_SENTINEL = '__patch_app_shell_timeout__'
+
+if (!sw.includes(APP_SHELL_TIMEOUT_SENTINEL)) {
+    const appShellPattern = /cacheName:"app-shell",/
+    if (appShellPattern.test(sw)) {
+        sw = sw.replace(appShellPattern, `cacheName:"app-shell",networkTimeoutSeconds:8,`)
+        sw += `\n// ${APP_SHELL_TIMEOUT_SENTINEL}\n`
+        modified = true
+        console.log('[patch-sw] Applied patch 4: 8s networkTimeoutSeconds on the app-shell NetworkFirst strategy')
+    } else {
+        console.warn('[patch-sw] Patch 4: app-shell strategy not found — skipping (SW structure may have changed)')
+    }
+} else {
+    console.log('[patch-sw] Patch 4 already applied — skipping')
+}
+
+// ── Patch 5: Timeout the navigation handler's fetch ───────────────────────────
+// The navigation handler (already patched by patch 2 to fall back to
+// precache on a redirect/not-ok response) has no timeout — a genuinely
+// hanging response blocks it forever. Wrap its fetch() in the same 8s
+// timeout, falling through to the existing precache-fallback .catch().
+const NAV_TIMEOUT_SENTINEL = '__patch_nav_timeout__'
+
+if (!sw.includes(NAV_TIMEOUT_SENTINEL)) {
+    const navFetchPattern = /\(\{request:(\w+)\}\)=>fetch\(\1\)\.then\(/
+    if (navFetchPattern.test(sw)) {
+        const helper = `// ${NAV_TIMEOUT_SENTINEL}\n// Races the navigation fetch against an 8s timeout so a hanging server falls back to precache instead of blocking forever.\nfunction __patchFetchWithTimeout(fetchPromise,ms){return Promise.race([fetchPromise,new Promise((_,reject)=>setTimeout(()=>reject(new Error('${NAV_TIMEOUT_SENTINEL}')),ms))]);}\n`
+        sw = helper + sw
+        sw = sw.replace(navFetchPattern, (match, varName) =>
+            `({request:${varName}})=>__patchFetchWithTimeout(fetch(${varName}),8000).then(`
+        )
+        modified = true
+        console.log('[patch-sw] Applied patch 5: 8s timeout on the navigation handler fetch')
+    } else {
+        console.warn('[patch-sw] Patch 5: navigation handler fetch pattern not found — skipping (SW structure may have changed)')
+    }
+} else {
+    console.log('[patch-sw] Patch 5 already applied — skipping')
 }
 
 // ── Write patched file ────────────────────────────────────────────────────────
