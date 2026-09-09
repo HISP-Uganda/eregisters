@@ -4,13 +4,9 @@ import {
     CategoryOptionCombo,
     DataElement,
     DataSet,
-    Dhis2Report,
     DEFAULT_DATA_PULL_PAGE_SIZE,
     emptyStageHierarchyConfig,
     emptyUIConfig,
-    Enrollment,
-    Event,
-    FlattenedEnrollment,
     FlattenedEvent,
     FlattenedOptionSet,
     FlattenedTrackedEntity,
@@ -31,31 +27,18 @@ import {
 import type { useDataEngine } from "@dhis2/app-runtime";
 import { createActorContext } from "@xstate/react";
 import { MessageInstance } from "antd/es/message/interface";
-import { Table } from "dexie";
 import { isEmpty } from "lodash";
+import type { SqlDriver } from "../db/sqlite/driver-types";
+import type {
+    CheckMetadataInfoResult,
+    QueryMetadataInfoResult,
+} from "../db/sqlite/metadata-info";
+import { writePulledTrackedEntityPage } from "../db/sqlite/pull-page";
 import {
-    enrollmentsCollection,
-    eventsCollection,
-    trackedEntitiesCollection,
-} from "../collections";
-import { db } from "../db";
-import {
-    mergeBulkEnrollments,
-    mergeBulkEvents,
-    mergeBulkTrackedEntities,
-} from "../db/merge-utils";
-import {
-    transformEnrollment,
-    transformEvent,
-    transformTrackedEntity,
-} from "../db/transformers";
-import {
-    checkInfo,
-    flattenEnrollment,
-    flattenEvent,
-    flattenTrackedEntity,
-    queryInfo,
-} from "../utils/utils";
+    getEnrollmentsCollection,
+    getEventsCollection,
+    getTrackedEntitiesCollection,
+} from "../db/sqlite/tracker-collections-instance";
 import {
     DataPullMode,
     DataPushMode,
@@ -67,11 +50,20 @@ import {
     shouldUseLastDataPull,
     shouldUseLastUpdatedFilter,
 } from "./sync-metadata-mode";
+import { type ConnectivityStatus } from "./network-reachability";
 import {
-    isDhis2Reachable,
-    toConnectivityStatus,
-    type ConnectivityStatus,
-} from "./network-reachability";
+    checkMetadataSyncStatus,
+    deleteMetadataForResync,
+    getConfiguredPageSize,
+    getMetadataVersionRecord,
+    persistCurrentSyncState,
+    pullStageHierarchyConfig,
+    pullUiConfig,
+    queryMetadata,
+    resetMetadataForRecovery,
+    saveMetadataToSqlite,
+} from "./sync-metadata-actors";
+import { processBatchSync as processBatchSyncImpl } from "./sync-tracker-actors";
 
 /**
  * Which attribute/data-element ids belong to this program (and, for data
@@ -129,58 +121,11 @@ function nextConnectivityStatus(
     return event.output.connectivityStatus ?? context.connectivityStatus;
 }
 
-async function submitTrackerImportAndWaitForReport({
-    engine,
-    data,
-    params,
-}: {
-    engine: ReturnType<typeof useDataEngine>;
-    data: any;
-    params: Record<string, any>;
-}) {
-    const response = (await engine.mutate({
-        resource: "tracker",
-        type: "create",
-        data,
-        params: {
-            ...params,
-            async: false,
-        },
-    })) as unknown as Dhis2Report;
-
-    return response;
-    // const jobId = extractTrackerJobId(response);
-    // const startedAt = Date.now();
-
-    // while (Date.now() - startedAt < timeoutMs) {
-    //     const jobResponse = (await engine.query({
-    //         job: {
-    //             resource: `tracker/jobs/${jobId}`,
-    //         },
-    //     })) as { job: unknown };
-
-    //     if (isTrackerJobComplete(jobResponse.job)) {
-    //         const reportResponse = (await engine.query({
-    //             report: {
-    //                 resource: `tracker/jobs/${jobId}/report`,
-    //                 params: {
-    //                     reportMode: "FULL",
-    //                 },
-    //             },
-    //         })) as { report: Dhis2Report };
-    //         return reportResponse.report;
-    //     }
-
-    //     await sleep(pollIntervalMs);
-    // }
-
-    // throw new Error(`Timed out waiting for DHIS2 tracker job ${jobId}`);
-}
-
 export interface SyncContext {
     error: Error | null;
     info: string | undefined;
     engine: ReturnType<typeof useDataEngine>;
+    sqlDriver: SqlDriver;
     lastDataPull: string | undefined;
     lastDataPush: string | undefined;
     lastMetadataPull: string | undefined;
@@ -191,7 +136,7 @@ export interface SyncContext {
     validAttributeIds: Set<string>;
     validDataElementsByStage: Map<string, Set<string>>;
     message: MessageInstance;
-    metadata: Partial<Awaited<ReturnType<typeof queryInfo>>>;
+    metadata: Partial<QueryMetadataInfoResult>;
     userInfo: MeUser;
     rawMetadata: Metadata;
     uiConfig: UIConfig;
@@ -203,341 +148,6 @@ export interface SyncContext {
     periodType?: string;
     connectivityStatus: ConnectivityStatus;
 }
-
-/**
- * connectivityStatus is only ever set here (from the isDhis2Reachable check
- * this sub-call ran), never on the "nothing to do" early-return paths —
- * see nextConnectivityStatus's doc comment for why that's on purpose.
- */
-type SyncSubResult = {
-    succeeded: number;
-    failed: number;
-    connectivityStatus?: ConnectivityStatus;
-};
-type SyncUpsertResult = SyncSubResult & { processed: number };
-
-const syncReportToLocal = async ({
-    entities,
-    engine,
-    validAttributeIds,
-    validDataElementsByStage,
-    dataElements,
-    trackedEntityAttributes,
-    optionSets,
-}: {
-    entities: Array<
-        FlattenedTrackedEntity | FlattenedEnrollment | FlattenedEvent
-    >;
-    engine: ReturnType<typeof useDataEngine>;
-    validAttributeIds: Set<string>;
-    validDataElementsByStage: Map<string, Set<string>>;
-    dataElements: Map<string, DataElement> | undefined;
-    trackedEntityAttributes: Map<string, TrackedEntityAttribute> | undefined;
-    optionSets: Map<string, FlattenedOptionSet[]> | undefined;
-}): Promise<SyncUpsertResult> => {
-    const reachability = await isDhis2Reachable(engine);
-    if (!reachability.reachable) {
-        return {
-            processed: 0,
-            succeeded: 0,
-            failed: 0,
-            connectivityStatus: toConnectivityStatus(reachability),
-        };
-    }
-
-    const payload = entities.reduce<{
-        trackedEntities: TrackedEntity[];
-        enrollments: Enrollment[];
-        events: Event[];
-    }>(
-        (acc, entity) => {
-            if ("trackedEntityType" in entity) {
-                acc.trackedEntities.push(
-                    transformTrackedEntity(
-                        entity,
-                        validAttributeIds,
-                        trackedEntityAttributes,
-                        optionSets,
-                    ),
-                );
-            } else if ("enrolledAt" in entity) {
-                acc.enrollments.push(
-                    transformEnrollment(
-                        entity,
-                        validAttributeIds,
-                        trackedEntityAttributes,
-                        optionSets,
-                    ),
-                );
-            } else if ("event" in entity) {
-                const stageIds =
-                    validDataElementsByStage.get(entity.programStage) ??
-                    new Set<string>();
-                acc.events.push(
-                    transformEvent(entity, stageIds, dataElements, optionSets),
-                );
-            }
-            return acc;
-        },
-        {
-            trackedEntities: [],
-            enrollments: [],
-            events: [],
-        },
-    );
-    const response = await submitTrackerImportAndWaitForReport({
-        engine,
-        data: payload,
-        params: {
-            importStrategy: "CREATE_AND_UPDATE",
-            atomicMode: "OBJECT",
-            skipPatternValidation: "true",
-            skipSideEffects: "true",
-        },
-    });
-    const failedResponses = new Map<string, string>();
-    for (const err of response.validationReport.errorReports) {
-        const line = err.errorCode
-            ? `[${err.errorCode}] ${err.message}`
-            : err.message;
-        const existing = failedResponses.get(err.uid);
-        failedResponses.set(err.uid, existing ? `${existing}\n${line}` : line);
-    }
-
-    const syncedEvents = new Set(
-        response.bundleReport.typeReportMap.EVENT.objectReports.map(
-            (a) => a.uid,
-        ),
-    );
-    const syncedEnrollments = new Set(
-        response.bundleReport.typeReportMap.ENROLLMENT.objectReports.map(
-            (a) => a.uid,
-        ),
-    );
-
-    const syncedEntities = new Set(
-        response.bundleReport.typeReportMap.TRACKED_ENTITY.objectReports.map(
-            (a) => a.uid,
-        ),
-    );
-
-    const updatedEntities: FlattenedTrackedEntity[] = entities.flatMap((a) => {
-        if ("trackedEntityType" in a && failedResponses.has(a.trackedEntity)) {
-            return {
-                ...a,
-                syncStatus: "failed",
-                lastSynced: new Date().toISOString(),
-                syncError: failedResponses.get(a.trackedEntity),
-            };
-        } else if (
-            "trackedEntityType" in a &&
-            syncedEntities.has(a.trackedEntity)
-        ) {
-            return {
-                ...a,
-                syncStatus: "synced",
-                lastSynced: new Date().toISOString(),
-                syncError: null,
-            };
-        }
-        return [];
-    });
-
-    const updatedEnrolments: FlattenedEnrollment[] = entities.flatMap((a) => {
-        if ("enrolledAt" in a && failedResponses.has(a.enrollment)) {
-            return {
-                ...a,
-                syncStatus: "failed",
-                lastSynced: new Date().toISOString(),
-                syncError: failedResponses.get(a.enrollment),
-            };
-        } else if ("enrolledAt" in a && syncedEnrollments.has(a.enrollment)) {
-            return {
-                ...a,
-                syncStatus: "synced",
-                lastSynced: new Date().toISOString(),
-                syncError: null,
-            };
-        }
-        return [];
-    });
-
-    const updatedEvents: FlattenedEvent[] = entities.flatMap((a) => {
-        if ("event" in a && failedResponses.has(a.event)) {
-            return {
-                ...a,
-                syncStatus: "failed",
-                lastSynced: new Date().toISOString(),
-                syncError: failedResponses.get(a.event),
-            };
-        } else if ("event" in a && syncedEvents.has(a.event)) {
-            return {
-                ...a,
-                syncStatus: "synced",
-                lastSynced: new Date().toISOString(),
-                syncError: null,
-            };
-        }
-        return [];
-    });
-
-    await trackedEntitiesCollection.utils.bulkUpdateLocally(updatedEntities);
-    await enrollmentsCollection.utils.bulkUpdateLocally(updatedEnrolments);
-    await eventsCollection.utils.bulkUpdateLocally(updatedEvents);
-
-    return {
-        processed: entities.length,
-        succeeded:
-            syncedEntities.size + syncedEnrollments.size + syncedEvents.size,
-        failed: failedResponses.size,
-        connectivityStatus: "healthy" as const,
-    };
-};
-
-const syncDeleteToLocal = async ({
-    deletedEvents,
-    deletedTrackedEntities,
-    deletedEnrollments,
-    engine,
-}: {
-    deletedEvents: FlattenedEvent[];
-    deletedTrackedEntities: FlattenedTrackedEntity[];
-    deletedEnrollments: FlattenedEnrollment[];
-    engine: ReturnType<typeof useDataEngine>;
-}): Promise<SyncSubResult> => {
-    const hasAnything =
-        deletedEvents.length > 0 ||
-        deletedTrackedEntities.length > 0 ||
-        deletedEnrollments.length > 0;
-    if (!hasAnything) return { succeeded: 0, failed: 0 };
-
-    const reachability = await isDhis2Reachable(engine);
-    if (!reachability.reachable) {
-        return {
-            succeeded: 0,
-            failed: 0,
-            connectivityStatus: toConnectivityStatus(reachability),
-        };
-    }
-
-    const deletedTeIds = new Set(
-        deletedTrackedEntities.map((te) => te.trackedEntity),
-    );
-
-    const payload: Record<string, unknown> = {};
-    if (deletedTrackedEntities.length > 0) {
-        payload.trackedEntities = deletedTrackedEntities.map((te) => ({
-            trackedEntity: te.trackedEntity,
-        }));
-    }
-    if (deletedEnrollments.length > 0) {
-        payload.enrollments = deletedEnrollments
-            .filter((e) => !deletedTeIds.has(e.trackedEntity))
-            .map((e) => ({ enrollment: e.enrollment }));
-    }
-    if (deletedEvents.length > 0) {
-        payload.events = deletedEvents
-            .filter((e) => !deletedTeIds.has(e.trackedEntity))
-            .map((e) => ({ event: e.event }));
-    }
-
-    const response = await submitTrackerImportAndWaitForReport({
-        engine,
-        data: payload,
-        params: {
-            importStrategy: "DELETE",
-            atomicMode: "OBJECT",
-        },
-    });
-
-    // E1114 = TE already deleted, E1082 = Event already deleted, E1113 = Enrollment already deleted
-    const ALREADY_DELETED_CODES = new Set(["E1082", "E1113", "E1114"]);
-
-    const cleanupTeUids = new Set(
-        response.bundleReport.typeReportMap.TRACKED_ENTITY.objectReports.map(
-            (r) => r.uid,
-        ),
-    );
-    const cleanupEnrollmentUids = new Set(
-        response.bundleReport.typeReportMap.ENROLLMENT.objectReports.map(
-            (r) => r.uid,
-        ),
-    );
-    const cleanupEventUids = new Set(
-        response.bundleReport.typeReportMap.EVENT.objectReports.map(
-            (r) => r.uid,
-        ),
-    );
-
-    let realFailures = 0;
-    for (const err of response.validationReport.errorReports) {
-        if (ALREADY_DELETED_CODES.has(err.errorCode)) {
-            if (err.trackerType === "TRACKED_ENTITY")
-                cleanupTeUids.add(err.uid);
-            else if (err.trackerType === "ENROLLMENT")
-                cleanupEnrollmentUids.add(err.uid);
-            else if (err.trackerType === "EVENT") cleanupEventUids.add(err.uid);
-        } else {
-            realFailures++;
-        }
-    }
-    const eventTable = eventsCollection.utils.getTable() as Table<
-        FlattenedEvent,
-        string
-    >;
-    const enrollTable = enrollmentsCollection.utils.getTable() as Table<
-        FlattenedEnrollment,
-        string
-    >;
-
-    for (const te of deletedTrackedEntities) {
-        if (cleanupTeUids.has(te.trackedEntity)) {
-            const childEnrollments = await enrollTable
-                .filter((e) => e.trackedEntity === te.trackedEntity)
-                .toArray();
-            for (const enr of childEnrollments) {
-                const childEvents = await eventTable
-                    .filter((e) => e.enrollment === enr.enrollment)
-                    .toArray();
-                for (const ev of childEvents) {
-                    await eventsCollection.delete(ev.event).isPersisted.promise;
-                }
-                await enrollmentsCollection.delete(enr.enrollment).isPersisted
-                    .promise;
-            }
-            await trackedEntitiesCollection.delete(te.trackedEntity).isPersisted
-                .promise;
-        }
-    }
-
-    for (const enrollment of deletedEnrollments) {
-        if (
-            cleanupEnrollmentUids.has(enrollment.enrollment) &&
-            !deletedTeIds.has(enrollment.trackedEntity)
-        ) {
-            await enrollmentsCollection.delete(enrollment.enrollment)
-                .isPersisted.promise;
-        }
-    }
-
-    for (const event of deletedEvents) {
-        if (
-            cleanupEventUids.has(event.event) &&
-            !deletedTeIds.has(event.trackedEntity)
-        ) {
-            await eventsCollection.delete(event.event).isPersisted.promise;
-        }
-    }
-
-    return {
-        succeeded:
-            cleanupTeUids.size +
-            cleanupEnrollmentUids.size +
-            cleanupEventUids.size,
-        failed: realFailures,
-        connectivityStatus: "healthy" as const,
-    };
-};
 
 type SyncEvent =
     | {
@@ -575,6 +185,7 @@ const syncMachine = setup({
         events: {} as SyncEvent,
         input: {} as {
             engine: ReturnType<typeof useDataEngine>;
+            sqlDriver: SqlDriver;
             initialLastMetadataPull?: string;
             initialLastDataPull?: string;
             initialLastDataPush?: string;
@@ -601,15 +212,9 @@ const syncMachine = setup({
         }),
 
         persistSyncState: ({ context }) => {
-            db.syncState.put({
-                id: "current",
-                status: "idle",
-                isOnline: true,
-                isSyncing: false,
-                lastPullAt: context.lastDataPull,
-                lastPushAt: context.lastDataPush,
-                pendingCount: 0,
-                updatedAt: new Date().toISOString(),
+            void persistCurrentSyncState(context.sqlDriver, {
+                lastDataPull: context.lastDataPull,
+                lastDataPush: context.lastDataPush,
             });
         },
     },
@@ -645,16 +250,20 @@ const syncMachine = setup({
             const data = await response.json();
             return data as AggregateData;
         }),
-        checkIndexDB: fromPromise<Awaited<ReturnType<typeof checkInfo>>>(
-            async () => {
-                return checkInfo();
-            },
-        ),
+        checkIndexDB: fromPromise<
+            CheckMetadataInfoResult,
+            { sqlDriver: SqlDriver }
+        >(async ({ input: { sqlDriver } }) => {
+            return checkMetadataSyncStatus(sqlDriver);
+        }),
         queryIndexDB: fromPromise<
-            Awaited<ReturnType<typeof queryInfo>>,
-            { userInfo: MeUser }
-        >(async ({ input: { userInfo } }) => {
-            return queryInfo(userInfo);
+            QueryMetadataInfoResult,
+            { sqlDriver: SqlDriver; userInfo: MeUser }
+        >(async ({ input: { sqlDriver, userInfo } }) => {
+            return queryMetadata(
+                sqlDriver,
+                userInfo.organisationUnits[0].path,
+            );
         }),
         pullData: fromPromise<
             string | undefined,
@@ -663,11 +272,19 @@ const syncMachine = setup({
                 orgUnit: string;
                 lastDataPull: string | undefined;
                 engine: ReturnType<typeof useDataEngine>;
+                sqlDriver: SqlDriver;
                 dataPullMode: DataPullMode;
             }
         >(
             async ({
-                input: { lastDataPull, orgUnit, program, engine, dataPullMode },
+                input: {
+                    lastDataPull,
+                    orgUnit,
+                    program,
+                    engine,
+                    sqlDriver,
+                    dataPullMode,
+                },
             }) => {
                 // Mirror the DHIS2 Android SDK: the incremental `updatedAfter`
                 // boundary is the SERVER's clock captured BEFORE the pull
@@ -684,26 +301,15 @@ const syncMachine = setup({
                 );
 
                 let currentPage = 1;
-                // Fetch fresh from the DHIS2 dataStore (not the Dexie mirror
+                // Fetch fresh from the DHIS2 dataStore (not the local mirror
                 // or machine context) so a pageSize change made from any
                 // device takes effect on the very next pull. Fall back to
-                // the Dexie mirror, then the hardcoded default, when the
+                // the local mirror, then the hardcoded default, when the
                 // dataStore is unreachable (offline pull).
-                let configuredPageSize: number | undefined;
-                try {
-                    const result = (await engine.query({
-                        uiConfig: {
-                            resource: "dataStore/eregisters/ui-config",
-                        },
-                    })) as { uiConfig: UIConfig };
-                    configuredPageSize = result.uiConfig.dataPullPageSize;
-                    await db.uiConfig.bulkPut([
-                        { id: "main", config: result.uiConfig },
-                    ]);
-                } catch {
-                    configuredPageSize = (await db.uiConfig.get("main"))
-                        ?.config.dataPullPageSize;
-                }
+                const configuredPageSize = await getConfiguredPageSize(
+                    sqlDriver,
+                    engine,
+                );
                 const pageSize =
                     configuredPageSize ?? DEFAULT_DATA_PULL_PAGE_SIZE;
                 let hasMoreData = true;
@@ -744,70 +350,15 @@ const syncMachine = setup({
                         response.trackedEntities;
                     const pager = response.trackedEntities.pager;
 
-                    const serverTrackedEntities =
-                        instances.map(flattenTrackedEntity);
-                    const serverEvents = instances.flatMap(({ enrollments }) =>
-                        (enrollments ?? []).flatMap(({ events }) =>
-                            (events ?? [])
-                                .filter((event) => event.occurredAt)
-                                .map(flattenEvent),
-                        ),
-                    );
-                    const serverEnrollments = instances.flatMap(
-                        ({ enrollments }) => {
-                            return (enrollments ?? []).map(flattenEnrollment);
-                        },
-                    );
-
-                    const teTable =
-                        trackedEntitiesCollection.utils.getTable() as Table<
-                            FlattenedTrackedEntity,
-                            string
-                        >;
-                    const eventTable =
-                        eventsCollection.utils.getTable() as Table<
-                            FlattenedEvent,
-                            string
-                        >;
-                    const enrollTable =
-                        enrollmentsCollection.utils.getTable() as Table<
-                            FlattenedEnrollment,
-                            string
-                        >;
-
-                    const mergedTrackedEntities =
-                        await mergeBulkTrackedEntities(
-                            serverTrackedEntities,
-                            async (id) => {
-                                const result = await teTable.get(id);
-                                return result;
-                            },
-                        );
-
-                    const mergedEvents = await mergeBulkEvents(
-                        serverEvents,
-                        async (id) => {
-                            const result = await eventTable.get(id);
-                            return result;
-                        },
-                    );
-
-                    const mergedEnrollments = await mergeBulkEnrollments(
-                        serverEnrollments,
-                        async (id) => {
-                            const result = await enrollTable.get(id);
-                            return result;
-                        },
-                    );
-                    await enrollmentsCollection.utils.bulkInsertLocally(
-                        mergedEnrollments,
-                    );
-                    await trackedEntitiesCollection.utils.bulkInsertLocally(
-                        mergedTrackedEntities,
-                    );
-                    await eventsCollection.utils.bulkInsertLocally(
-                        mergedEvents,
-                    );
+                    // Flatten, merge (local-wins-per-key against the
+                    // already-stored row), and write this page — see
+                    // pull-page.ts's own doc comment for why the merge
+                    // logic and write order live there, standalone-tested.
+                    await writePulledTrackedEntityPage(sqlDriver, instances, {
+                        trackedEntities: getTrackedEntitiesCollection(),
+                        enrollments: getEnrollmentsCollection(),
+                        events: getEventsCollection(),
+                    });
 
                     hasMoreData = shouldContinueDataPull({
                         receivedCount: instances.length,
@@ -823,100 +374,30 @@ const syncMachine = setup({
                 return resolveNextDataPull(serverDate, lastDataPull);
             },
         ),
-        saveMetadata: fromPromise<void, Metadata>(async ({ input }) => {
-            const succeeded = input.succeededResources ?? new Set<Resource>();
-            const wrote = (resource: Resource) =>
-                succeeded.size === 0 || succeeded.has(resource);
-            if (wrote("organisationUnits")) {
-                await db.organisationUnits.bulkPut(input.organisationUnits);
-            }
-            if (wrote("programs")) {
-                await db.programs.bulkPut(input.programs);
-            }
-            if (wrote("dataElements")) {
-                await db.dataElements.bulkPut(input.dataElements);
-            }
-            if (wrote("programIndicators")) {
-                await db.programIndicators.bulkPut(input.programIndicators);
-            }
-            if (wrote("attributes")) {
-                await db.trackedEntityAttributes.bulkPut(
-                    input.trackedEntityAttributes,
-                );
-            }
-            if (wrote("programRules")) {
-                await db.programRules.bulkPut(input.programRules);
-            }
-            if (wrote("programRuleVariables")) {
-                await db.programRuleVariables.bulkPut(
-                    input.programRuleVariables,
-                );
-            }
-            if (wrote("optionSets")) {
-                await db.optionSets.bulkPut(input.optionSets);
-            }
-            if (wrote("optionGroups")) {
-                await db.optionGroups.bulkPut(input.optionGroups);
-            }
-            if (wrote("dataSets")) {
-                await db.dataSets.bulkPut(input.dataSets);
-            }
-            if (wrote("categoryOptionCombos")) {
-                await db.categoryOptionCombos.bulkPut(
-                    input.categoryOptionCombos,
-                );
-            }
-            // metadata-version bookkeeping always writes — its content only
-            // reflects successful resources thanks to per-resource try/catch.
-            await db.metadataVersions.bulkPut(input.metadataVersion);
+        saveMetadata: fromPromise<
+            void,
+            { sqlDriver: SqlDriver; metadata: Metadata }
+        >(async ({ input: { sqlDriver, metadata } }) => {
+            await saveMetadataToSqlite(sqlDriver, metadata);
         }),
         pullUIConfig: fromPromise<
             UIConfig,
-            { engine: ReturnType<typeof useDataEngine> }
-        >(async ({ input: { engine } }) => {
-            try {
-                const result = (await engine.query({
-                    uiConfig: {
-                        resource: "dataStore/eregisters/ui-config",
-                    },
-                })) as { uiConfig: UIConfig };
-                await db.uiConfig.bulkPut([
-                    { id: "main", config: result.uiConfig },
-                ]);
-                return result.uiConfig;
-            } catch {
-                await db.uiConfig.bulkPut([
-                    { id: "main", config: emptyUIConfig },
-                ]);
-                return emptyUIConfig;
-            }
+            { sqlDriver: SqlDriver; engine: ReturnType<typeof useDataEngine> }
+        >(async ({ input: { sqlDriver, engine } }) => {
+            return pullUiConfig(sqlDriver, engine);
         }),
         pullStageHierarchy: fromPromise<
             StageHierarchyConfig,
-            { engine: ReturnType<typeof useDataEngine> }
-        >(async ({ input: { engine } }) => {
-            try {
-                const result = (await engine.query({
-                    stageHierarchy: {
-                        resource: "dataStore/eregisters/stage-hierarchy",
-                    },
-                })) as { stageHierarchy: StageHierarchyConfig };
-                await db.stageHierarchy.bulkPut([
-                    { id: "main", config: result.stageHierarchy },
-                ]);
-                return result.stageHierarchy;
-            } catch {
-                await db.stageHierarchy.bulkPut([
-                    { id: "main", config: emptyStageHierarchyConfig },
-                ]);
-                return emptyStageHierarchyConfig;
-            }
+            { sqlDriver: SqlDriver; engine: ReturnType<typeof useDataEngine> }
+        >(async ({ input: { sqlDriver, engine } }) => {
+            return pullStageHierarchyConfig(sqlDriver, engine);
         }),
         pullResource: fromPromise<
             Metadata,
             {
                 resources: Resource[];
                 engine: ReturnType<typeof useDataEngine>;
+                sqlDriver: SqlDriver;
                 lastMetadataPull: string | undefined;
                 metadataSyncMode: MetadataSyncMode;
                 userOrgUnit: string;
@@ -925,6 +406,7 @@ const syncMachine = setup({
             const {
                 resources,
                 engine,
+                sqlDriver,
                 lastMetadataPull,
                 metadataSyncMode,
                 userOrgUnit,
@@ -1282,8 +764,7 @@ const syncMachine = setup({
                         serverDate ??
                         lastMetadataPull ??
                         new Date().toISOString();
-                    let version =
-                        await db.metadataVersions.get("metadata-version");
+                    let version = await getMetadataVersionRecord(sqlDriver);
                     if (version === undefined) {
                         version = {
                             id: "metadata-version",
@@ -1305,49 +786,17 @@ const syncMachine = setup({
             }
             return results;
         }),
-        deleteAllMetadata: fromPromise<void, Metadata>(async ({ input }) => {
-            const succeeded = input.succeededResources ?? new Set<Resource>();
-            const shouldClear = (resource: Resource) =>
-                succeeded.size === 0 || succeeded.has(resource);
-            if (shouldClear("organisationUnits")) {
-                await db.organisationUnits.clear();
-            }
-            if (shouldClear("programs")) {
-                await db.programs.clear();
-            }
-            if (shouldClear("dataElements")) {
-                await db.dataElements.clear();
-            }
-            if (shouldClear("programIndicators")) {
-                await db.programIndicators.clear();
-            }
-            if (shouldClear("attributes")) {
-                await db.trackedEntityAttributes.clear();
-            }
-            if (shouldClear("programRules")) {
-                await db.programRules.clear();
-            }
-            if (shouldClear("programRuleVariables")) {
-                await db.programRuleVariables.clear();
-            }
-            if (shouldClear("optionSets")) {
-                await db.optionSets.clear();
-            }
-            if (shouldClear("optionGroups")) {
-                await db.optionGroups.clear();
-            }
-            if (shouldClear("dataSets")) {
-                await db.dataSets.clear();
-            }
-            if (shouldClear("categoryOptionCombos")) {
-                await db.categoryOptionCombos.clear();
-            }
-            await db.metadataVersions.clear();
+        deleteAllMetadata: fromPromise<
+            void,
+            { sqlDriver: SqlDriver; metadata: Metadata }
+        >(async ({ input: { sqlDriver, metadata } }) => {
+            await deleteMetadataForResync(sqlDriver, metadata);
         }),
-        resetDatabase: fromPromise(async () => {
-            await db.delete();
-            await db.open();
-        }),
+        resetDatabase: fromPromise<void, { sqlDriver: SqlDriver }>(
+            async ({ input: { sqlDriver } }) => {
+                await resetMetadataForRecovery(sqlDriver);
+            },
+        ),
         deleteAllData: fromPromise<void>(async () => {}),
         processBatchSync: fromPromise(
             async ({
@@ -1355,6 +804,7 @@ const syncMachine = setup({
             }: {
                 input: {
                     engine: ReturnType<typeof useDataEngine>;
+                    sqlDriver: SqlDriver;
                     validAttributeIds: Set<string>;
                     validDataElementsByStage: Map<string, Set<string>>;
                     dataElements: Map<string, DataElement> | undefined;
@@ -1364,132 +814,7 @@ const syncMachine = setup({
                     optionSets: Map<string, FlattenedOptionSet[]> | undefined;
                 };
             }) => {
-                const {
-                    engine,
-                    validAttributeIds,
-                    validDataElementsByStage,
-                    dataElements,
-                    trackedEntityAttributes,
-                    optionSets,
-                } = input;
-
-                const teTable =
-                    trackedEntitiesCollection.utils.getTable() as Table<
-                        FlattenedTrackedEntity,
-                        string
-                    >;
-                const eventTable = eventsCollection.utils.getTable() as Table<
-                    FlattenedEvent,
-                    string
-                >;
-                const enrollTable =
-                    enrollmentsCollection.utils.getTable() as Table<
-                        FlattenedEnrollment,
-                        string
-                    >;
-
-                const pendingTEs = await teTable
-                    .filter(
-                        (e) =>
-                            e.syncStatus === "pending" ||
-                            e.syncStatus === "failed",
-                    )
-                    .toArray();
-
-                const pendingEnrollments = await enrollTable
-                    .filter(
-                        (e) =>
-                            (e.syncStatus === "pending" ||
-                                e.syncStatus === "failed") &&
-                            !!e.enrolledAt,
-                    )
-                    .toArray();
-
-                const pendingEvents = await eventTable
-                    .filter(
-                        (e) =>
-                            (e.syncStatus === "pending" ||
-                                e.syncStatus === "failed") &&
-                            !!e.occurredAt,
-                    )
-                    .toArray();
-
-                const deletedEvents = await eventTable
-                    .filter((e) => e.syncStatus === "deleted")
-                    .toArray();
-
-                const deletedTEs = await teTable
-                    .filter((e) => e.syncStatus === "deleted")
-                    .toArray();
-
-                const deletedEnrollments = await enrollTable
-                    .filter((e) => e.syncStatus === "deleted")
-                    .toArray();
-
-                if (
-                    pendingTEs.length === 0 &&
-                    pendingEnrollments.length === 0 &&
-                    pendingEvents.length === 0 &&
-                    deletedEvents.length === 0 &&
-                    deletedTEs.length === 0 &&
-                    deletedEnrollments.length === 0
-                ) {
-                    return { processed: 0, succeeded: 0, failed: 0 };
-                }
-
-                let upsertResult: SyncUpsertResult = {
-                    processed: 0,
-                    succeeded: 0,
-                    failed: 0,
-                };
-                if (
-                    pendingTEs.length > 0 ||
-                    pendingEnrollments.length > 0 ||
-                    pendingEvents.length > 0
-                ) {
-                    upsertResult = await syncReportToLocal({
-                        entities: [
-                            ...pendingTEs,
-                            ...pendingEnrollments,
-                            ...pendingEvents,
-                        ],
-                        engine,
-                        validAttributeIds,
-                        validDataElementsByStage,
-                        dataElements,
-                        trackedEntityAttributes,
-                        optionSets,
-                    });
-                }
-
-                let deleteResult: SyncSubResult = {
-                    succeeded: 0,
-                    failed: 0,
-                };
-                if (
-                    deletedEvents.length > 0 ||
-                    deletedTEs.length > 0 ||
-                    deletedEnrollments.length > 0
-                ) {
-                    deleteResult = await syncDeleteToLocal({
-                        deletedEvents,
-                        deletedTrackedEntities: deletedTEs,
-                        deletedEnrollments,
-                        engine,
-                    });
-                }
-
-                return {
-                    processed:
-                        upsertResult.processed +
-                        deleteResult.succeeded +
-                        deleteResult.failed,
-                    succeeded: upsertResult.succeeded + deleteResult.succeeded,
-                    failed: upsertResult.failed + deleteResult.failed,
-                    connectivityStatus:
-                        deleteResult.connectivityStatus ??
-                        upsertResult.connectivityStatus,
-                };
+                return processBatchSyncImpl(input);
             },
         ),
     },
@@ -1521,9 +846,10 @@ const syncMachine = setup({
             }),
         },
     },
-    context: ({ input: { engine, message, userInfo } }) => {
+    context: ({ input: { engine, sqlDriver, message, userInfo } }) => {
         return {
             engine,
+            sqlDriver,
             error: null,
             connectivityStatus: "healthy",
             resources: [
@@ -1540,9 +866,6 @@ const syncMachine = setup({
                 "organisationUnits",
             ] as Resource[],
 
-            enrollmentsCollection,
-            eventsCollection,
-            trackedEntitiesCollection,
             lastDataPull: undefined,
             lastDataPush: undefined,
             lastMetadataPull: undefined,
@@ -1661,6 +984,9 @@ const syncMachine = setup({
                 idle: {
                     invoke: {
                         src: "checkIndexDB",
+                        input: ({ context: { sqlDriver } }) => ({
+                            sqlDriver,
+                        }),
                         onDone: [
                             {
                                 target: "queryingIndexDB",
@@ -1668,14 +994,19 @@ const syncMachine = setup({
                                     return !event.output.needsSyncing;
                                 },
                                 actions: assign(({ event }) => {
+                                    const syncState = event.output
+                                        .syncState as
+                                        | {
+                                              lastPullAt?: string;
+                                              lastPushAt?: string;
+                                          }
+                                        | undefined;
                                     return {
                                         lastMetadataPull:
                                             event.output.metadataVersion
                                                 ?.lastSync,
-                                        lastDataPull:
-                                            event.output.syncStatus?.lastPullAt,
-                                        lastDataPush:
-                                            event.output.syncStatus?.lastPushAt,
+                                        lastDataPull: syncState?.lastPullAt,
+                                        lastDataPush: syncState?.lastPushAt,
                                         ...deriveValidIds(event.output.program),
                                     };
                                 }),
@@ -1689,7 +1020,7 @@ const syncMachine = setup({
                                 actions: assign(({ event }) => {
                                     const mode =
                                         event.output.hasEmptyTables ||
-                                        event.output.wasIndexedDBDeleted
+                                        event.output.wasDatabaseDeleted
                                             ? "full"
                                             : "incremental";
                                     return {
@@ -1726,8 +1057,8 @@ const syncMachine = setup({
                 savingMetadata: {
                     invoke: {
                         src: "saveMetadata",
-                        input: ({ context: { rawMetadata } }) => {
-                            return rawMetadata;
+                        input: ({ context: { sqlDriver, rawMetadata } }) => {
+                            return { sqlDriver, metadata: rawMetadata };
                         },
                         onDone: {
                             target: "pullingUIConfig",
@@ -1740,6 +1071,9 @@ const syncMachine = setup({
                 resetIndexDB: {
                     invoke: {
                         src: "resetDatabase",
+                        input: ({ context: { sqlDriver } }) => ({
+                            sqlDriver,
+                        }),
                         onDone: {
                             target: "idle",
                         },
@@ -1748,7 +1082,10 @@ const syncMachine = setup({
                 pullingUIConfig: {
                     invoke: {
                         src: "pullUIConfig",
-                        input: ({ context: { engine } }) => ({ engine }),
+                        input: ({ context: { sqlDriver, engine } }) => ({
+                            sqlDriver,
+                            engine,
+                        }),
                         onDone: {
                             target: "pullingStageHierarchy",
                             actions: assign(({ event }) => ({
@@ -1761,7 +1098,10 @@ const syncMachine = setup({
                 pullingStageHierarchy: {
                     invoke: {
                         src: "pullStageHierarchy",
-                        input: ({ context: { engine } }) => ({ engine }),
+                        input: ({ context: { sqlDriver, engine } }) => ({
+                            sqlDriver,
+                            engine,
+                        }),
                         onDone: {
                             target: "queryingIndexDB",
                             actions: assign(({ event }) => ({
@@ -1775,6 +1115,7 @@ const syncMachine = setup({
                     invoke: {
                         src: "queryIndexDB",
                         input: ({ context }) => ({
+                            sqlDriver: context.sqlDriver,
                             userInfo: context.userInfo,
                         }),
                         onDone: {
@@ -1795,7 +1136,10 @@ const syncMachine = setup({
                 deletingMetadata: {
                     invoke: {
                         src: "deleteAllMetadata",
-                        input: ({ context: { rawMetadata } }) => rawMetadata,
+                        input: ({ context: { sqlDriver, rawMetadata } }) => ({
+                            sqlDriver,
+                            metadata: rawMetadata,
+                        }),
                         onDone: "savingMetadata",
                         onError: "failure",
                     },
@@ -1807,6 +1151,7 @@ const syncMachine = setup({
                         input: ({
                             context: {
                                 engine,
+                                sqlDriver,
                                 resources,
                                 lastMetadataPull,
                                 metadataSyncMode,
@@ -1816,6 +1161,7 @@ const syncMachine = setup({
                             return {
                                 resources,
                                 engine,
+                                sqlDriver,
                                 lastMetadataPull,
                                 metadataSyncMode,
                                 userOrgUnit: userInfo.organisationUnits[0].id,
@@ -1909,6 +1255,7 @@ const syncMachine = setup({
                         src: "processBatchSync",
                         input: ({ context }) => ({
                             engine: context.engine,
+                            sqlDriver: context.sqlDriver,
                             validAttributeIds: context.validAttributeIds,
                             validDataElementsByStage:
                                 context.validDataElementsByStage,
@@ -2008,18 +1355,17 @@ const syncMachine = setup({
                         input: ({
                             context: {
                                 engine,
+                                sqlDriver,
                                 lastDataPull,
                                 userInfo,
                                 dataPullMode,
                             },
                         }) => ({
                             engine,
+                            sqlDriver,
                             lastDataPull,
-                            enrollmentsCollection,
-                            eventsCollection,
                             orgUnit: userInfo.organisationUnits[0].id,
                             program: "ueBhWkWll5v",
-                            trackedEntitiesCollection,
                             dataPullMode,
                         }),
 

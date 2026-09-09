@@ -47,11 +47,7 @@ import { EventRuleAwareForm } from "./rule-aware-form";
 import { computeSaveBlock } from "../utils/save-block";
 import type { ProgramRuleResult } from "../schemas";
 
-import {
-    enrollmentsCollection,
-    trackedEntitiesCollection,
-    eventsCollection,
-} from "../collections";
+import { getEventsCollection } from "../db/sqlite/tracker-collections-instance";
 
 const { Text } = Typography;
 
@@ -328,6 +324,7 @@ const InlineEventEditor: React.FC<{
 }) => {
     const [form] = Form.useForm();
     const [saving, setSaving] = useState(false);
+    const eventsCollection = getEventsCollection();
 
     const handleSave = async () => {
         try {
@@ -535,6 +532,7 @@ export const ProgramStageCapture: React.FC<{
     const { dataElements, optionSets, programRuleVariables, programRules } =
         useMetadata();
     const syncActor = SyncContext.useActorRef();
+    const eventsCollection = getEventsCollection();
 
     const isInlineExpand = captureMode === "inline-expand";
     const isInlineRow = captureMode === "inline-row";

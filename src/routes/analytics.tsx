@@ -29,10 +29,10 @@ import type { LineListTableState } from "../components/analytics/line-list-table
 import { PivotBuilder } from "../components/analytics/pivot-builder";
 import type { PivotExportInfo } from "../components/analytics/pivot-builder";
 import {
-    enrollmentsCollection,
-    eventsCollection,
-    trackedEntitiesCollection,
-} from "../collections";
+    getEnrollmentsCollection,
+    getEventsCollection,
+    getTrackedEntitiesCollection,
+} from "../db/sqlite/tracker-collections-instance";
 import { useComputedColumns } from "../hooks/useComputedColumns";
 import { useIsMobile } from "../hooks/useIsMobile";
 import { useMetadata } from "../hooks/useMetadata";
@@ -81,6 +81,9 @@ function AnalyticsPage() {
     } = useMetadata();
     const defaultStage = program.programStages[0]?.id ?? "";
     const stageHierarchyPairs = useStageHierarchyConfig();
+    const trackedEntitiesCollection = getTrackedEntitiesCollection();
+    const enrollmentsCollection = getEnrollmentsCollection();
+    const eventsCollection = getEventsCollection();
     const routeSearch = AnalyticsRoute.useSearch();
     const routeNavigate = AnalyticsRoute.useNavigate();
     const [restored] = useState<AnalyticsRestoredState | null>(() => {

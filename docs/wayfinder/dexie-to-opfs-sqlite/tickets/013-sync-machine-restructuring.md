@@ -152,3 +152,171 @@ ticket's decisions now exist as real, independently-tested code under
 Actually wiring any of this into `sync.ts` remains this ticket's
 deferred, separate scope — explicitly confirmed with the user before
 proceeding this far.
+
+## Implementation progress: metadata pipeline actually wired in (Phase 1)
+
+On branch `migration/sync-metadata-sqlite-phase1` (not merged to `main` —
+see map.md's phased-cutover note; blocked on ticket "Verify COOP/COEP
+Header-Injection on Real Production DHIS2 and Safari" before it can ship),
+`sync.ts`'s metadata-pipeline actors were rewired to actually call the
+SQLite layer, per an approved implementation plan:
+
+- New `src/machines/sync-metadata-actors.ts` holds the extracted,
+  independently-testable actor bodies (per `sync.ts`'s load-bearing/
+  fragile status — root `CLAUDE.md`), each taking an explicit `SqlDriver`
+  rather than a module singleton. `sync.ts`'s `fromPromise` actors are now
+  thin calls into these functions; actor names/invoke wiring unchanged.
+- New `src/db/sqlite/config-rows.ts` (`getConfigRow`/`putConfigRow`) and
+  `reactive-config.ts` (same-tab pub/sub, since op-sqlite has no
+  change-notification API) cover the three single-row config tables
+  (`ui_config`, `stage_hierarchy`, `sync_state`).
+- New `src/db/sqlite/delete-metadata.ts` and `reset-metadata-database.ts`
+  fill the two gaps flagged in this ticket's readiness table
+  (`deleteAllMetadata`, `resetDatabase`) — both one-transaction, both
+  independently tested. `resetMetadataDatabase` is deliberately narrower
+  than Dexie's `db.delete()+open()`: metadata tables only, tracker tables
+  untouched — confirmed with the user before building it (today's Dexie
+  version wipes tracker data too, which would be a real behavior
+  regression once tracker data is on this same file; unnecessary now
+  since tracker data isn't yet cut over).
+- `checkIndexDB`/`queryIndexDB` now call `checkMetadataInfo`/
+  `queryMetadataInfo` directly; `sync.ts`'s consumers of their output were
+  updated for the field renames (`wasIndexedDBDeleted` →
+  `wasDatabaseDeleted`, `syncStatus` → `syncState`).
+- `src/App.tsx` gains an async bootstrap (`initSqlDriver`, new
+  `src/db/sqlite/instance.ts` singleton) before `SyncContext.Provider`
+  mounts — this hangs in any environment without cross-origin isolation
+  (today's dev server included) until ticket 012's COOP/COEP patch is
+  deployed; expected, not a bug to chase in this phase.
+- `src/hooks/useUIConfig.ts`/`useStageHierarchyConfig.ts` (previously
+  Dexie `liveQuery`) and the three admin routes that write `ui_config`/
+  `stage_hierarchy` directly (`admin.app-settings.tsx`,
+  `admin.section-layout.tsx`, `admin.stage-relations.tsx`) now go through
+  a new `src/hooks/useSqliteConfigRow.ts` / `putConfigRow`. Confirmed
+  accepted regression: same-tab-only reactivity (no cross-tab
+  `BroadcastChannel`), since Dexie's `liveQuery` reacted across tabs.
+- `src/hooks/useMetadata.ts` no longer imports `queryInfo` — its
+  explicit return-type annotation was dropped in favor of inference from
+  its own return object, which already matched `queryInfo`'s field names.
+- Found and fixed a real latent type bug while wiring this up: the
+  `organisation-units.ts` row adapter's `OrgUnitRow.parent` was typed as
+  `string`, but `saveMetadata`'s `saveOrganisationUnits` always stores the
+  real DHIS2 `OU.parent` shape (`{id: string}`) — `src/routes/reports.tsx`
+  reading `.parent?.id` surfaced the mismatch at typecheck time. Fixed the
+  type to `{id: string} | undefined`, matching what was already being
+  stored at runtime.
+- Tracker collections (`pullData`'s TE/enrollment/event pull, `processBatchSync`/push,
+  `syncReportToLocal`, `syncDeleteToLocal`) remain untouched, still Dexie —
+  separate later phase, per map.md's phasing note.
+- Verification: `pnpm exec tsc --noEmit -p tsconfig.json` clean, full
+  `pnpm exec vitest run` passing (38 files / 206 tests). No real-browser/
+  OPFS verification attempted — blocked the same way ticket 012 is.
+- A `/code-review` pass afterwards (Standards + Spec axes) found one real
+  gap: `resetMetadataDatabase`'s table list came from
+  `UNIFORM_METADATA_TABLES` unfiltered, which includes `hmis_drafts` —
+  unsynced local HMIS-form draft data, not DHIS2-sourced metadata, even
+  though it shares the uniform schema shape for convenience. A
+  metadata-save failure would have wiped those drafts too, the same
+  "throw away unsynced local data for no reason" mistake already avoided
+  for tracker tables. Fixed by excluding `hmis_drafts` from the reset
+  list, with a test proving it survives a reset.
+
+## Implementation progress: tracker collections actually wired in (Phase 2)
+
+On branch `migration/sync-tracker-sqlite-phase2` (built on top of Phase
+1's branch, not merged to `main` — same ticket-012 blocker as Phase 1),
+this ticket's remaining scope — decisions #1/#2 already wired
+(`pull-page.ts`, Phase 1's implementation-progress note above), #5/#6
+already built (`push-results.ts`/`delete-cascade.ts`) — was actually
+connected: `sync.ts`'s tracker actors, all 3 form machines, `utils.ts`'s
+delete/cancel logic, and every consuming component/route now read/write
+the SQLite-backed `trackedEntities`/`enrollments`/`events` collections
+instead of Dexie's.
+
+Unlike Phase 1, this couldn't be split further: forms/components and
+`sync.ts` share one live collection instance (drafts a form creates are
+exactly what `sync.ts`'s push loop reads), so it had to move as one
+coherent unit — confirmed with the user given the size (~35 files).
+
+- **Collection-adapter additions** (`collection-adapter.ts`): a real
+  singular `insertLocally(row, options)` alongside the array-based
+  `bulkInsertLocally` (matching `tanstack-dexie-db-collection`'s actual
+  two-name API — ~10 app call sites pass one object, never an array), and
+  `utils.refresh()` exposing the adapter's internal `reloadAndDiff()` for
+  the two call sites (`syncReportToLocal`'s push write-back,
+  `syncDeleteToLocal`'s cascade deletes) that write via `push-results.ts`/
+  `delete-cascade.ts` directly against the driver, bypassing this
+  adapter's own write path.
+- **`indicator_evaluations` fix**: this separate computed-cache table
+  (cleaned up by `eventId` whenever an event is hard-deleted) had a
+  reserved SQLite table but no delete logic anywhere. Added to
+  `eventsRowAdapter.deleteRow` (fires for every event-deletion path
+  uniformly) and all three `delete-cascade.ts` functions (which bypass
+  the row adapter).
+- **New query helpers** replacing the ~18 Dexie `.utils.getTable()` call
+  sites across `sync.ts`/`utils.ts`/`tracked-entity.tsx`:
+  `findTrackedEntitiesByParentEntity`/`findTrackedEntitiesBySyncStatusIn`,
+  `findEnrollmentsByTrackedEntity`/`findEnrollmentsByTrackedEntityIn`/
+  `findEnrollmentsBySyncStatusIn`, `findEventsByEnrollment`/
+  `findEventsByParentEvent`/`findEventsByTrackedEntity`/
+  `findEventsByTrackedEntityIn`/`findEventsBySyncStatusIn` — all backed
+  by `schema.ts`'s existing indexes plus a new `idx_te_parent_entity`.
+- **New `src/db/sqlite/tracker-collections-instance.ts`** mirrors
+  `instance.ts`'s `SqlDriver` singleton pattern for the three tracker
+  collections (`createXSqliteCollection(db)` is a factory needing an
+  already-created driver, unlike the Dexie module singletons it
+  replaces); `App.tsx` calls `initTrackerCollections(driver)` right
+  after `initSqlDriver()` resolves.
+- **New `src/machines/sync-tracker-actors.ts`** (same extraction pattern
+  as `sync-metadata-actors.ts`): `syncReportToLocal`/`syncDeleteToLocal`
+  moved near-verbatim (reachability checks, tracker-import payload
+  construction, error-report parsing, the E1082/E1113/E1114
+  already-deleted special-casing all unchanged) with only the local
+  write-back step swapped; `processBatchSync`'s six
+  `getTable().filter().toArray()` scans became the new sync-status query
+  helpers, same `!!enrolledAt`/`!!occurredAt` JS post-filters preserved.
+- **`utils.ts`'s delete/cancel functions** (`deleteRecursiveDraftSubtree`,
+  `deleteEventWithChildren`, `deleteTrackedEntityWithChildren`,
+  `cancelDataModal`) kept their exact soft/hard-delete branching and
+  two-dimensional recursive subtree walk, only swapping the query
+  mechanism — confirmed these already delete node-by-node (not a bulk
+  cascade), so no cascade-function integration was needed there.
+- **Form machines and ~11 components/routes**: mostly a straight
+  reference swap — `.insert`/`.update`/`.delete`/`.has` and the
+  `useLiveSuspenseQuery` query-builder surface are standard `@tanstack/db`
+  `Collection` API already implemented by `sqliteCollectionOptions`, so
+  they needed no logic change, only calling `getXCollection()` instead of
+  importing a Dexie singleton. `tracked-entity.tsx`'s one save-cascade
+  query got the same query-helper treatment as `utils.ts`.
+- Deleted confirmed-dead `src/collections/rule-results.ts` (never
+  exported from its own module, zero consumers). Left
+  `tracked-entities.ts`/`enrollments.ts`/`events.ts` under
+  `src/collections/` in place — now also dead code (zero consumers,
+  confirmed by grep) but documented rather than deleted, since dropping
+  the underlying IndexedDB databases is a separate decision tied to
+  ticket "Migration and Cutover Procedure Design"'s copy-and-verify
+  safety net.
+- Found and fixed a real regression while wiring this up:
+  `src/db/sqlite/instance.ts` statically imported `op-sqlite-driver.ts`
+  (which statically imports the real `@op-engineering/op-sqlite`
+  package) at module scope. Once `utils.ts` started importing
+  `getSqlDriver`, every test transitively importing `utils.ts`
+  (`sync.test.ts`, `pull-page.test.ts`) broke, since op-sqlite's node
+  build isn't resolvable in this environment. Fixed by making
+  `instance.ts` import `op-sqlite-driver.ts` dynamically, inside
+  `initSqlDriver`, rather than at module scope.
+- Verification: `pnpm exec tsc --noEmit -p tsconfig.json` clean, full
+  `pnpm exec vitest run` passing (40 files / 232 tests). No real-browser/
+  OPFS verification attempted — blocked the same way ticket 012 is.
+- A `/code-review` pass afterwards (Standards + Spec axes) found no hard
+  violations and no missing/wrong requirements — only minor judgement-call
+  smells (a repeated 3-line "get all three collections" pattern across 9
+  consumers; a delete-cascade.ts comment that could be misread as
+  relying on `ON DELETE CASCADE`, which the schema doesn't declare).
+  Addressed the comment and added the dead-code documentation above;
+  left the repeated getter pattern as-is (judgement call, not a defect).
+
+This completes the tracker-collections half of this ticket's scope —
+`sync.ts` (both metadata and tracker actors), all form machines, and
+every consumer now read/write SQLite. Still not merged to `main`, not
+deployed.

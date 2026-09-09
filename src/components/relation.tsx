@@ -1,7 +1,10 @@
 import { and, eq, not, useLiveSuspenseQuery } from "@tanstack/react-db";
 import { Form } from "antd";
 import React, { useMemo } from "react";
-import { enrollmentsCollection, eventsCollection } from "../collections";
+import {
+    getEnrollmentsCollection,
+    getEventsCollection,
+} from "../db/sqlite/tracker-collections-instance";
 import { useMetadata } from "../hooks/useMetadata";
 import { EventContext } from "../machines";
 import { FlattenedEvent, FlattenedTrackedEntity } from "../schemas";
@@ -17,6 +20,8 @@ export default function Relation({
     trackedEntity: FlattenedTrackedEntity;
 }) {
     const { program, programRuleVariables, programRules } = useMetadata();
+    const eventsCollection = getEventsCollection();
+    const enrollmentsCollection = getEnrollmentsCollection();
 
     const [form] = Form.useForm();
     const [stage] = program.programStages.filter(

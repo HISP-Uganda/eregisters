@@ -14,10 +14,10 @@ import dayjs from "dayjs";
 import { orderBy, isEmpty } from "lodash";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
-    enrollmentsCollection,
-    trackedEntitiesCollection,
-    eventsCollection,
-} from "../collections";
+    getEnrollmentsCollection,
+    getEventsCollection,
+    getTrackedEntitiesCollection,
+} from "../db/sqlite/tracker-collections-instance";
 import { useMetadata } from "../hooks/useMetadata";
 import { useModalState } from "../hooks/useModalState";
 import { EventContext, TrackedEntityContext } from "../machines";
@@ -183,6 +183,9 @@ export default function MainEventCapture({
     const screens = Grid.useBreakpoint();
     const isMobile = !screens.lg;
     const eventActor = EventContext.useActorRef();
+    const trackedEntitiesCollection = getTrackedEntitiesCollection();
+    const enrollmentsCollection = getEnrollmentsCollection();
+    const eventsCollection = getEventsCollection();
     const weightForAge = Form.useWatch("zzZ7nE2sbY4", form);
     const bmi = Form.useWatch("nxthjrx18Y0", form);
     const bmiForAge = Form.useWatch("RltyVq1d11i", form);

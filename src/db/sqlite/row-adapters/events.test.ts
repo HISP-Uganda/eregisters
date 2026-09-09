@@ -3,7 +3,15 @@ import type { FlattenedEvent } from "../../../schemas";
 import { createNodeSqliteDriver } from "../test-support/node-sqlite-driver";
 import { createSchema } from "../schema";
 import type { SqlDriver } from "../driver-types";
-import { eventsRowAdapter, getEventById } from "./events";
+import {
+    eventsRowAdapter,
+    findEventsByEnrollment,
+    findEventsByParentEvent,
+    findEventsBySyncStatusIn,
+    findEventsByTrackedEntity,
+    findEventsByTrackedEntityIn,
+    getEventById,
+} from "./events";
 
 function makeEvent(overrides: Partial<FlattenedEvent> = {}): FlattenedEvent {
     return {
@@ -99,6 +107,25 @@ describe("eventsRowAdapter", () => {
         expect(dvRows.rows).toEqual([]);
     });
 
+    it("deleteRow also cleans up indicator_evaluations for the event", async () => {
+        const { driver, close: c } = createNodeSqliteDriver();
+        close = c;
+        await createSchema(driver);
+        await seedParents(driver);
+        await eventsRowAdapter.insertRow(driver, makeEvent());
+        await driver.execute(
+            "INSERT INTO indicator_evaluations (id, event_id, data) VALUES (?, ?, ?)",
+            ["ie-1", "evt-1", "{}"],
+        );
+
+        await eventsRowAdapter.deleteRow(driver, "evt-1");
+
+        const rows = await driver.execute(
+            "SELECT * FROM indicator_evaluations",
+        );
+        expect(rows.rows).toEqual([]);
+    });
+
     it("getEventById returns undefined for a missing key, and the row for an existing one", async () => {
         const { driver, close: c } = createNodeSqliteDriver();
         close = c;
@@ -109,5 +136,80 @@ describe("eventsRowAdapter", () => {
         const event = makeEvent();
         await eventsRowAdapter.insertRow(driver, event);
         expect(await getEventById(driver, "evt-1")).toEqual(event);
+    });
+
+    describe("query helpers", () => {
+        it("findEventsByEnrollment returns only that enrollment's events", async () => {
+            const { driver, close: c } = createNodeSqliteDriver();
+            close = c;
+            await createSchema(driver);
+            await seedParents(driver);
+            await eventsRowAdapter.insertRow(driver, makeEvent());
+
+            const rows = await findEventsByEnrollment(driver, "enr-1");
+            expect(rows.map((r) => r.event)).toEqual(["evt-1"]);
+            expect(await findEventsByEnrollment(driver, "enr-missing")).toEqual(
+                [],
+            );
+        });
+
+        it("findEventsByParentEvent returns only that parent's child events", async () => {
+            const { driver, close: c } = createNodeSqliteDriver();
+            close = c;
+            await createSchema(driver);
+            await seedParents(driver);
+            await eventsRowAdapter.insertRow(
+                driver,
+                makeEvent({ event: "evt-parent" }),
+            );
+            await eventsRowAdapter.insertRow(
+                driver,
+                makeEvent({ event: "evt-child", parentEvent: "evt-parent" }),
+            );
+
+            const rows = await findEventsByParentEvent(driver, "evt-parent");
+            expect(rows.map((r) => r.event)).toEqual(["evt-child"]);
+        });
+
+        it("findEventsByTrackedEntity and findEventsByTrackedEntityIn return that TE's events", async () => {
+            const { driver, close: c } = createNodeSqliteDriver();
+            close = c;
+            await createSchema(driver);
+            await seedParents(driver);
+            await eventsRowAdapter.insertRow(driver, makeEvent());
+
+            expect(
+                (await findEventsByTrackedEntity(driver, "te-1")).map(
+                    (r) => r.event,
+                ),
+            ).toEqual(["evt-1"]);
+            expect(
+                (
+                    await findEventsByTrackedEntityIn(driver, ["te-1"])
+                ).map((r) => r.event),
+            ).toEqual(["evt-1"]);
+            expect(await findEventsByTrackedEntityIn(driver, [])).toEqual([]);
+        });
+
+        it("findEventsBySyncStatusIn filters by sync status", async () => {
+            const { driver, close: c } = createNodeSqliteDriver();
+            close = c;
+            await createSchema(driver);
+            await seedParents(driver);
+            await eventsRowAdapter.insertRow(
+                driver,
+                makeEvent({ event: "evt-pending", syncStatus: "pending" }),
+            );
+            await eventsRowAdapter.insertRow(
+                driver,
+                makeEvent({ event: "evt-synced", syncStatus: "synced" }),
+            );
+
+            const rows = await findEventsBySyncStatusIn(driver, [
+                "pending",
+                "failed",
+            ]);
+            expect(rows.map((r) => r.event)).toEqual(["evt-pending"]);
+        });
     });
 });

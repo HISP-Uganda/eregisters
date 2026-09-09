@@ -106,6 +106,57 @@ export async function getTrackedEntityById(
     return reassemble(parent.rows[0], attributeRows.rows, usersByUid);
 }
 
+async function loadMany(
+    db: SqlDriver,
+    whereClause: string,
+    params: ReadonlyArray<unknown>,
+): Promise<FlattenedTrackedEntity[]> {
+    const [parents, attributeRows, usersByUid] = await Promise.all([
+        db.execute<TrackedEntityParentRow>(
+            `SELECT ${PARENT_COLUMNS} FROM tracked_entities WHERE ${whereClause}`,
+            params,
+        ),
+        db.execute<AttributeRow>(`SELECT ${ATTRIBUTE_COLUMNS} FROM tracked_entity_attributes`),
+        loadUsersByUid(db),
+    ]);
+    const attributesByEntity = new Map<string, AttributeRow[]>();
+    for (const attr of attributeRows.rows) {
+        const bucket = attributesByEntity.get(attr.tracked_entity) ?? [];
+        bucket.push(attr);
+        attributesByEntity.set(attr.tracked_entity, bucket);
+    }
+    return parents.rows.map((parent) =>
+        reassemble(
+            parent,
+            attributesByEntity.get(parent.tracked_entity) ?? [],
+            usersByUid,
+        ),
+    );
+}
+
+/**
+ * Backs `utils.ts`'s recursive parent/child-tracked-entity walk (see
+ * `deleteRecursiveDraftSubtree`/`deleteEventWithChildren`/
+ * `deleteTrackedEntityWithChildren`, and `tracked-entity.tsx`'s save-cascade
+ * query) — a child TE-under-TE relationship (`parentEntity`), distinct from
+ * DHIS2 relationships.
+ */
+export function findTrackedEntitiesByParentEntity(
+    db: SqlDriver,
+    parentEntity: string,
+): Promise<FlattenedTrackedEntity[]> {
+    return loadMany(db, "parent_entity = ?", [parentEntity]);
+}
+
+/** Backs sync.ts's pending/failed/deleted scans (`processBatchSync`). */
+export function findTrackedEntitiesBySyncStatusIn(
+    db: SqlDriver,
+    statuses: ReadonlyArray<string>,
+): Promise<FlattenedTrackedEntity[]> {
+    const placeholders = statuses.map(() => "?").join(", ");
+    return loadMany(db, `sync_status IN (${placeholders})`, statuses);
+}
+
 export const trackedEntitiesRowAdapter: RowAdapter<
     FlattenedTrackedEntity,
     string

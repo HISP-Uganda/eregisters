@@ -3,6 +3,8 @@ import type { FlattenedTrackedEntity } from "../../../schemas";
 import { createNodeSqliteDriver } from "../test-support/node-sqlite-driver";
 import { createSchema } from "../schema";
 import {
+    findTrackedEntitiesByParentEntity,
+    findTrackedEntitiesBySyncStatusIn,
     getTrackedEntityById,
     trackedEntitiesRowAdapter,
 } from "./tracked-entities";
@@ -181,6 +183,61 @@ describe("trackedEntitiesRowAdapter", () => {
 
             const result = await getTrackedEntityById(driver, "te-1");
             expect(result).toEqual(entity);
+        });
+    });
+
+    describe("query helpers", () => {
+        it("findTrackedEntitiesByParentEntity returns only that parent's children", async () => {
+            const { driver, close: c } = createNodeSqliteDriver();
+            close = c;
+            await createSchema(driver);
+            await trackedEntitiesRowAdapter.insertRow(
+                driver,
+                makeTrackedEntity({ trackedEntity: "te-parent" }),
+            );
+            await trackedEntitiesRowAdapter.insertRow(
+                driver,
+                makeTrackedEntity({
+                    trackedEntity: "te-child",
+                    parentEntity: "te-parent",
+                }),
+            );
+            await trackedEntitiesRowAdapter.insertRow(
+                driver,
+                makeTrackedEntity({ trackedEntity: "te-unrelated" }),
+            );
+
+            const rows = await findTrackedEntitiesByParentEntity(
+                driver,
+                "te-parent",
+            );
+            expect(rows.map((r) => r.trackedEntity)).toEqual(["te-child"]);
+        });
+
+        it("findTrackedEntitiesBySyncStatusIn filters by sync status", async () => {
+            const { driver, close: c } = createNodeSqliteDriver();
+            close = c;
+            await createSchema(driver);
+            await trackedEntitiesRowAdapter.insertRow(
+                driver,
+                makeTrackedEntity({
+                    trackedEntity: "te-1",
+                    syncStatus: "pending",
+                }),
+            );
+            await trackedEntitiesRowAdapter.insertRow(
+                driver,
+                makeTrackedEntity({
+                    trackedEntity: "te-2",
+                    syncStatus: "synced",
+                }),
+            );
+
+            const rows = await findTrackedEntitiesBySyncStatusIn(driver, [
+                "pending",
+                "failed",
+            ]);
+            expect(rows.map((r) => r.trackedEntity)).toEqual(["te-1"]);
         });
     });
 });

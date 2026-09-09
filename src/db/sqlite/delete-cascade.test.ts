@@ -91,6 +91,24 @@ describe("deleteEventCascade", () => {
             1,
         );
     });
+
+    it("also removes the event's indicator_evaluations", async () => {
+        const { driver, close: c } = createNodeSqliteDriver();
+        close = c;
+        await createSchema(driver);
+        await seedFullTree(driver);
+        await driver.execute(
+            "INSERT INTO indicator_evaluations (id, event_id, data) VALUES (?, ?, ?)",
+            ["ie-1", "evt-1", "{}"],
+        );
+
+        await deleteEventCascade(driver, "evt-1");
+
+        const rows = await driver.execute(
+            "SELECT * FROM indicator_evaluations",
+        );
+        expect(rows.rows).toEqual([]);
+    });
 });
 
 describe("deleteEnrollmentCascade", () => {
@@ -123,6 +141,24 @@ describe("deleteEnrollmentCascade", () => {
             1,
         );
     });
+
+    it("also removes indicator_evaluations for every event under the enrollment", async () => {
+        const { driver, close: c } = createNodeSqliteDriver();
+        close = c;
+        await createSchema(driver);
+        await seedFullTree(driver);
+        await driver.execute(
+            "INSERT INTO indicator_evaluations (id, event_id, data) VALUES (?, ?, ?)",
+            ["ie-1", "evt-1", "{}"],
+        );
+
+        await deleteEnrollmentCascade(driver, "enr-1");
+
+        const rows = await driver.execute(
+            "SELECT * FROM indicator_evaluations",
+        );
+        expect(rows.rows).toEqual([]);
+    });
 });
 
 describe("deleteTrackedEntityCascade", () => {
@@ -151,5 +187,23 @@ describe("deleteTrackedEntityCascade", () => {
             const rows = await driver.execute(`SELECT * FROM ${table}`);
             expect(rows.rows).toEqual([]);
         }
+    });
+
+    it("also removes indicator_evaluations for every event under the tracked entity", async () => {
+        const { driver, close: c } = createNodeSqliteDriver();
+        close = c;
+        await createSchema(driver);
+        await seedFullTree(driver);
+        await driver.execute(
+            "INSERT INTO indicator_evaluations (id, event_id, data) VALUES (?, ?, ?)",
+            ["ie-1", "evt-1", "{}"],
+        );
+
+        await deleteTrackedEntityCascade(driver, "te-1");
+
+        const rows = await driver.execute(
+            "SELECT * FROM indicator_evaluations",
+        );
+        expect(rows.rows).toEqual([]);
     });
 });

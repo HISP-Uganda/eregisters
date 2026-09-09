@@ -34,10 +34,11 @@ import React, { useEffect, useState } from "react";
 import { eq, or, useLiveSuspenseQuery } from "@tanstack/react-db";
 import { waitFor } from "xstate";
 import {
-    enrollmentsCollection,
-    eventsCollection,
-    trackedEntitiesCollection,
-} from "../collections";
+    getEnrollmentsCollection,
+    getEventsCollection,
+    getTrackedEntitiesCollection,
+} from "../db/sqlite/tracker-collections-instance";
+import { MigrationProgressBanner } from "../components/migration-progress-banner";
 import { Spinner } from "../components/spinner";
 import { SyncFailuresModal } from "../components/sync-failures-modal";
 import { useMetadata } from "../hooks/useMetadata";
@@ -543,6 +544,9 @@ function SyncErrorsButton({
 function LayoutWithDrafts() {
     const syncActor = SyncContext.useActorRef();
     const { orgUnitName, program } = useMetadata();
+    const trackedEntitiesCollection = getTrackedEntitiesCollection();
+    const enrollmentsCollection = getEnrollmentsCollection();
+    const eventsCollection = getEventsCollection();
     const stageNameMap = React.useMemo(
         () =>
             new Map((program?.programStages ?? []).map((s) => [s.id, s.name])),
@@ -865,6 +869,7 @@ function LayoutWithDrafts() {
             >
                 {navItems(true)}
             </Drawer>
+            <MigrationProgressBanner />
             {showAppReload && (
                 <Alert
                     type="warning"

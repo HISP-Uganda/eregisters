@@ -20,10 +20,10 @@ import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
 import React, { useMemo } from "react";
 import {
-    enrollmentsCollection,
-    eventsCollection,
-    trackedEntitiesCollection,
-} from "../collections";
+    getEnrollmentsCollection,
+    getEventsCollection,
+    getTrackedEntitiesCollection,
+} from "../db/sqlite/tracker-collections-instance";
 import { useMetadata } from "../hooks/useMetadata";
 import { SyncContext } from "../machines/sync";
 import {
@@ -108,6 +108,9 @@ export function SyncFailuresModal({
 }) {
     const syncActor = SyncContext.useActorRef();
     const navigate = useNavigate();
+    const trackedEntitiesCollection = getTrackedEntitiesCollection();
+    const enrollmentsCollection = getEnrollmentsCollection();
+    const eventsCollection = getEventsCollection();
     const {
         program,
         dataElements,

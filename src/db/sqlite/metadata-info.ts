@@ -61,7 +61,7 @@ async function anyTableEmpty(
     return false;
 }
 
-async function getRowById<T extends object>(
+export async function getRowById<T extends object>(
     db: SqlDriver,
     tableName: string,
     id: string,

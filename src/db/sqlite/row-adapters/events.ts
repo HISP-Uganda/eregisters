@@ -135,6 +135,73 @@ export async function getEventById(
     return reassemble(parent.rows[0], dataValueRows.rows, usersByUid);
 }
 
+async function loadMany(
+    db: SqlDriver,
+    whereClause: string,
+    params: ReadonlyArray<unknown>,
+): Promise<FlattenedEvent[]> {
+    const [parents, dataValueRows, usersByUid] = await Promise.all([
+        db.execute<EventParentRow>(
+            `SELECT ${PARENT_COLUMNS} FROM events WHERE ${whereClause}`,
+            params,
+        ),
+        db.execute<DataValueRow>(`SELECT ${DATA_VALUE_COLUMNS} FROM event_data_values`),
+        loadUsersByUid(db),
+    ]);
+    const dataValuesByEvent = new Map<string, DataValueRow[]>();
+    for (const dv of dataValueRows.rows) {
+        const bucket = dataValuesByEvent.get(dv.event) ?? [];
+        bucket.push(dv);
+        dataValuesByEvent.set(dv.event, bucket);
+    }
+    return parents.rows.map((parent) =>
+        reassemble(parent, dataValuesByEvent.get(parent.event) ?? [], usersByUid),
+    );
+}
+
+/** Backs the recursive delete walk's "events under this enrollment" lookup. */
+export function findEventsByEnrollment(
+    db: SqlDriver,
+    enrollment: string,
+): Promise<FlattenedEvent[]> {
+    return loadMany(db, "enrollment = ?", [enrollment]);
+}
+
+/** Backs the recursive delete walk's "child events of this event" lookup. */
+export function findEventsByParentEvent(
+    db: SqlDriver,
+    parentEvent: string,
+): Promise<FlattenedEvent[]> {
+    return loadMany(db, "parent_event = ?", [parentEvent]);
+}
+
+/** Backs the recursive delete walk's "events under this TE" lookup. */
+export function findEventsByTrackedEntity(
+    db: SqlDriver,
+    trackedEntity: string,
+): Promise<FlattenedEvent[]> {
+    return loadMany(db, "tracked_entity = ?", [trackedEntity]);
+}
+
+/** Backs `tracked-entity.tsx`'s save-cascade query (multiple child TEs at once). */
+export function findEventsByTrackedEntityIn(
+    db: SqlDriver,
+    trackedEntityIds: ReadonlyArray<string>,
+): Promise<FlattenedEvent[]> {
+    if (trackedEntityIds.length === 0) return Promise.resolve([]);
+    const placeholders = trackedEntityIds.map(() => "?").join(", ");
+    return loadMany(db, `tracked_entity IN (${placeholders})`, trackedEntityIds);
+}
+
+/** Backs sync.ts's pending/failed/deleted scans (`processBatchSync`). */
+export function findEventsBySyncStatusIn(
+    db: SqlDriver,
+    statuses: ReadonlyArray<string>,
+): Promise<FlattenedEvent[]> {
+    const placeholders = statuses.map(() => "?").join(", ");
+    return loadMany(db, `sync_status IN (${placeholders})`, statuses);
+}
+
 export const eventsRowAdapter: RowAdapter<FlattenedEvent, string> = {
     rowVersion: (row) => row.updatedAt,
 
@@ -272,6 +339,16 @@ export const eventsRowAdapter: RowAdapter<FlattenedEvent, string> = {
         await db.transaction(async (tx) => {
             await tx.execute(
                 "DELETE FROM event_data_values WHERE event = ?",
+                [key],
+            );
+            // indicator_evaluations is a separate computed-cache table
+            // (Dexie's equivalent: db.indicatorEvaluations.where("eventId")
+            // .equals(id).delete()) keyed 1:1 to an event — deleting it here,
+            // uniformly for every event deletion path (not just the bulk
+            // cascade functions in delete-cascade.ts), means callers never
+            // need to remember it as a separate step.
+            await tx.execute(
+                "DELETE FROM indicator_evaluations WHERE event_id = ?",
                 [key],
             );
             await tx.execute("DELETE FROM events WHERE event = ?", [key]);

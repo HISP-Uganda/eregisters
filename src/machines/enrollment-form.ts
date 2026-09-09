@@ -6,7 +6,7 @@ import {
     fromPromise,
     setup,
 } from "xstate";
-import { enrollmentsCollection } from "../collections";
+import { getEnrollmentsCollection } from "../db/sqlite/tracker-collections-instance";
 import { FlattenedEnrollment, FlattenedTrackedEntity } from "../schemas";
 
 import { FormEvent } from "./common";
@@ -55,7 +55,7 @@ const enrollmentFormMachine = setup({
                     formData: Record<string, any>;
                 };
             }) => {
-                await enrollmentsCollection.utils.insertLocally({
+                await getEnrollmentsCollection().utils.insertLocally({
                     ...data,
                     attributes: { ...data.attributes, ...formData },
                 });

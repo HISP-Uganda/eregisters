@@ -27,7 +27,6 @@ import {
     Typography,
 } from "antd";
 import dayjs from "dayjs";
-import { Table as DexieTable } from "dexie";
 import { isEmpty } from "lodash";
 import React, {
     useCallback,
@@ -37,11 +36,18 @@ import React, {
     useState,
 } from "react";
 import { z } from "zod";
+import { getSqlDriver } from "../db/sqlite/instance";
+import { findEnrollmentsByTrackedEntityIn } from "../db/sqlite/row-adapters/enrollments";
 import {
-    enrollmentsCollection,
-    eventsCollection,
-    trackedEntitiesCollection,
-} from "../collections";
+    findEventsByParentEvent,
+    findEventsByTrackedEntityIn,
+} from "../db/sqlite/row-adapters/events";
+import { findTrackedEntitiesByParentEntity } from "../db/sqlite/row-adapters/tracked-entities";
+import {
+    getEnrollmentsCollection,
+    getEventsCollection,
+    getTrackedEntitiesCollection,
+} from "../db/sqlite/tracker-collections-instance";
 import { DataModal } from "../components/data-modal";
 import MainEventCapture from "../components/main-event-capture";
 import {
@@ -110,6 +116,9 @@ function TrackedEntityComponent() {
     const connectivityStatus = SyncContext.useSelector(
         (a) => a.context.connectivityStatus,
     );
+    const trackedEntitiesCollection = getTrackedEntitiesCollection();
+    const enrollmentsCollection = getEnrollmentsCollection();
+    const eventsCollection = getEventsCollection();
     const { data, isOpen, isNew, openModal, closeModal } =
         useModalState<FlattenedEvent>();
 
@@ -651,54 +660,44 @@ function TrackedEntityComponent() {
                 enrollment={enrollment}
                 onSave={async ({ values }) => {
                     if (values && data && enrollment) {
-                        const eventTable =
-                            eventsCollection.utils.getTable() as DexieTable<
-                                FlattenedEvent,
-                                string
-                            >;
+                        const sqlDriver = getSqlDriver();
 
-                        const trackedEntityTable =
-                            trackedEntitiesCollection.utils.getTable() as DexieTable<
-                                FlattenedTrackedEntity,
-                                string
-                            >;
-
-                        const enrollmentTable =
-                            enrollmentsCollection.utils.getTable() as DexieTable<
-                                FlattenedEnrollment,
-                                string
-                            >;
-
-                        const candidateTrackedEntities = await trackedEntityTable
-                            .filter(
-                                (te) =>
-                                    te.parentEntity ===
-                                    trackedEntity.trackedEntity,
-                            )
-                            .toArray();
+                        const candidateTrackedEntities =
+                            await findTrackedEntitiesByParentEntity(
+                                sqlDriver,
+                                trackedEntity.trackedEntity,
+                            );
 
                         const candidateChildTrackedEntityIds =
                             candidateTrackedEntities.map(
                                 (te) => te.trackedEntity,
                             );
 
-                        const candidateEvents = await eventTable
-                            .filter(
-                                (event) =>
-                                    event.parentEvent === data.event ||
-                                    candidateChildTrackedEntityIds.includes(
-                                        event.trackedEntity,
-                                    ),
-                            )
-                            .toArray();
-
-                        const candidateEnrollments = await enrollmentTable
-                            .filter((e) =>
-                                candidateChildTrackedEntityIds.includes(
-                                    e.trackedEntity,
+                        const [eventsByParent, eventsByChildTE] =
+                            await Promise.all([
+                                findEventsByParentEvent(
+                                    sqlDriver,
+                                    data.event,
                                 ),
-                            )
-                            .toArray();
+                                findEventsByTrackedEntityIn(
+                                    sqlDriver,
+                                    candidateChildTrackedEntityIds,
+                                ),
+                            ]);
+                        const candidateEventsById = new Map(
+                            [...eventsByParent, ...eventsByChildTE].map(
+                                (event) => [event.event, event],
+                            ),
+                        );
+                        const candidateEvents = [
+                            ...candidateEventsById.values(),
+                        ];
+
+                        const candidateEnrollments =
+                            await findEnrollmentsByTrackedEntityIn(
+                                sqlDriver,
+                                candidateChildTrackedEntityIds,
+                            );
 
                         const {
                             events: relatedEvents,

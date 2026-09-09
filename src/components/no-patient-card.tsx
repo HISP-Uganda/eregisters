@@ -18,9 +18,9 @@ import { DataModal } from "./data-modal";
 import { TrackerRegistration } from "./tracker-registration";
 
 import {
-    enrollmentsCollection,
-    trackedEntitiesCollection,
-} from "../collections";
+    getEnrollmentsCollection,
+    getTrackedEntitiesCollection,
+} from "../db/sqlite/tracker-collections-instance";
 
 const { Title, Text } = Typography;
 type NoPatientsCardProps = {
@@ -34,6 +34,8 @@ const NoPatientsCard: React.FC<NoPatientsCardProps> = ({
 }) => {
     const screens = Grid.useBreakpoint();
     const isMobile = !screens.lg;
+    const trackedEntitiesCollection = getTrackedEntitiesCollection();
+    const enrollmentsCollection = getEnrollmentsCollection();
     const {
         orgUnit,
         programRuleVariables,

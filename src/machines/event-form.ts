@@ -1,7 +1,7 @@
 import { createActorContext } from "@xstate/react";
 import { FormInstance } from "antd";
 import { assertEvent, assign, fromPromise, setup } from "xstate";
-import { eventsCollection } from "../collections";
+import { getEventsCollection } from "../db/sqlite/tracker-collections-instance";
 import {
     FlattenedEnrollment,
     FlattenedEvent,
@@ -115,7 +115,7 @@ const eventFormMachine = setup({
                     formData: Record<string, any>;
                 };
             }) => {
-                await eventsCollection.utils.insertLocally({
+                await getEventsCollection().utils.insertLocally({
                     ...event,
                     dataValues: {
                         ...event.dataValues,
