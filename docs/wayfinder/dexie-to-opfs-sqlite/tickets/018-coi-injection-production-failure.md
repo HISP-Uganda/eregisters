@@ -170,3 +170,42 @@ done for real, against the real failure mode that broke production, not a
 hypothetical one. Remaining gap: still not tested against the real DHIS2
 servlet itself (only a bare simulation) or Safari — the user redeploying
 this fix is the next real-environment data point.
+
+## Follow-up: second real-production failure, same ticket
+
+Patch 7 alone fixed `window.crossOriginIsolated` (confirmed `true` in the
+user's real deployment) but op-sqlite still failed. Live diagnosis (Network
+tab screenshot from the user's actual browser):
+`opsqlite-web.worker-<hash>.js` — the worker script op-sqlite constructs via
+`new Worker(new URL(...))` — loaded with a `200` and is same-origin, but
+Chrome blocked it from becoming a Worker anyway, with DevTools flagging
+`Cross-Origin-Embedder-Policy: NOT-SET` on that specific response.
+
+**Root cause**: COEP isn't only a top-level-document requirement — per
+spec, a `Worker` constructed from a COEP-isolated document must itself be
+served with its own `Cross-Origin-Embedder-Policy` header, independent of
+same-origin-ness (same-origin exempts a resource from
+`Cross-Origin-Resource-Policy` checks, but not from this rule). Patch 7 only
+injected headers on navigation responses, never on the worker script fetch
+that op-sqlite depends on — so this was always going to fail once COI
+itself was fixed; it just needed COI fixed first to even reach this next
+error.
+
+**Fix**: extended patch 7's fetch listener to also intercept
+`event.request.destination === "worker"` (and `"sharedworker"`), stealing
+those requests from Workbox the same way as navigations, fetching normally
+and injecting COEP (and COOP, harmlessly ignored on a worker) onto the
+response before returning it. No timeout/cache-fallback story needed for
+workers — a failure just surfaces via the normal `Worker` `error` event,
+which `App.tsx`'s `initSqlDriver().catch()` already turns into a visible
+error message.
+
+**Verified live** (not just reasoned about): rebuilt, fresh-installed
+against the same bare no-COOP/COEP stand-in server, and constructed a real
+`new Worker(...)` from a synthetic probe script under the isolated
+document — it started and exchanged a message successfully, which is only
+possible if the browser accepted the worker script response as
+COEP-compliant (confirmed this fails without the fix, per the live
+production report this ticket is responding to). Normal same-origin
+CSS/script loading confirmed unaffected (correctly still handled by
+Workbox, untouched by this patch's narrow `navigate`/`worker` scoping).

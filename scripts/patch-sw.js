@@ -202,17 +202,28 @@ if (!sw.includes(COI_SENTINEL)) {
     console.log('[patch-sw] Patch 6 already applied — skipping')
 }
 
-// ── Patch 7: Independent navigation handler (no Workbox structure matching) ──
+// ── Patch 7: Independent navigation + worker-script handler ──────────────────
 // Registered as its own fetch listener, prepended to the TOP of the file so
 // it runs (and registers) before Workbox's own internal routing listener —
 // service worker fetch listeners fire in registration order, and the first
 // to call event.respondWith() wins. Scoped to event.request.mode==="navigate"
 // (real browser navigations only, per the Fetch spec — never fetch() calls
-// or subresource loads, so this can't interfere with API/asset requests),
-// and calls event.stopImmediatePropagation() to stop Workbox's router from
-// running (and attempting its own respondWith()) for these requests at all —
-// this is what makes a second fetch listener safe here, where a naive
-// competing listener would race Workbox's for respondWith().
+// or subresource loads, so this can't interfere with API/asset requests) OR
+// event.request.destination==="worker"/"sharedworker", and calls
+// event.stopImmediatePropagation() to stop Workbox's router from running
+// (and attempting its own respondWith()) for these requests at all — this is
+// what makes a second fetch listener safe here, where a naive competing
+// listener would race Workbox's for respondWith().
+//
+// The worker branch exists because COEP isn't just a top-level-document
+// requirement: per spec, a Worker constructed from a COEP-isolated document
+// must itself be served with its own Cross-Origin-Embedder-Policy header, or
+// the browser refuses to instantiate it (confirmed live: op-sqlite's
+// opsqlite-web.worker-*.js request succeeded — 200, same-origin — but Chrome
+// still blocked it, DevTools showing Cross-Origin-Embedder-Policy: NOT-SET on
+// that response specifically). Same-origin-ness doesn't exempt a worker
+// script from this the way it does regular subresources under
+// Cross-Origin-Resource-Policy.
 //
 // Deliberately self-contained (its own helper functions, not shared with
 // patches 5/6) since those patches' helpers may not exist in the bundle at
@@ -241,8 +252,20 @@ function __patch7AddCoiHeaders(response) {
     return new Response(response.body, { status: response.status, statusText: response.statusText, headers })
 }
 self.addEventListener('fetch', function (event) {
-    if (event.request.mode !== 'navigate') return
+    const isNavigation = event.request.mode === 'navigate'
+    const isWorkerScript = event.request.destination === 'worker' || event.request.destination === 'sharedworker'
+    if (!isNavigation && !isWorkerScript) return
     event.stopImmediatePropagation()
+
+    if (isWorkerScript) {
+        // No timeout/cache-fallback story needed here — a worker script is
+        // either fetched successfully (then just needs COEP added) or it
+        // fails, in which case the normal Worker "error" event already
+        // surfaces that to the page (see App.tsx's initSqlDriver .catch()).
+        event.respondWith(fetch(event.request).then(__patch7AddCoiHeaders))
+        return
+    }
+
     event.respondWith((async function () {
         const request = event.request
         try {
