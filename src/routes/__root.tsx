@@ -840,6 +840,16 @@ function LayoutWithDrafts() {
                         src="https://upload.wikimedia.org/wikipedia/commons/7/7c/Coat_of_arms_of_Uganda.svg"
                         alt="Uganda Coat of Arms"
                         style={{ height: isMobile ? 36 : 54 }}
+                        // Cross-Origin-Embedder-Policy: require-corp (needed for
+                        // OPFS/op-sqlite, see scripts/patch-sw.js) blocks a
+                        // no-cors cross-origin image load unless the response
+                        // itself carries Cross-Origin-Resource-Policy, which
+                        // Wikimedia's CDN doesn't set. It does send
+                        // Access-Control-Allow-Origin: *, though — forcing a
+                        // CORS-mode fetch here (rather than the <img> default
+                        // of no-cors) is enough to satisfy COEP without needing
+                        // any change to the image host.
+                        crossOrigin="anonymous"
                     />
                     <Title
                         level={isMobile ? 5 : 3}

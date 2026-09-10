@@ -209,3 +209,38 @@ COEP-compliant (confirmed this fails without the fix, per the live
 production report this ticket is responding to). Normal same-origin
 CSS/script loading confirmed unaffected (correctly still handled by
 Workbox, untouched by this patch's narrow `navigate`/`worker` scoping).
+
+## Follow-up: third real-production finding — cross-origin image broken
+
+User reported the app now boots (op-sqlite opens, previous two fixes hold)
+but pasted a large console dump to review. Most of it is inert noise
+(React/antd internal warnings, a `custom-translations`/`logo_banner`
+dataStore 404 already handled gracefully by the app — "Custom translations
+not available." — and a `wasm streaming compile failed: ... Incorrect
+response MIME type` warning that sqlite-wasm itself catches and falls back
+from, non-fatal). One real regression: `Cross-Origin-Resource-Policy
+prevented from serving the response to the client` for
+`upload.wikimedia.org/.../Coat_of_arms_of_Uganda.svg` — the header logo,
+hardcoded to a cross-origin CDN URL in `__root.tsx`. This is exactly ticket
+001/012's own runbook Item 4 risk ("COEP require-corp vs. real cross-origin
+assets") materializing for real, now that COEP is genuinely active.
+
+**Fix**: `curl`-confirmed Wikimedia's CDN sends `Access-Control-Allow-Origin: *`
+but no `Cross-Origin-Resource-Policy` header — under COEP, a resource
+fetched in the `<img>` tag's default `no-cors` mode needs CORP, but one
+successfully fetched in `cors` mode is exempted per spec even without CORP.
+Added `crossOrigin="anonymous"` to the `<img>` tag, forcing a CORS-mode
+fetch instead — no server-side/proxy change needed since Wikimedia already
+supports CORS.
+
+**Verified live**: under the same isolated stand-in-server page, a
+synthetic `<img crossOrigin="anonymous">` pointed at the real Wikimedia URL
+loaded successfully (140×150), while the same URL without `crossOrigin`
+set failed with `onerror`, confirming this is the actual mechanism, not a
+coincidence.
+
+**Not yet swept**: this was the one hardcoded cross-origin asset URL found
+opportunistically via this user's console dump, not from an exhaustive
+audit. Other cross-origin assets (antd/fonts, any other hardcoded CDN
+URLs) could hit the same issue — worth a proper sweep per ticket 012's
+runbook Item 4, not done here since none surfaced yet.
