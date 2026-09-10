@@ -113,12 +113,16 @@ in production, old Dexie databases are gone, and `pnpm test:vitest` /
 - [Migration-Failure Telemetry - Build From Scratch, and What Shape?](tickets/015-migration-failure-telemetry.md) — worth having, kept minimal: an in-app indicator (extends ticket 006's progress banner) plus a one-time `dataStore/eregisters` write of the final outcome (reusing this app's existing dataStore pattern) once migration succeeds or after N consecutive failures — not a full retry log, not general app-wide telemetry.
 - [How Should the App Handle OPFS's Multi-Tab Access-Handle Conflict?](tickets/016-multi-tab-opfs-conflict.md) — research only: confirmed this is an unsolved-by-any-library OPFS constraint (exclusive sync access handles), not an op-sqlite bug. Two real options exist: detect-and-message (cheap, no interface changes) or true multi-tab support via one dedicated Worker + Web Locks leader election + BroadcastChannel (production prior art: PowerSync) — but this app's `SqlDriver.transaction()` takes an arbitrary JS callback, which can't be forwarded over a message channel, so true support would mean redesigning that interface.
 - [Multi-Tab OPFS Conflict — Detect-and-Message, or Invest in True Multi-Tab Support?](tickets/017-multi-tab-opfs-decision.md) — refined option 1 into *prevent*-and-message rather than detect-after-the-fact: every tab races for a Web Lock at load, the loser never calls `initSqlDriver` at all (so the OPFS error never actually occurs) and asks the primary tab to focus itself via `BroadcastChannel`. Built as `src/db/sqlite/single-tab-lock.ts`, wired into `App.tsx` ahead of Phases 1-3's existing bootstrap. Option 2 (true multi-tab support) remains not pursued, per ticket 016's `SqlDriver`-redesign cost finding.
+- [COI Header Injection Fails in Real Production Build — Needs a Version-Robust Technique](tickets/018-coi-injection-production-failure.md) — the exact risk tickets 001/012 flagged materialized: patch 2/5/6's technique of textually matching Workbox's exact minified navigation code failed against a real user's production build, so OPFS never got cross-origin isolation and the app crashed on every load. Replaced with patch 7: an independent `fetch` listener (scoped to `mode==="navigate"`, calling `stopImmediatePropagation()` to take exclusive ownership before Workbox's own routing runs) that implements the whole navigation story itself — no Workbox-structure matching, so it can't fail the same way. Verified end-to-end in real headless Chrome against a bare stand-in server sending no COOP/COEP headers: fresh install and offline/cache-fallback paths both correctly achieve `crossOriginIsolated: true`. Found and fixed a real bug during that verification (`caches.match()` needs `ignoreSearch: true` since Workbox cache-busts `index.html` with a `?__WB_REVISION__=` query param). Patches 2/5/6 left in place as harmless dead code for now — removing them is tracked as follow-up, not urgent.
 
 ## Not yet specified
 
-(empty — every fog item has either graduated into a ticket below or been
-resolved as an addendum to an existing decision; see "Handling users
-mid-upgrade" note under Decisions so far.)
+- Removing `scripts/patch-sw.js`'s patches 2, 5, and 6 now that patch 7
+  (ticket 018) makes them permanently unreachable dead code for
+  navigation requests — not urgent, deliberately deferred rather than
+  touched mid-incident; not yet sharp enough to ticket (needs deciding
+  whether to remove all three together or verify each is truly dead
+  first).
 
 ## Out of scope
 

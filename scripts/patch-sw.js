@@ -1,12 +1,21 @@
 // scripts/patch-sw.js
 // Runs after d2-app-scripts build via the "postbuild" npm hook.
-// Applies six patches to build/app/service-worker.js:
+// Applies seven patches to build/app/service-worker.js:
 //   1. Appends clients.claim() so controllerchange fires → page reloads after SW update
 //   2. Fixes navigation handler to serve fresh index.html from network (not old precache)
 //   3. Throws on !response.ok so a 5xx is treated as a failure, not a success
 //   4. Adds an 8s timeout to the app-shell NetworkFirst strategy
 //   5. Adds an 8s timeout to the navigation handler's fetch
 //   6. Injects COOP/COEP headers onto the navigation response (OPFS needs cross-origin isolation)
+//   7. Independent navigation handler (network+timeout+cache-fallback+COI headers) that takes
+//      exclusive ownership of navigation requests before Workbox's own routing runs — patches
+//      2/5/6 all depend on matching Workbox's exact minified navigation code, which varies
+//      across @dhis2/pwa build environments (confirmed: patch 2 failed to match in a real
+//      production build, cascading into patch 6 never running and OPFS never isolating).
+//      Patch 7 needs no such matching at all, so it can't fail the same way. Patches 2/5/6 are
+//      left in place as harmless dead code (unreachable for navigations once patch 7's
+//      stopImmediatePropagation() takes over) rather than removed mid-incident — see wayfinder
+//      ticket 018.
 
 const fs = require('fs')
 const path = require('path')
@@ -191,6 +200,81 @@ if (!sw.includes(COI_SENTINEL)) {
     }
 } else {
     console.log('[patch-sw] Patch 6 already applied — skipping')
+}
+
+// ── Patch 7: Independent navigation handler (no Workbox structure matching) ──
+// Registered as its own fetch listener, prepended to the TOP of the file so
+// it runs (and registers) before Workbox's own internal routing listener —
+// service worker fetch listeners fire in registration order, and the first
+// to call event.respondWith() wins. Scoped to event.request.mode==="navigate"
+// (real browser navigations only, per the Fetch spec — never fetch() calls
+// or subresource loads, so this can't interfere with API/asset requests),
+// and calls event.stopImmediatePropagation() to stop Workbox's router from
+// running (and attempting its own respondWith()) for these requests at all —
+// this is what makes a second fetch listener safe here, where a naive
+// competing listener would race Workbox's for respondWith().
+//
+// Deliberately self-contained (its own helper functions, not shared with
+// patches 5/6) since those patches' helpers may not exist in the bundle at
+// all if their own pattern-matching failed — patch 7 must not depend on
+// any other patch having successfully applied.
+//
+// caches.match(request) (the global Cache Storage lookup, not a specific
+// cache's .match()) searches every open cache by request match — no need to
+// know Workbox's precache cache name, which is itself a version-dependent
+// internal detail patches 2/5/6's approach was exposed to.
+const INDEPENDENT_NAV_SENTINEL = '__patch_independent_nav__'
+
+if (!sw.includes(INDEPENDENT_NAV_SENTINEL)) {
+    const patch7 = `// ${INDEPENDENT_NAV_SENTINEL}
+function __patch7FetchWithTimeout(fetchPromise, ms) {
+    return Promise.race([
+        fetchPromise,
+        new Promise((_, reject) => setTimeout(() => reject(new Error('${INDEPENDENT_NAV_SENTINEL}:timeout')), ms)),
+    ])
+}
+function __patch7AddCoiHeaders(response) {
+    if (!response || response.status === 0 || response.type === 'opaque') return response
+    const headers = new Headers(response.headers)
+    headers.set('Cross-Origin-Opener-Policy', 'same-origin')
+    headers.set('Cross-Origin-Embedder-Policy', 'require-corp')
+    return new Response(response.body, { status: response.status, statusText: response.statusText, headers })
+}
+self.addEventListener('fetch', function (event) {
+    if (event.request.mode !== 'navigate') return
+    event.stopImmediatePropagation()
+    event.respondWith((async function () {
+        const request = event.request
+        try {
+            const response = await __patch7FetchWithTimeout(fetch(request), 8000)
+            if (response && response.ok && response.type !== 'opaqueredirect') {
+                return __patch7AddCoiHeaders(response)
+            }
+            // ignoreSearch: Workbox's precache stores index.html with a
+            // cache-busting ?__WB_REVISION__=... query param appended (since
+            // the file itself has no content hash in its name) — a plain
+            // caches.match() on the exact request URL (no query) would miss
+            // that precached entry entirely.
+            const cached = await caches.match(request, { ignoreSearch: true })
+            return __patch7AddCoiHeaders(cached || response)
+        } catch (err) {
+            // ignoreSearch: Workbox's precache stores index.html with a
+            // cache-busting ?__WB_REVISION__=... query param appended (since
+            // the file itself has no content hash in its name) — a plain
+            // caches.match() on the exact request URL (no query) would miss
+            // that precached entry entirely.
+            const cached = await caches.match(request, { ignoreSearch: true })
+            if (cached) return __patch7AddCoiHeaders(cached)
+            throw err
+        }
+    })())
+})
+`
+    sw = patch7 + sw
+    modified = true
+    console.log('[patch-sw] Applied patch 7: independent navigation handler (network+timeout+cache-fallback+COI headers, no Workbox structure matching)')
+} else {
+    console.log('[patch-sw] Patch 7 already applied — skipping')
 }
 
 // ── Write patched file ────────────────────────────────────────────────────────
