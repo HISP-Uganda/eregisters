@@ -40,6 +40,7 @@ const FullApp: FC<{
     const { message } = App.useApp();
     const [sqlDriver, setSqlDriver] = useState<SqlDriver | null>(null);
     const [isDuplicateTab, setIsDuplicateTab] = useState(false);
+    const [sqlDriverError, setSqlDriverError] = useState<Error | null>(null);
 
     useEffect(() => {
         // OPFS access handles are exclusive per file — a second tab trying
@@ -55,29 +56,40 @@ const FullApp: FC<{
                 return;
             }
 
-            // Requires cross-origin isolation (OPFS) — will not resolve
-            // until the COOP/COEP header-injection patch (wayfinder
-            // ticket 012) is deployed and verified in production.
-            // Expected to hang in any environment without it, including
-            // today's plain dev server; not something to chase in this
-            // migration phase.
-            initSqlDriver("eregisters-metadata").then((driver) => {
-                initTrackerCollections(driver);
-                // Fire-and-forget (wayfinder ticket "Migration and Cutover
-                // Procedure Design" decision 4: non-blocking) — copying an
-                // existing device's Dexie data into SQLite runs in the
-                // background; the app renders immediately, and a banner
-                // (subscribed to migration-progress.ts) reports status
-                // independently. A fresh install resolves this instantly
-                // (nothing to copy). This never throws — failures are
-                // caught internally and published as progress, not
-                // rejected.
-                void runDexieMigrationIfNeeded(
-                    driver,
-                    realDexieMigrationSource,
-                );
-                setSqlDriver(driver);
-            });
+            // Requires cross-origin isolation (OPFS) — the COOP/COEP
+            // header-injection patch (wayfinder ticket 012) must actually
+            // be taking effect in this deployment for this to resolve.
+            // If it isn't (unverified/misconfigured environment, or the
+            // patch's pattern-matching failed against this build's
+            // service-worker.js), this rejects rather than hanging — caught
+            // below so the user sees a real error instead of an unhandled
+            // promise rejection and an infinite "Preparing local storage…"
+            // spinner.
+            initSqlDriver("eregisters-metadata")
+                .then((driver) => {
+                    initTrackerCollections(driver);
+                    // Fire-and-forget (wayfinder ticket "Migration and
+                    // Cutover Procedure Design" decision 4: non-blocking) —
+                    // copying an existing device's Dexie data into SQLite
+                    // runs in the background; the app renders immediately,
+                    // and a banner (subscribed to migration-progress.ts)
+                    // reports status independently. A fresh install
+                    // resolves this instantly (nothing to copy). This never
+                    // throws — failures are caught internally and published
+                    // as progress, not rejected.
+                    void runDexieMigrationIfNeeded(
+                        driver,
+                        realDexieMigrationSource,
+                    );
+                    setSqlDriver(driver);
+                })
+                .catch((error: unknown) => {
+                    setSqlDriverError(
+                        error instanceof Error
+                            ? error
+                            : new Error(String(error)),
+                    );
+                });
         });
     }, []);
 
@@ -89,6 +101,21 @@ const FullApp: FC<{
                         This app is already open in another tab. Look for
                         the tab titled "🔴 Switch to this tab" and switch to
                         it — you can close this one.
+                    </Typography.Text>
+                }
+            />
+        );
+    }
+
+    if (sqlDriverError) {
+        return (
+            <Spinner
+                component={
+                    <Typography.Text type="danger">
+                        Could not open local storage — this device may not
+                        support offline mode, or the app is misconfigured on
+                        this server. Try reloading; if this keeps happening,
+                        contact your administrator. ({sqlDriverError.message})
                     </Typography.Text>
                 }
             />
