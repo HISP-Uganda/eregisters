@@ -62,7 +62,6 @@ export interface HmisFormProps {
     onRevoke?: () => void | Promise<void>;
     verifiedAt?: string | number;
     verifiedBy?: string;
-    pendingVerificationAction?: "verify" | "revoke" | null;
 }
 
 function dataValueKey(
@@ -737,7 +736,6 @@ const InnerHmisForm: React.FC<HmisFormProps> = ({
     onRevoke,
     verifiedAt,
     verifiedBy,
-    pendingVerificationAction = null,
 }) => {
     // A verified report is not read-only — the user can still edit values
     // and re-submit. The button label communicates the current state.
@@ -786,8 +784,6 @@ const InnerHmisForm: React.FC<HmisFormProps> = ({
                     existing?.syncStatus === "synced"
                         ? "draft"
                         : existing?.syncStatus ?? "draft",
-                pendingVerificationAction:
-                    existing?.pendingVerificationAction ?? null,
             });
         },
         [draftKey, dataSet, period, orgUnit, attributeOptionCombo],
@@ -943,22 +939,14 @@ const InnerHmisForm: React.FC<HmisFormProps> = ({
                     : false;
                 const periodBlocked = !period || !periodFullyPast;
                 const disabled = effectiveReadOnly || periodBlocked;
-                const isRevokePending =
-                    pendingVerificationAction === "revoke";
-                const isVerifyPending =
-                    pendingVerificationAction === "verify";
                 const _keepSyncStatus = syncStatus; // reserved for future
                 void _keepSyncStatus;
 
                 const primaryLabel = isVerified
-                    ? isRevokePending
-                        ? "Revocation queued — retry"
-                        : "Verified — Re-submit to Update"
-                    : isVerifyPending
-                      ? "Verification queued — retry"
-                      : periodBlocked && period
-                        ? "Waiting for period to end"
-                        : "Mark Report as Verified";
+                    ? "Verified — Re-submit to Update"
+                    : periodBlocked && period
+                      ? "Waiting for period to end"
+                      : "Mark Report as Verified";
 
                 const disabledVisibleStyle: React.CSSProperties = disabled
                     ? {
@@ -997,13 +985,13 @@ const InnerHmisForm: React.FC<HmisFormProps> = ({
                         <Button
                             type="default"
                             icon={
-                                isVerified && !isRevokePending ? (
+                                isVerified ? (
                                     <CheckCircleOutlined />
                                 ) : undefined
                             }
                             onClick={handleSave}
                             disabled={disabled}
-                            loading={loading && !isRevokePending}
+                            loading={loading}
                             style={disabledVisibleStyle}
                             title={
                                 periodBlocked && period && !effectiveReadOnly
@@ -1021,9 +1009,7 @@ const InnerHmisForm: React.FC<HmisFormProps> = ({
                                 okType="danger"
                                 onConfirm={() => onRevoke()}
                             >
-                                <Button danger loading={isRevokePending}>
-                                    Revoke verification
-                                </Button>
+                                <Button danger>Revoke verification</Button>
                             </Popconfirm>
                         )}
                     </div>

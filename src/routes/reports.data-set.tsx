@@ -90,6 +90,17 @@ function resolveAttribution(
     return HARDCODED_AOC_BY_DATASET[dataSet];
 }
 
+function describeError(err: unknown): string {
+    if (err && typeof err === "object") {
+        const details = (err as { details?: { message?: string } }).details;
+        if (details?.message) return details.message;
+        const message = (err as { message?: unknown }).message;
+        if (typeof message === "string" && message) return message;
+    }
+    if (err instanceof Error) return err.message;
+    return String(err);
+}
+
 async function fetchServerVerified(
     engine: DataEngineLike,
     dataSet: string,
@@ -151,10 +162,6 @@ export const DataSetReportRoute = createRoute({
             verifiedAt: undefined as string | undefined,
             verifiedBy: undefined as string | undefined,
             syncStatus: "draft" as HmisDraft["syncStatus"],
-            pendingVerificationAction: null as
-                | "verify"
-                | "revoke"
-                | null,
         };
         if (
             orgUnit === undefined ||
@@ -186,10 +193,6 @@ export const DataSetReportRoute = createRoute({
                 verifiedAt: undefined as string | undefined,
                 verifiedBy: undefined as string | undefined,
                 syncStatus: "draft" as HmisDraft["syncStatus"],
-                pendingVerificationAction: null as
-                    | "verify"
-                    | "revoke"
-                    | null,
             };
         }
 
@@ -217,8 +220,6 @@ export const DataSetReportRoute = createRoute({
             verifiedAt: serverVerified.verifiedAt,
             verifiedBy: serverVerified.verifiedBy,
             syncStatus: draft?.syncStatus ?? "draft",
-            pendingVerificationAction:
-                draft?.pendingVerificationAction ?? null,
         };
     },
 });
@@ -234,7 +235,6 @@ function Reports() {
         verifiedAt,
         verifiedBy,
         syncStatus,
-        pendingVerificationAction,
     } = DataSetReportRoute.useLoaderData();
     const router = useRouter();
 
@@ -307,36 +307,13 @@ function Reports() {
                 verifiedAt: now,
                 updatedAt: now,
                 syncStatus: "synced",
-                pendingVerificationAction: null,
             });
 
             await router.invalidate();
             message.success("Report Verified Successfully");
         } catch (err) {
-            const existing = await getHmisDraft(id);
-            await upsertHmisDraft({
-                id,
-                dataSet,
-                period,
-                orgUnit,
-                attributeOptionCombo: effectiveAttribution,
-                values:
-                    existing?.values ??
-                    Object.fromEntries(
-                        values.dataValues.map((dv) => [
-                            `${dv.dataElement}_${dv.categoryOptionCombo}_${dv.attributeOptionCombo}`,
-                            dv.value,
-                        ]),
-                    ),
-                isVerified: true,
-                verifiedAt: now,
-                updatedAt: now,
-                syncStatus: "pending",
-                pendingVerificationAction: "verify",
-            });
-            await router.invalidate();
-            message.error("Verification queued — will sync when online.");
             console.error("Verify failed:", err);
+            message.error(`Verification failed: ${describeError(err)}`);
         }
     };
 
@@ -385,29 +362,13 @@ function Reports() {
                 verifiedAt: undefined,
                 updatedAt: now,
                 syncStatus: "synced",
-                pendingVerificationAction: null,
             });
 
             await router.invalidate();
             message.success("Verification revoked");
         } catch (err) {
-            const existing = await getHmisDraft(id);
-            await upsertHmisDraft({
-                id,
-                dataSet,
-                period,
-                orgUnit,
-                attributeOptionCombo: effectiveAttribution,
-                values: existing?.values ?? {},
-                isVerified: existing?.isVerified ?? true,
-                verifiedAt: existing?.verifiedAt,
-                updatedAt: now,
-                syncStatus: "pending",
-                pendingVerificationAction: "revoke",
-            });
-            await router.invalidate();
-            message.error("Revocation queued — will sync when online.");
             console.error("Revoke failed:", err);
+            message.error(`Revocation failed: ${describeError(err)}`);
         }
     };
 
@@ -421,7 +382,6 @@ function Reports() {
                 isVerified={isVerified}
                 verifiedAt={verifiedAt}
                 verifiedBy={verifiedBy}
-                pendingVerificationAction={pendingVerificationAction}
                 syncStatus={syncStatus}
                 period={period}
                 onSave={onSave}
@@ -437,7 +397,6 @@ function Reports() {
                 isVerified={isVerified}
                 verifiedAt={verifiedAt}
                 verifiedBy={verifiedBy}
-                pendingVerificationAction={pendingVerificationAction}
                 syncStatus={syncStatus}
                 period={period}
                 onSave={onSave}
@@ -453,7 +412,6 @@ function Reports() {
                 isVerified={isVerified}
                 verifiedAt={verifiedAt}
                 verifiedBy={verifiedBy}
-                pendingVerificationAction={pendingVerificationAction}
                 syncStatus={syncStatus}
                 period={period}
                 onSave={onSave}
@@ -469,7 +427,6 @@ function Reports() {
                 isVerified={isVerified}
                 verifiedAt={verifiedAt}
                 verifiedBy={verifiedBy}
-                pendingVerificationAction={pendingVerificationAction}
                 syncStatus={syncStatus}
                 period={period}
                 onSave={onSave}
@@ -485,7 +442,6 @@ function Reports() {
                 isVerified={isVerified}
                 verifiedAt={verifiedAt}
                 verifiedBy={verifiedBy}
-                pendingVerificationAction={pendingVerificationAction}
                 syncStatus={syncStatus}
                 period={period}
                 onSave={onSave}
@@ -501,7 +457,6 @@ function Reports() {
                 isVerified={isVerified}
                 verifiedAt={verifiedAt}
                 verifiedBy={verifiedBy}
-                pendingVerificationAction={pendingVerificationAction}
                 syncStatus={syncStatus}
                 period={period}
                 onSave={onSave}
@@ -517,7 +472,6 @@ function Reports() {
                 isVerified={isVerified}
                 verifiedAt={verifiedAt}
                 verifiedBy={verifiedBy}
-                pendingVerificationAction={pendingVerificationAction}
                 syncStatus={syncStatus}
                 period={period}
                 onSave={onSave}
@@ -533,7 +487,6 @@ function Reports() {
                 isVerified={isVerified}
                 verifiedAt={verifiedAt}
                 verifiedBy={verifiedBy}
-                pendingVerificationAction={pendingVerificationAction}
                 syncStatus={syncStatus}
                 period={period}
                 onSave={onSave}
@@ -549,7 +502,6 @@ function Reports() {
                 isVerified={isVerified}
                 verifiedAt={verifiedAt}
                 verifiedBy={verifiedBy}
-                pendingVerificationAction={pendingVerificationAction}
                 syncStatus={syncStatus}
                 period={period}
                 onSave={onSave}
@@ -565,7 +517,6 @@ function Reports() {
                 isVerified={isVerified}
                 verifiedAt={verifiedAt}
                 verifiedBy={verifiedBy}
-                pendingVerificationAction={pendingVerificationAction}
                 syncStatus={syncStatus}
                 period={period}
                 onSave={onSave}
