@@ -26,8 +26,9 @@ describe("mergeBulkEvents", () => {
             updatedBy: serverUser,
         } as unknown as FlattenedEvent;
 
-        const [merged] = await mergeBulkEvents([serverEvent], async () =>
-            undefined,
+        const [merged] = await mergeBulkEvents(
+            [serverEvent],
+            async () => undefined,
         );
 
         expect(merged.createdBy).toEqual(serverUser);

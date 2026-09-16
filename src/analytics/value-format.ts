@@ -49,7 +49,7 @@ export function displayValue(
     optionSetId: string | undefined,
     optionSets: OptionSets,
 ): string {
-    if (raw === undefined || raw === null || raw === "") return "Missing";
+    if (raw === undefined || raw === null || raw === "") return "";
 
     const text = String(raw);
     if (!optionSetId) return text;

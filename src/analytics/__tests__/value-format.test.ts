@@ -30,10 +30,10 @@ describe("displayValue", () => {
         expect(displayValue("female-id", "gender", optionSets)).toBe("Female");
     });
 
-    it("uses Missing for blank display values", () => {
-        expect(displayValue("", undefined, optionSets)).toBe("Missing");
-        expect(displayValue(null, undefined, optionSets)).toBe("Missing");
-        expect(displayValue(undefined, undefined, optionSets)).toBe("Missing");
+    it("returns an empty string for blank display values", () => {
+        expect(displayValue("", undefined, optionSets)).toBe("");
+        expect(displayValue(null, undefined, optionSets)).toBe("");
+        expect(displayValue(undefined, undefined, optionSets)).toBe("");
     });
 });
 
