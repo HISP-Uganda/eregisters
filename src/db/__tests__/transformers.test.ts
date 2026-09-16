@@ -175,6 +175,47 @@ describe("transformEvent option-set validation", () => {
 
         expect(result.dataValues).toEqual([]);
     });
+
+    it("keeps a numeric data value of 0 — not blank/empty", () => {
+        const event = {
+            ...baseEvent,
+            dataValues: { deNumber00001: 0 },
+        } as unknown as FlattenedEvent;
+
+        const result = transformEvent(event);
+
+        expect(result.dataValues).toEqual([
+            { dataElement: "deNumber00001", value: "0" },
+        ]);
+    });
+
+    it("keeps a non-zero numeric data value", () => {
+        const event = {
+            ...baseEvent,
+            dataValues: { deNumber00001: 42 },
+        } as unknown as FlattenedEvent;
+
+        const result = transformEvent(event);
+
+        expect(result.dataValues).toEqual([
+            { dataElement: "deNumber00001", value: "42" },
+        ]);
+    });
+
+    it("drops a blank string data value but keeps undefined/null out too", () => {
+        const event = {
+            ...baseEvent,
+            dataValues: {
+                deBlank00001: "",
+                deNull000001: null,
+                deUndef00001: undefined,
+            },
+        } as unknown as FlattenedEvent;
+
+        const result = transformEvent(event);
+
+        expect(result.dataValues).toEqual([]);
+    });
 });
 
 describe("transformTrackedEntity / transformEnrollment option-set validation", () => {

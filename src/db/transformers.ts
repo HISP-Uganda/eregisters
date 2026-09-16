@@ -1,4 +1,3 @@
-import { isEmpty } from "lodash";
 import type {
     DataElement,
     FlattenedEnrollment,
@@ -37,7 +36,13 @@ function filterValidOptionCodes(
     fieldId: string,
     value: string,
     fieldsById:
-        | Map<string, Pick<DataElement | TrackedEntityAttribute, "optionSetValue" | "optionSet">>
+        | Map<
+              string,
+              Pick<
+                  DataElement | TrackedEntityAttribute,
+                  "optionSetValue" | "optionSet"
+              >
+          >
         | undefined,
     optionSets: Map<string, FlattenedOptionSet[]> | undefined,
 ): string | undefined {
@@ -152,7 +157,12 @@ export function transformEvent(
                     !validDataElementIds.has(dataElement)
                 )
                     return [];
-                if (!isEmpty(value)) {
+                const isEmptyValue =
+                    value === undefined ||
+                    value === null ||
+                    value === "" ||
+                    (Array.isArray(value) && value.length === 0);
+                if (!isEmptyValue) {
                     const outValue = Array.isArray(value)
                         ? value.join(",")
                         : value;
