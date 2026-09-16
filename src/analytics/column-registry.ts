@@ -58,14 +58,28 @@ function sectionPassesServiceFilter(
     return selectedServiceLabels.has(normalized);
 }
 
+/** Stable sort by DHIS2's `sortOrder` (as configured in Maintenance),
+ * treating a missing value as "last" — cached metadata pulled before
+ * `sortOrder` was added to the field list won't have it yet. */
+function bySortOrder<T extends { sortOrder?: number }>(items: T[]): T[] {
+    return [...items].sort((a, b) => {
+        const aOrder = a.sortOrder ?? Number.MAX_SAFE_INTEGER;
+        const bOrder = b.sortOrder ?? Number.MAX_SAFE_INTEGER;
+        return aOrder - bOrder;
+    });
+}
+
 function column(
-    input: Omit<AnalyticsColumn, "pivot"> & {
+    input: Omit<AnalyticsColumn, "pivot" | "defaultVisible"> & {
         canMeasure?: boolean;
     },
 ): AnalyticsColumn {
     const { canMeasure = false, ...columnInput } = input;
     return {
         ...columnInput,
+        // Nothing is selected by default — users opt into the columns they
+        // want via the column chooser rather than starting from a curated set.
+        defaultVisible: false,
         pivot: {
             canUseAsDimension: true,
             canUseAsMeasure: canMeasure,
@@ -107,94 +121,7 @@ export function buildColumnRegistry({
             selectedServiceLabels,
         );
 
-    const columns: AnalyticsColumn[] = [
-        column({
-            key: "trackedEntity.trackedEntity",
-            label: "Tracked Entity ID",
-            source: "trackedEntity",
-            sourceFieldId: "trackedEntity",
-            valueKind: "string",
-            groupPath: ["System IDs"],
-            // Opening a record is now a "View Profile"/"View Visit" button
-            // in the fixed Actions column, not a click on the id itself —
-            // still available to add back via the column chooser.
-            defaultVisible: false,
-        }),
-        column({
-            key: "enrollment.enrollment",
-            label: "Enrollment ID",
-            source: "enrollment",
-            sourceFieldId: "enrollment",
-            valueKind: "string",
-            groupPath: ["System IDs"],
-            defaultVisible: false,
-        }),
-        column({
-            key: "parentEvent.event",
-            label: "Main Event ID",
-            source: "parentEvent",
-            sourceFieldId: "event",
-            valueKind: "string",
-            groupPath: ["System IDs"],
-            defaultVisible: false,
-        }),
-    ];
-
-    addSystemColumns(
-        columns,
-        "trackedEntity",
-        [
-            "trackedEntityType",
-            "orgUnit",
-            "syncStatus",
-            "createdAt",
-            "updatedAt",
-            "createdBy",
-            "updatedBy",
-        ],
-        USER_FIELD_LABELS,
-    );
-    addSystemColumns(
-        columns,
-        "enrollment",
-        [
-            "program",
-            "trackedEntity",
-            "orgUnit",
-            "status",
-            "enrolledAt",
-            "occurredAt",
-            "syncStatus",
-            "createdAt",
-            "updatedAt",
-            "createdBy",
-            "updatedBy",
-        ],
-        USER_FIELD_LABELS,
-    );
-    addSystemColumns(
-        columns,
-        "parentEvent",
-        [
-            "program",
-            "programStage",
-            "enrollment",
-            "trackedEntity",
-            "orgUnit",
-            "status",
-            "occurredAt",
-            "syncStatus",
-            "createdAt",
-            "updatedAt",
-            "createdBy",
-            "updatedBy",
-            "parentEvent",
-        ],
-        {
-            ...USER_FIELD_LABELS,
-            occurredAt: mainStage.executionDateLabel ?? "Report Date",
-        },
-    );
+    const columns: AnalyticsColumn[] = [];
 
     const attributeSections = new Map<string, string>();
     for (const section of metadata.program.programSections ?? []) {
@@ -206,7 +133,9 @@ export function buildColumnRegistry({
         }
     }
 
-    for (const ptea of metadata.program.programTrackedEntityAttributes ?? []) {
+    for (const ptea of bySortOrder(
+        metadata.program.programTrackedEntityAttributes ?? [],
+    )) {
         const tea =
             metadata.trackedEntityAttributes.get(
                 ptea.trackedEntityAttribute.id,
@@ -227,14 +156,13 @@ export function buildColumnRegistry({
                 sourceFieldId: tea.id,
                 valueKind,
                 optionSetId: tea.optionSet?.id,
-                groupPath: ["Tracked Entity", section],
-                defaultVisible: false,
+                groupPath: ["Profile", section],
                 canMeasure: valueKind === "number",
             }),
         );
     }
 
-    for (const psde of mainStage.programStageDataElements ?? []) {
+    for (const psde of bySortOrder(mainStage.programStageDataElements ?? [])) {
         const de = metadata.dataElements.get(psde.dataElement.id) ?? psde.dataElement;
         const rawSection = findStageSection(mainStage, de.id);
         if (!sectionAllowed(rawSection)) continue;
@@ -248,8 +176,7 @@ export function buildColumnRegistry({
                 sourceFieldId: de.id,
                 valueKind,
                 optionSetId: de.optionSet?.id,
-                groupPath: ["Main Event", mainStage.name, section],
-                defaultVisible: de.id === SERVICE_TYPE_FIELD_ID,
+                groupPath: [mainStage.name, section],
                 canMeasure: valueKind === "number",
             }),
         );
@@ -266,20 +193,19 @@ export function buildColumnRegistry({
                     source: "childEvent",
                     sourceFieldId: "event",
                     valueKind: "string",
-                    groupPath: ["Child Events", stage.name, "System"],
-                    defaultVisible: false,
+                    groupPath: [stage.name, "System"],
                     chooserKey: `childEvent.${stageId}.event`,
                     chooserLabel: "Event ID",
                 }),
             );
 
-            for (const psde of stage.programStageDataElements ?? []) {
+            for (const psde of bySortOrder(stage.programStageDataElements ?? [])) {
                 const de =
                     metadata.dataElements.get(psde.dataElement.id) ??
                     psde.dataElement;
                 const rawSection = findStageSection(stage, de.id);
                 if (!sectionAllowed(rawSection)) continue;
-                const section = rawSection ?? "Ungrouped Child Event";
+                const section = rawSection ?? "Ungrouped";
                 const valueKind = valueKindFromDhis2(de.valueType);
                 const deLabel = labelFrom(de.name, de.formName, de.id);
                 columns.push(
@@ -290,8 +216,7 @@ export function buildColumnRegistry({
                         sourceFieldId: de.id,
                         valueKind,
                         optionSetId: de.optionSet?.id,
-                        groupPath: ["Child Events", stage.name, section],
-                        defaultVisible: false,
+                        groupPath: [stage.name, section],
                         canMeasure: valueKind === "number",
                         chooserKey: `childEvent.${stageId}.dataValue.${de.id}`,
                         chooserLabel: deLabel,
@@ -318,11 +243,10 @@ export function buildColumnRegistry({
                 sourceFieldId: "event",
                 valueKind: "string",
                 groupPath: ["Linked Parent", stage.name, "System"],
-                defaultVisible: false,
             }),
         );
 
-        for (const psde of stage.programStageDataElements ?? []) {
+        for (const psde of bySortOrder(stage.programStageDataElements ?? [])) {
             const de =
                 metadata.dataElements.get(psde.dataElement.id) ??
                 psde.dataElement;
@@ -340,12 +264,100 @@ export function buildColumnRegistry({
                     valueKind,
                     optionSetId: de.optionSet?.id,
                     groupPath: ["Linked Parent", stage.name, section],
-                    defaultVisible: false,
                     canMeasure: valueKind === "number",
                 }),
             );
         }
     }
+
+    // System/identifier columns last — they're implementation details users
+    // rarely need and shouldn't compete with the record's actual data for
+    // the front of the column list/chooser.
+    columns.push(
+        column({
+            key: "trackedEntity.trackedEntity",
+            label: "Record ID",
+            source: "trackedEntity",
+            sourceFieldId: "trackedEntity",
+            valueKind: "string",
+            groupPath: ["System IDs"],
+        }),
+        column({
+            key: "enrollment.enrollment",
+            label: "Enrollment ID",
+            source: "enrollment",
+            sourceFieldId: "enrollment",
+            valueKind: "string",
+            groupPath: ["System IDs"],
+        }),
+        column({
+            key: "parentEvent.event",
+            label: "Event ID",
+            source: "parentEvent",
+            sourceFieldId: "event",
+            valueKind: "string",
+            groupPath: ["System IDs"],
+        }),
+    );
+
+    addSystemColumns(
+        columns,
+        "trackedEntity",
+        [
+            "trackedEntityType",
+            "orgUnit",
+            "syncStatus",
+            "createdAt",
+            "updatedAt",
+            "createdBy",
+            "updatedBy",
+        ],
+        "Profile",
+        USER_FIELD_LABELS,
+    );
+    addSystemColumns(
+        columns,
+        "enrollment",
+        [
+            "program",
+            "trackedEntity",
+            "orgUnit",
+            "status",
+            "enrolledAt",
+            "occurredAt",
+            "syncStatus",
+            "createdAt",
+            "updatedAt",
+            "createdBy",
+            "updatedBy",
+        ],
+        "Enrollment",
+        USER_FIELD_LABELS,
+    );
+    addSystemColumns(
+        columns,
+        "parentEvent",
+        [
+            "program",
+            "programStage",
+            "enrollment",
+            "trackedEntity",
+            "orgUnit",
+            "status",
+            "occurredAt",
+            "syncStatus",
+            "createdAt",
+            "updatedAt",
+            "createdBy",
+            "updatedBy",
+            "parentEvent",
+        ],
+        mainStage.name,
+        {
+            ...USER_FIELD_LABELS,
+            occurredAt: mainStage.executionDateLabel ?? "Report Date",
+        },
+    );
 
     return columns;
 }
@@ -354,15 +366,9 @@ function addSystemColumns(
     columns: AnalyticsColumn[],
     source: "trackedEntity" | "enrollment" | "parentEvent",
     fields: string[],
+    groupName: string,
     labelOverrides: Record<string, string> = {},
 ) {
-    const groupName =
-        source === "trackedEntity"
-            ? "Tracked Entity"
-            : source === "enrollment"
-              ? "Enrollment"
-              : "Main Event";
-
     for (const field of fields) {
         columns.push(
             column({
@@ -372,7 +378,6 @@ function addSystemColumns(
                 sourceFieldId: field,
                 valueKind: field.endsWith("At") ? "datetime" : "string",
                 groupPath: [groupName, "System"],
-                defaultVisible: source === "parentEvent" && field === "occurredAt",
             }),
         );
     }
@@ -382,10 +387,11 @@ function findStageSection(
     stage: AnalyticsMetadata["program"]["programStages"][number],
     dataElementId: string,
 ): string | undefined {
-    const section = (stage.programStageSections ?? []).find((candidate) =>
-        (candidate.dataElements ?? []).some(
-            (dataElement) => dataElement.id === dataElementId,
-        ),
+    const section = bySortOrder(stage.programStageSections ?? []).find(
+        (candidate) =>
+            (candidate.dataElements ?? []).some(
+                (dataElement) => dataElement.id === dataElementId,
+            ),
     );
     return section ? section.displayName || section.name : undefined;
 }

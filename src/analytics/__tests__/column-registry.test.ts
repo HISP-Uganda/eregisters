@@ -171,15 +171,15 @@ describe("buildColumnRegistry", () => {
         expect(columns.find((c) => c.key === "parentEvent.event")?.groupPath)
             .toEqual(["System IDs"]);
         expect(columns.find((c) => c.key === "te.attribute.firstName01")?.groupPath)
-            .toEqual(["Tracked Entity", "Registration Details"]);
+            .toEqual(["Profile", "Registration Details"]);
         expect(columns.find((c) => c.key === "te.attribute.firstName01")?.label)
             .toBe("First name");
         expect(columns.find((c) => c.key === "parentEvent.occurredAt")?.groupPath)
-            .toEqual(["Main Event", "System"]);
+            .toEqual(["Visit", "System"]);
         expect(
             columns.find((c) => c.key === "parentEvent.dataValue.weightuid01")
                 ?.groupPath,
-        ).toEqual(["Main Event", "Visit", "Triage"]);
+        ).toEqual(["Visit", "Triage"]);
         expect(
             columns.find((c) => c.key === "parentEvent.dataValue.weightuid01")
                 ?.label,
@@ -190,7 +190,7 @@ describe("buildColumnRegistry", () => {
                     c.key ===
                     "childEvent.followup001.2.dataValue.followup001",
             )?.groupPath,
-        ).toEqual(["Child Events", "Follow Up", "Outcome"]);
+        ).toEqual(["Follow Up", "Outcome"]);
         expect(
             columns.find(
                 (c) =>
@@ -215,6 +215,83 @@ describe("buildColumnRegistry", () => {
                     "childEvent.followup001.2.dataValue.followup001",
             )?.label,
         ).toBe("Follow up result (2)");
+    });
+
+    it("puts system/identifier columns after the data columns, not before", () => {
+        const columns = buildColumnRegistry({
+            metadata,
+            mainStageId: "visit000001",
+            childStageSlotCounts: new Map([["followup001", 1]]),
+        });
+
+        const lastDataIndex = columns.findIndex(
+            (c) => c.key === "childEvent.followup001.1.dataValue.followup001",
+        );
+        const firstSystemIndex = columns.findIndex(
+            (c) => c.key === "trackedEntity.trackedEntity",
+        );
+        expect(lastDataIndex).toBeGreaterThanOrEqual(0);
+        expect(firstSystemIndex).toBeGreaterThan(lastDataIndex);
+    });
+
+    it("orders data-element columns by DHIS2 sortOrder, not array order", () => {
+        const reorderedMetadata = {
+            ...metadata,
+            program: {
+                ...metadata.program,
+                programTrackedEntityAttributes: [
+                    {
+                        ...metadata.program.programTrackedEntityAttributes[0],
+                        id: "ptea0000002",
+                        sortOrder: 2,
+                        trackedEntityAttribute: {
+                            ...metadata.program
+                                .programTrackedEntityAttributes[0]
+                                .trackedEntityAttribute,
+                            id: "lastName001",
+                        },
+                    },
+                    {
+                        ...metadata.program.programTrackedEntityAttributes[0],
+                        sortOrder: 1,
+                    },
+                ],
+            },
+            trackedEntityAttributes: new Map([
+                ...metadata.trackedEntityAttributes,
+                [
+                    "lastName001",
+                    {
+                        id: "lastName001",
+                        name: "Last name",
+                        displayFormName: "Last name",
+                        formName: "Last name",
+                        valueType: "TEXT",
+                        confidential: false,
+                        unique: false,
+                        generated: false,
+                        pattern: "",
+                        optionSetValue: false,
+                    },
+                ],
+            ]),
+        } as unknown as AnalyticsMetadata;
+
+        const columns = buildColumnRegistry({
+            metadata: reorderedMetadata,
+            mainStageId: "visit000001",
+            childStageSlotCounts: new Map(),
+        });
+
+        const firstNameIndex = columns.findIndex(
+            (c) => c.key === "te.attribute.firstName01",
+        );
+        const lastNameIndex = columns.findIndex(
+            (c) => c.key === "te.attribute.lastName001",
+        );
+        expect(firstNameIndex).toBeGreaterThanOrEqual(0);
+        expect(lastNameIndex).toBeGreaterThanOrEqual(0);
+        expect(firstNameIndex).toBeLessThan(lastNameIndex);
     });
 
     it("prefers name over formName so colliding form names don't produce identical column labels", () => {

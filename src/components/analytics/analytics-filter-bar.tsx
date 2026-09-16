@@ -131,7 +131,7 @@ export function AnalyticsFilterBar({
             >
                 <Select
                     style={fieldStyle(320)}
-                    value={filters.selectedStageId}
+                    value={filters.selectedStageId || undefined}
                     placeholder="Stage"
                     options={program.programStages.map((stage) => ({
                         value: stage.id,
@@ -155,7 +155,7 @@ export function AnalyticsFilterBar({
             </Form.Item>
             {childStageIdsForSelectedStage.length > 0 && (
                 <Form.Item
-                    label="Include child stages"
+                    label="Include related stages"
                     layout="vertical"
                     style={{ margin: 0, padding: 0 }}
                 >
@@ -163,7 +163,7 @@ export function AnalyticsFilterBar({
                         mode="multiple"
                         style={fieldStyle(300)}
                         value={filters.childStageIds}
-                        placeholder="Child stages"
+                        placeholder="Related stages"
                         options={childStageIdsForSelectedStage.map((id) => ({
                             value: id,
                             label:
@@ -237,10 +237,15 @@ export function AnalyticsFilterBar({
                 {filters.rangeType === "custom" ? (
                     <RangePicker
                         style={isMobile ? { width: "100%" } : undefined}
-                        value={[
-                            dayjs(filters.startDate),
-                            dayjs(filters.endDate),
-                        ]}
+                        placeholder={["Start date", "End date"]}
+                        value={
+                            filters.startDate && filters.endDate
+                                ? [
+                                      dayjs(filters.startDate),
+                                      dayjs(filters.endDate),
+                                  ]
+                                : [null, null]
+                        }
                         onChange={(range) => {
                             const [start, end] = range ?? [];
                             onChange({

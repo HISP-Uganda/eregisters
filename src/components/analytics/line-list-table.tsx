@@ -53,10 +53,23 @@ export function LineListTable({
     /** Fired whenever the user changes a column filter or the sort column/order. */
     onTableStateChange?: (state: LineListTableState) => void;
 } & LineListLinks) {
-    const visible = columns.filter((column) =>
-        visibleColumnKeys.includes(column.key),
+    const visible = React.useMemo(
+        () =>
+            columns.filter((column) => visibleColumnKeys.includes(column.key)),
+        [columns, visibleColumnKeys],
     );
     const { containerRef, scrollY } = useTableScrollHeight();
+    // The expensive part (a distinct-value scan over every row, per visible
+    // column) is memoized separately from `tableState` — filtering/sorting
+    // shouldn't re-scan every row's values, just re-apply the selection.
+    const baseTableColumns = React.useMemo(
+        () => toTableColumns(visible, rows, optionSets),
+        [visible, rows, optionSets],
+    );
+    const tableColumns = React.useMemo(
+        () => applyTableState(baseTableColumns, tableState),
+        [baseTableColumns, tableState],
+    );
     return (
         <div ref={containerRef} style={{ flex: 1, minHeight: 0 }}>
             <style>{`
@@ -84,10 +97,10 @@ export function LineListTable({
                 pagination={false}
                 scroll={{ x: "max-content", y: scrollY }}
                 dataSource={rows}
-                columns={withActionsColumn(
-                    toTableColumns(visible, rows, optionSets, tableState),
-                    { onOpenTrackedEntity, onOpenEvent },
-                )}
+                columns={withActionsColumn(tableColumns, {
+                    onOpenTrackedEntity,
+                    onOpenEvent,
+                })}
                 onChange={(_pagination, filters, sorter, extra) => {
                     onFilteredRowsChange?.(
                         extra.currentDataSource as AnalyticsRow[],
@@ -138,11 +151,18 @@ function estimateColumnWidth(
     return Math.max(MIN_COLUMN_WIDTH, width);
 }
 
+/**
+ * Builds the antd column defs, including the per-column filter dropdown
+ * (which scans every row for distinct values) and the estimated width. Does
+ * NOT depend on `tableState` — see `applyTableState` — so callers can
+ * memoize this on just [columns, rows, optionSets] and cheaply re-apply the
+ * active filter/sort selection on every interaction instead of re-scanning
+ * every row's distinct values on every click.
+ */
 export function toTableColumns(
     columns: AnalyticsColumn[],
     rows: AnalyticsRow[] = [],
     optionSets: OptionSets = new Map(),
-    tableState: LineListTableState = EMPTY_LINE_LIST_TABLE_STATE,
 ): ColumnsType<AnalyticsRow> {
     return columns.map((column) => {
         const filter = buildColumnFilter(column, rows, optionSets);
@@ -164,14 +184,36 @@ export function toTableColumns(
                               (typeof right === "number" ? right : -Infinity)
                           );
                       },
+                  }
+                : {}),
+            ...filter,
+        };
+    });
+}
+
+/**
+ * Overlays the currently active filter/sort selection onto columns already
+ * built by `toTableColumns` — cheap (no row scanning), so it's safe to redo
+ * on every filter/sort change without rebuilding each column's distinct
+ * value list from scratch.
+ */
+function applyTableState(
+    columns: ColumnsType<AnalyticsRow>,
+    tableState: LineListTableState,
+): ColumnsType<AnalyticsRow> {
+    return columns.map((col) => {
+        const column = col as ColumnType<AnalyticsRow> & { key: string };
+        return {
+            ...column,
+            ...(column.sorter
+                ? {
                       sortOrder:
                           tableState.sortedColumnKey === column.key
                               ? tableState.sortedOrder
                               : null,
                   }
                 : {}),
-            ...filter,
-            ...(filter.filters
+            ...(column.filters
                 ? {
                       filteredValue:
                           tableState.filteredInfo[column.key] ?? null,
@@ -202,6 +244,7 @@ export function withActionsColumn(
                 {links.onOpenEvent && (
                     <Button
                         size="small"
+                        type="primary"
                         onClick={() =>
                             links.onOpenEvent?.(
                                 record.trackedEntity.trackedEntity,
@@ -209,19 +252,20 @@ export function withActionsColumn(
                             )
                         }
                     >
-                        View Visit
+                        Edit Visit
                     </Button>
                 )}
                 {links.onOpenTrackedEntity && (
                     <Button
                         size="small"
+                        type="primary"
                         onClick={() =>
                             links.onOpenTrackedEntity?.(
                                 record.trackedEntity.trackedEntity,
                             )
                         }
                     >
-                        View Profile
+                        Edit Profile
                     </Button>
                 )}
             </Space>
@@ -246,9 +290,7 @@ function buildColumnFilter(
     if (column.optionSetId) {
         const options = optionSets.get(column.optionSetId) ?? [];
         if (options.length === 0) return {};
-        const sorted = [...options].sort(
-            (a, b) => a.sortOrder - b.sortOrder,
-        );
+        const sorted = [...options].sort((a, b) => a.sortOrder - b.sortOrder);
         return {
             filters: sorted.map((option) => ({
                 text: option.name,
@@ -257,10 +299,14 @@ function buildColumnFilter(
             filterMultiple: true,
             filterSearch: true,
             onFilter: (value, record) => {
-                const option = sorted.find((candidate) => candidate.id === value);
+                const option = sorted.find(
+                    (candidate) => candidate.id === value,
+                );
                 if (!option) return false;
                 const tokens = optionTokens(record.values[column.key]?.raw);
-                return tokens.includes(option.id) || tokens.includes(option.code);
+                return (
+                    tokens.includes(option.id) || tokens.includes(option.code)
+                );
             },
         };
     }

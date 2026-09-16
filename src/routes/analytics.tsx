@@ -1,9 +1,9 @@
 import { DownloadOutlined } from "@ant-design/icons";
 import { and, eq, useLiveSuspenseQuery } from "@tanstack/react-db";
 import { createRoute, useNavigate } from "@tanstack/react-router";
-import { Badge, Button, Flex, Tabs } from "antd";
+import { Badge, Button, Empty, Flex, Spin, Tabs } from "antd";
 import dayjs from "dayjs";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { z } from "zod";
 import {
     applyComputedColumns,
@@ -11,7 +11,7 @@ import {
 } from "../analytics/computed-columns";
 import type { ComputedColumnDefinition } from "../analytics/computed-columns";
 import { buildParentEventDataset } from "../analytics/parent-event-dataset";
-import type { AnalyticsRow } from "../analytics/types";
+import type { AnalyticsDataset, AnalyticsRow } from "../analytics/types";
 import {
     exportLineListWorkbook,
     exportPivotWorkbook,
@@ -70,8 +70,48 @@ interface AnalyticsRestoredState {
 // tiny and bounded regardless of how many columns the program has.
 const MAX_RETURN_SEARCH_LENGTH = 8000;
 
+// Fallback used only for the very first paint, before the measurement
+// effect below has run — matches the app's usual header budget so there's
+// no visible flash before the real measurement kicks in.
+const FALLBACK_AVAILABLE_HEIGHT = "calc(100vh - 112px)";
+
+/**
+ * Measures the actual space between this element's top and the bottom of
+ * the viewport, instead of guessing it from a hardcoded header height. A
+ * fixed `calc(100vh - Npx)` breaks whenever the header is a different
+ * height than assumed (e.g. the mobile header, which is shorter) or extra
+ * banners (update/migration notices) push content down — either under- or
+ * over-shoots the real available height, so the table ends up not filling
+ * it (or overflowing the page instead of scrolling internally).
+ */
+function useAvailableHeight() {
+    const ref = useRef<HTMLDivElement | null>(null);
+    const [height, setHeight] = useState<number | undefined>(undefined);
+
+    useEffect(() => {
+        const el = ref.current;
+        if (!el) return;
+        const measure = () => {
+            const top = el.getBoundingClientRect().top;
+            setHeight(Math.max(window.innerHeight - top, 200));
+        };
+        measure();
+        window.addEventListener("resize", measure);
+        const observer = new ResizeObserver(measure);
+        observer.observe(document.body);
+        return () => {
+            window.removeEventListener("resize", measure);
+            observer.disconnect();
+        };
+    }, []);
+
+    return { ref, height };
+}
+
 function AnalyticsPage() {
     const isMobile = useIsMobile();
+    const { ref: availableHeightRef, height: availableHeight } =
+        useAvailableHeight();
     const {
         program,
         orgUnit,
@@ -79,7 +119,6 @@ function AnalyticsPage() {
         dataElements,
         optionSets,
     } = useMetadata();
-    const defaultStage = program.programStages[0]?.id ?? "";
     const stageHierarchyPairs = useStageHierarchyConfig();
     const trackedEntitiesCollection = getTrackedEntitiesCollection();
     const enrollmentsCollection = getEnrollmentsCollection();
@@ -108,11 +147,13 @@ function AnalyticsPage() {
         () =>
             restored?.filters ?? {
                 programId: program.id,
-                selectedStageId: defaultStage,
+                // Nothing pre-selected — the user picks a stage and a
+                // period before any data is pulled/computed.
+                selectedStageId: "",
                 childStageIds: [],
                 serviceTypes: [],
-                startDate: dayjs().startOf("month").format("YYYY-MM-DD"),
-                endDate: dayjs().format("YYYY-MM-DD"),
+                startDate: "",
+                endDate: "",
                 rangeType: "custom",
             },
     );
@@ -168,9 +209,41 @@ function AnalyticsPage() {
         [optionSets],
     );
 
-    const dataset = useMemo(
-        () =>
-            buildParentEventDataset({
+    // Nothing to compute until the user has picked both a stage and a
+    // period — also keeps the page from building/rendering a large default
+    // dataset before the user has actually asked for anything.
+    const hasRequiredFilters = Boolean(
+        filters.selectedStageId && filters.startDate && filters.endDate,
+    );
+    const emptyDataset: AnalyticsDataset = useMemo(
+        () => ({ columns: [], rows: [], mainStage: program.programStages[0] }),
+        [program],
+    );
+    const [datasetState, setDatasetState] = useState<{
+        status: "idle" | "loading" | "ready";
+        dataset: AnalyticsDataset;
+    }>({ status: "idle", dataset: emptyDataset });
+    // Guards a stale computation (superseded by a newer filter change while
+    // it was still running) from overwriting the current one.
+    const computeTokenRef = useRef(0);
+
+    useEffect(() => {
+        if (!hasRequiredFilters) {
+            setDatasetState({ status: "idle", dataset: emptyDataset });
+            return;
+        }
+        const token = ++computeTokenRef.current;
+        setDatasetState((prev) => ({
+            status: "loading",
+            dataset: prev.dataset,
+        }));
+        // Building the dataset is synchronous and can be heavy for large
+        // org units/date ranges — deferring it a tick lets the "loading"
+        // state above actually paint (showing a spinner) before the main
+        // thread blocks on the computation, instead of freezing on the
+        // same frame as the filter change with nothing shown yet.
+        const timer = setTimeout(() => {
+            const built = buildParentEventDataset({
                 metadata: {
                     program,
                     trackedEntityAttributes,
@@ -182,28 +255,32 @@ function AnalyticsPage() {
                 events,
                 orgUnit,
                 programId: filters.programId,
-                selectedStageId: filters.selectedStageId || defaultStage,
+                selectedStageId: filters.selectedStageId,
                 legalParentStageIds,
                 childStageIds: filters.childStageIds,
                 selectedServiceTypes: filters.serviceTypes,
                 startDate: filters.startDate,
                 endDate: filters.endDate,
-            }),
-        [
-            dataElements,
-            defaultStage,
-            enrollments,
-            events,
-            filters,
-            legalParentStageIds,
-            optionSets,
-            orgUnit,
-            program,
-            stageHierarchyPairs,
-            trackedEntities,
-            trackedEntityAttributes,
-        ],
-    );
+            });
+            if (computeTokenRef.current !== token) return;
+            setDatasetState({ status: "ready", dataset: built });
+        }, 0);
+        return () => clearTimeout(timer);
+    }, [
+        hasRequiredFilters,
+        emptyDataset,
+        dataElements,
+        enrollments,
+        events,
+        filters,
+        legalParentStageIds,
+        optionSets,
+        orgUnit,
+        program,
+        trackedEntities,
+        trackedEntityAttributes,
+    ]);
+    const dataset = datasetState.dataset;
     const { definitions: computedColumnDefinitions, save: saveComputedColumn, remove: removeComputedColumn } =
         useComputedColumns(filters.programId);
     const numericSourceColumns = useMemo(
@@ -299,6 +376,25 @@ function AnalyticsPage() {
         });
     };
 
+    const datasetPlaceholder =
+        datasetState.status === "idle" ? (
+            <Flex
+                align="center"
+                justify="center"
+                style={{ height: "100%", minHeight: 0 }}
+            >
+                <Empty description="Pick a program stage and a period above to load data" />
+            </Flex>
+        ) : (
+            <Flex
+                align="center"
+                justify="center"
+                style={{ height: "100%", minHeight: 0 }}
+            >
+                <Spin size="large" tip="Loading..." />
+            </Flex>
+        );
+
     const [pivotExportInfo, setPivotExportInfo] = useState<PivotExportInfo>({
         result: { rowHeaders: [], columnHeaders: [], rowKeys: [], columnKeys: [], cells: {} },
         measures: [{ id: "count", label: "Count", aggregation: "count" }],
@@ -306,29 +402,46 @@ function AnalyticsPage() {
 
     return (
         <Flex
+            ref={availableHeightRef}
             vertical
             gap="middle"
             style={{
-                height: "calc(100vh - 48px - 64px)",
+                height: availableHeight ?? FALLBACK_AVAILABLE_HEIGHT,
                 padding: isMobile ? 12 : 16,
                 minHeight: 0,
             }}
         >
             <style>{`
+                /*
+                 * antd v6's Tabs (via @rc-component/tabs) gives EVERY pane —
+                 * active or not — the class "ant-tabs-content"; only the
+                 * active one also gets "ant-tabs-content-active", and an
+                 * inactive one only gets "ant-tabs-content-hidden" (antd's
+                 * own display:none rule for it) after its leave transition
+                 * finishes. There is no single shared content wrapper and
+                 * no "ant-tabs-tabpane" class in this version — targeting
+                 * plain ".ant-tabs-content" here (as an earlier version of
+                 * this rule did) makes every pane display:flex with a
+                 * *higher specificity* than antd's own "-hidden" rule,
+                 * overriding it — the Pivot pane and the Line List pane
+                 * both stay visible and stack instead of only one showing
+                 * at a time. Scope this to ".ant-tabs-content-active" only.
+                 */
                 .analytics-tabs.ant-tabs {
                     flex: 1;
                     min-height: 0;
                 }
-                .analytics-tabs .ant-tabs-content-holder,
-                .analytics-tabs .ant-tabs-content,
-                .analytics-tabs .ant-tabs-tabpane {
+                .analytics-tabs .ant-tabs-body {
                     display: flex;
                     flex: 1;
                     flex-direction: column;
                     min-height: 0;
                 }
-                .analytics-tabs .ant-tabs-tabpane.ant-tabs-tabpane-hidden {
-                    display: none;
+                .analytics-tabs .ant-tabs-content-active {
+                    display: flex;
+                    flex: 1;
+                    flex-direction: column;
+                    min-height: 0;
                 }
             `}</style>
             <AnalyticsFilterBar
@@ -356,89 +469,95 @@ function AnalyticsPage() {
                                 />
                             </Flex>
                         ),
-                        children: (
-                            <Flex
-                                vertical
-                                gap="middle"
-                                style={{ height: "100%", minHeight: 0 }}
-                            >
-                                <Flex gap="middle" wrap justify="flex-end">
-                                    <ColumnChooser
+                        children:
+                            datasetState.status !== "ready" ? (
+                                datasetPlaceholder
+                            ) : (
+                                <Flex
+                                    vertical
+                                    gap="middle"
+                                    style={{ height: "100%", minHeight: 0 }}
+                                >
+                                    <Flex gap="middle" wrap justify="flex-end">
+                                        <ColumnChooser
+                                            columns={columnsWithComputed}
+                                            visibleColumnKeys={
+                                                effectiveVisibleColumnKeys
+                                            }
+                                            onChange={setVisibleColumnKeys}
+                                        />
+                                        <ComputedColumnModal
+                                            programId={filters.programId}
+                                            numericColumns={numericSourceColumns}
+                                            definitions={computedColumnDefinitions}
+                                            onSave={handleSaveComputedColumn}
+                                            onDelete={removeComputedColumn}
+                                        />
+                                        <Button
+                                            icon={<DownloadOutlined />}
+                                            onClick={() =>
+                                                writeWorkbookFile(
+                                                    exportLineListWorkbook({
+                                                        columns: exportableVisibleColumns,
+                                                        rows: filteredRows,
+                                                    }),
+                                                    "analytics-line-list.xlsx",
+                                                )
+                                            }
+                                        >
+                                            Export
+                                        </Button>
+                                    </Flex>
+                                    <LineListTable
                                         columns={columnsWithComputed}
+                                        rows={computedRows}
                                         visibleColumnKeys={
                                             effectiveVisibleColumnKeys
                                         }
-                                        onChange={setVisibleColumnKeys}
+                                        optionSets={optionSets}
+                                        tableState={tableState}
+                                        onFilteredRowsChange={setFilteredRows}
+                                        onTableStateChange={setTableState}
+                                        onOpenTrackedEntity={openTrackedEntity}
+                                        onOpenEvent={openEvent}
                                     />
-                                    <ComputedColumnModal
-                                        programId={filters.programId}
-                                        numericColumns={numericSourceColumns}
-                                        definitions={computedColumnDefinitions}
-                                        onSave={handleSaveComputedColumn}
-                                        onDelete={removeComputedColumn}
-                                    />
-                                    <Button
-                                        icon={<DownloadOutlined />}
-                                        onClick={() =>
-                                            writeWorkbookFile(
-                                                exportLineListWorkbook({
-                                                    columns: exportableVisibleColumns,
-                                                    rows: filteredRows,
-                                                }),
-                                                "analytics-line-list.xlsx",
-                                            )
-                                        }
-                                    >
-                                        Export
-                                    </Button>
                                 </Flex>
-                                <LineListTable
-                                    columns={columnsWithComputed}
-                                    rows={computedRows}
-                                    visibleColumnKeys={
-                                        effectiveVisibleColumnKeys
-                                    }
-                                    optionSets={optionSets}
-                                    tableState={tableState}
-                                    onFilteredRowsChange={setFilteredRows}
-                                    onTableStateChange={setTableState}
-                                    onOpenTrackedEntity={openTrackedEntity}
-                                    onOpenEvent={openEvent}
-                                />
-                            </Flex>
-                        ),
+                            ),
                     },
                     {
                         key: "pivot",
                         label: "Pivot",
-                        children: (
-                            <Flex
-                                vertical
-                                gap="middle"
-                                style={{ height: "100%", minHeight: 0 }}
-                            >
-                                <Flex justify="flex-end">
-                                    <Button
-                                        icon={<DownloadOutlined />}
-                                        onClick={() =>
-                                            writeWorkbookFile(
-                                                exportPivotWorkbook(
-                                                    pivotExportInfo,
-                                                ),
-                                                "analytics-pivot.xlsx",
-                                            )
-                                        }
-                                    >
-                                        Export
-                                    </Button>
+                        children:
+                            datasetState.status !== "ready" ? (
+                                datasetPlaceholder
+                            ) : (
+                                <Flex
+                                    vertical
+                                    gap="middle"
+                                    style={{ height: "100%", minHeight: 0 }}
+                                >
+                                    <Flex justify="flex-end">
+                                        <Button
+                                            icon={<DownloadOutlined />}
+                                            onClick={() =>
+                                                writeWorkbookFile(
+                                                    exportPivotWorkbook(
+                                                        pivotExportInfo,
+                                                    ),
+                                                    "analytics-pivot.xlsx",
+                                                )
+                                            }
+                                        >
+                                            Export
+                                        </Button>
+                                    </Flex>
+                                    <PivotBuilder
+                                        columns={visibleColumns}
+                                        rows={filteredRows}
+                                        onResultChange={setPivotExportInfo}
+                                    />
                                 </Flex>
-                                <PivotBuilder
-                                    columns={visibleColumns}
-                                    rows={filteredRows}
-                                    onResultChange={setPivotExportInfo}
-                                />
-                            </Flex>
-                        ),
+                            ),
                     },
                 ]}
             />

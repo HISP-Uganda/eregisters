@@ -74,8 +74,9 @@ describe("withActionsColumn", () => {
             element.props as {
                 children: Array<{ props: { onClick: () => void } } | false>;
             }
-        ).children.filter((child): child is { props: { onClick: () => void } } =>
-            Boolean(child),
+        ).children.filter(
+            (child): child is { props: { onClick: () => void } } =>
+                Boolean(child),
         );
 
         expect(buttons).toHaveLength(2);

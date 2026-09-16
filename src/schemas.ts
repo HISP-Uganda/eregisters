@@ -144,6 +144,7 @@ const ProgramStageSchema = z.object({
         z.object({
             compulsory: z.boolean(),
             id: UID,
+            sortOrder: z.number(),
             allowFutureDate: z.boolean(),
             dataElement: DataElementSchema,
             renderType: z
