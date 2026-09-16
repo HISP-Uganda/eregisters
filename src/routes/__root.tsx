@@ -788,10 +788,10 @@ function LayoutWithDrafts() {
             </Link>
             <Link to="/analytics" onClick={() => setDrawerOpen(false)}>
                 <SyncButton
-                    tooltip="Analytics"
+                    tooltip="Line Lists"
                     icon={<BarChartOutlined />}
                     isLoading={false}
-                    idleLabel="Analytics"
+                    idleLabel="Line Lists"
                     loadingLabel="Loading..."
                     lastTime={"Line list and pivot"}
                     onClick={() => {}}

@@ -15,7 +15,10 @@ import {
     deleteEventCascade,
     deleteTrackedEntityCascade,
 } from "../db/sqlite/delete-cascade";
-import { applyPushResults, type PushResultUpdate } from "../db/sqlite/push-results";
+import {
+    applyPushResults,
+    type PushResultUpdate,
+} from "../db/sqlite/push-results";
 import { findEnrollmentsBySyncStatusIn } from "../db/sqlite/row-adapters/enrollments";
 import { findEventsBySyncStatusIn } from "../db/sqlite/row-adapters/events";
 import { findTrackedEntitiesBySyncStatusIn } from "../db/sqlite/row-adapters/tracked-entities";
@@ -35,6 +38,7 @@ import {
     FlattenedTrackedEntity,
     TrackedEntity,
     TrackedEntityAttribute,
+    Engine,
 } from "../schemas";
 
 /**
@@ -49,8 +53,6 @@ import {
  * already-deleted special-casing) with only the local write-back step
  * (step 7) swapped from Dexie collection calls to the SQLite equivalents.
  */
-
-export type Engine = ReturnType<typeof useDataEngine>;
 
 type SyncSubResult = {
     succeeded: number;
@@ -238,10 +240,9 @@ export async function syncReportToLocal({
         return [];
     });
 
-    function toUpdate<T extends { syncStatus: string; syncError?: string | null }>(
-        rows: T[],
-        getKey: (r: T) => string,
-    ): PushResultUpdate[] {
+    function toUpdate<
+        T extends { syncStatus: string; syncError?: string | null },
+    >(rows: T[], getKey: (r: T) => string): PushResultUpdate[] {
         return rows.map((r) => ({
             key: getKey(r),
             syncStatus: r.syncStatus as "synced" | "failed",
@@ -397,9 +398,7 @@ export async function syncDeleteToLocal({
 
     await Promise.all([
         touchedTE ? getTrackedEntitiesCollection().utils.refresh() : null,
-        touchedEnrollment
-            ? getEnrollmentsCollection().utils.refresh()
-            : null,
+        touchedEnrollment ? getEnrollmentsCollection().utils.refresh() : null,
         touchedEvent ? getEventsCollection().utils.refresh() : null,
     ]);
 
@@ -502,7 +501,9 @@ export async function processBatchSync(input: {
 
     return {
         processed:
-            upsertResult.processed + deleteResult.succeeded + deleteResult.failed,
+            upsertResult.processed +
+            deleteResult.succeeded +
+            deleteResult.failed,
         succeeded: upsertResult.succeeded + deleteResult.succeeded,
         failed: upsertResult.failed + deleteResult.failed,
         connectivityStatus:

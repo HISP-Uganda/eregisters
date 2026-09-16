@@ -192,6 +192,9 @@ export const DataElementField = React.memo<{
                         onFieldChange(dataElement.id, value);
                     }}
                     showSearch={{ filterOption }}
+                    menuItemSelectedIcon={(props) => (
+                        <Checkbox checked={props.isSelected} />
+                    )}
                 />
             );
         } else if (

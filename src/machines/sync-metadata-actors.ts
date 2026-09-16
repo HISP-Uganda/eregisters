@@ -1,13 +1,4 @@
-import type { useDataEngine } from "@dhis2/app-runtime";
 import type { SyncState } from "../db";
-import {
-    emptyStageHierarchyConfig,
-    emptyUIConfig,
-    Metadata,
-    MetadataVersion,
-    StageHierarchyConfig,
-    UIConfig,
-} from "../schemas";
 import { getConfigRow, putConfigRow } from "../db/sqlite/config-rows";
 import { deleteAllMetadata } from "../db/sqlite/delete-metadata";
 import type { SqlDriver } from "../db/sqlite/driver-types";
@@ -19,6 +10,15 @@ import {
 } from "../db/sqlite/metadata-info";
 import { resetMetadataDatabase } from "../db/sqlite/reset-metadata-database";
 import { saveMetadata } from "../db/sqlite/save-metadata";
+import {
+    emptyStageHierarchyConfig,
+    emptyUIConfig,
+    Engine,
+    Metadata,
+    MetadataVersion,
+    StageHierarchyConfig,
+    UIConfig,
+} from "../schemas";
 
 /**
  * SQL-touching bodies for `src/machines/sync.ts`'s metadata-pipeline
@@ -37,11 +37,12 @@ import { saveMetadata } from "../db/sqlite/save-metadata";
  * the SQL side.
  */
 
-export type Engine = ReturnType<typeof useDataEngine>;
-
 export function persistCurrentSyncState(
     sqlDriver: SqlDriver,
-    params: { lastDataPull: string | undefined; lastDataPush: string | undefined },
+    params: {
+        lastDataPull: string | undefined;
+        lastDataPush: string | undefined;
+    },
 ): Promise<void> {
     const row: SyncState = {
         id: "current",
@@ -115,7 +116,9 @@ export async function pullStageHierarchyConfig(
 ): Promise<StageHierarchyConfig> {
     try {
         const result = (await engine.query({
-            stageHierarchy: { resource: "dataStore/eregisters/stage-hierarchy" },
+            stageHierarchy: {
+                resource: "dataStore/eregisters/stage-hierarchy",
+            },
         })) as { stageHierarchy: StageHierarchyConfig };
         await putConfigRow(sqlDriver, "stage_hierarchy", {
             id: "main",

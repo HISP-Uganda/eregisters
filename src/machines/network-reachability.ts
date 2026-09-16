@@ -1,5 +1,5 @@
 import { FetchError } from "@dhis2/app-runtime";
-import type { useDataEngine } from "@dhis2/app-runtime";
+import { Engine } from "../schemas";
 
 export const PING_TIMEOUT_MS = 5000;
 
@@ -58,7 +58,7 @@ export function toConnectivityStatus(
 }
 
 export async function isDhis2Reachable(
-    engine: ReturnType<typeof useDataEngine>,
+    engine: Engine,
 ): Promise<ReachabilityResult> {
     if (typeof navigator !== "undefined" && !navigator.onLine) {
         return { reachable: false, reason: "network" };

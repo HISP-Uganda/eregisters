@@ -7,6 +7,7 @@ import {
     DEFAULT_DATA_PULL_PAGE_SIZE,
     emptyStageHierarchyConfig,
     emptyUIConfig,
+    Engine,
     FlattenedEvent,
     FlattenedOptionSet,
     FlattenedTrackedEntity,
@@ -24,7 +25,6 @@ import {
     UIConfig,
 } from "../schemas";
 
-import type { useDataEngine } from "@dhis2/app-runtime";
 import { createActorContext } from "@xstate/react";
 import { MessageInstance } from "antd/es/message/interface";
 import { isEmpty } from "lodash";
@@ -39,17 +39,6 @@ import {
     getEventsCollection,
     getTrackedEntitiesCollection,
 } from "../db/sqlite/tracker-collections-instance";
-import {
-    DataPullMode,
-    DataPushMode,
-    MetadataSyncMode,
-    extractServerDate,
-    resolveNextDataPull,
-    shouldContinueDataPull,
-    shouldRecordDataPush,
-    shouldUseLastDataPull,
-    shouldUseLastUpdatedFilter,
-} from "./sync-metadata-mode";
 import { type ConnectivityStatus } from "./network-reachability";
 import {
     checkMetadataSyncStatus,
@@ -63,6 +52,17 @@ import {
     resetMetadataForRecovery,
     saveMetadataToSqlite,
 } from "./sync-metadata-actors";
+import {
+    DataPullMode,
+    DataPushMode,
+    extractServerDate,
+    MetadataSyncMode,
+    resolveNextDataPull,
+    shouldContinueDataPull,
+    shouldRecordDataPush,
+    shouldUseLastDataPull,
+    shouldUseLastUpdatedFilter,
+} from "./sync-metadata-mode";
 import { processBatchSync as processBatchSyncImpl } from "./sync-tracker-actors";
 
 /**
@@ -124,7 +124,7 @@ function nextConnectivityStatus(
 export interface SyncContext {
     error: Error | null;
     info: string | undefined;
-    engine: ReturnType<typeof useDataEngine>;
+    engine: Engine;
     sqlDriver: SqlDriver;
     lastDataPull: string | undefined;
     lastDataPush: string | undefined;
@@ -184,7 +184,7 @@ const syncMachine = setup({
         context: {} as SyncContext,
         events: {} as SyncEvent,
         input: {} as {
-            engine: ReturnType<typeof useDataEngine>;
+            engine: Engine;
             sqlDriver: SqlDriver;
             initialLastMetadataPull?: string;
             initialLastDataPull?: string;
@@ -260,10 +260,7 @@ const syncMachine = setup({
             QueryMetadataInfoResult,
             { sqlDriver: SqlDriver; userInfo: MeUser }
         >(async ({ input: { sqlDriver, userInfo } }) => {
-            return queryMetadata(
-                sqlDriver,
-                userInfo.organisationUnits[0].path,
-            );
+            return queryMetadata(sqlDriver, userInfo.organisationUnits[0].path);
         }),
         pullData: fromPromise<
             string | undefined,
@@ -271,7 +268,7 @@ const syncMachine = setup({
                 program: string;
                 orgUnit: string;
                 lastDataPull: string | undefined;
-                engine: ReturnType<typeof useDataEngine>;
+                engine: Engine;
                 sqlDriver: SqlDriver;
                 dataPullMode: DataPullMode;
             }
@@ -314,7 +311,16 @@ const syncMachine = setup({
                     configuredPageSize ?? DEFAULT_DATA_PULL_PAGE_SIZE;
                 let hasMoreData = true;
 
-							console.log("Starting data pull for program:", program, "orgUnit:", orgUnit, "lastDataPull:", lastDataPull, "dataPullMode:", dataPullMode);
+                console.log(
+                    "Starting data pull for program:",
+                    program,
+                    "orgUnit:",
+                    orgUnit,
+                    "lastDataPull:",
+                    lastDataPull,
+                    "dataPullMode:",
+                    dataPullMode,
+                );
 
                 while (hasMoreData) {
                     let params: Record<string, any> = {
@@ -382,13 +388,13 @@ const syncMachine = setup({
         }),
         pullUIConfig: fromPromise<
             UIConfig,
-            { sqlDriver: SqlDriver; engine: ReturnType<typeof useDataEngine> }
+            { sqlDriver: SqlDriver; engine: Engine }
         >(async ({ input: { sqlDriver, engine } }) => {
             return pullUiConfig(sqlDriver, engine);
         }),
         pullStageHierarchy: fromPromise<
             StageHierarchyConfig,
-            { sqlDriver: SqlDriver; engine: ReturnType<typeof useDataEngine> }
+            { sqlDriver: SqlDriver; engine: Engine }
         >(async ({ input: { sqlDriver, engine } }) => {
             return pullStageHierarchyConfig(sqlDriver, engine);
         }),
@@ -396,7 +402,7 @@ const syncMachine = setup({
             Metadata,
             {
                 resources: Resource[];
-                engine: ReturnType<typeof useDataEngine>;
+                engine: Engine;
                 sqlDriver: SqlDriver;
                 lastMetadataPull: string | undefined;
                 metadataSyncMode: MetadataSyncMode;
@@ -803,7 +809,7 @@ const syncMachine = setup({
                 input,
             }: {
                 input: {
-                    engine: ReturnType<typeof useDataEngine>;
+                    engine: Engine;
                     sqlDriver: SqlDriver;
                     validAttributeIds: Set<string>;
                     validDataElementsByStage: Map<string, Set<string>>;
@@ -994,8 +1000,7 @@ const syncMachine = setup({
                                     return !event.output.needsSyncing;
                                 },
                                 actions: assign(({ event }) => {
-                                    const syncState = event.output
-                                        .syncState as
+                                    const syncState = event.output.syncState as
                                         | {
                                               lastPullAt?: string;
                                               lastPushAt?: string;
@@ -1271,20 +1276,14 @@ const syncMachine = setup({
                                 target: "updateLastDataPush",
                                 actions: assign({
                                     connectivityStatus: ({ context, event }) =>
-                                        nextConnectivityStatus(
-                                            context,
-                                            event,
-                                        ),
+                                        nextConnectivityStatus(context, event),
                                 }),
                             },
                             {
                                 target: "idle",
                                 actions: assign({
                                     connectivityStatus: ({ context, event }) =>
-                                        nextConnectivityStatus(
-                                            context,
-                                            event,
-                                        ),
+                                        nextConnectivityStatus(context, event),
                                 }),
                             },
                         ],

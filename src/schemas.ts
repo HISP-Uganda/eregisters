@@ -1,3 +1,4 @@
+import { useDataEngine } from "@dhis2/app-runtime";
 import { GetProp, TablePaginationConfig, TreeSelectProps } from "antd";
 import { FilterValue } from "antd/es/table/interface";
 import z from "zod";
@@ -863,3 +864,5 @@ export interface Access2 {
   read: boolean
   update: boolean
 }
+
+export type Engine = ReturnType<typeof useDataEngine>;
