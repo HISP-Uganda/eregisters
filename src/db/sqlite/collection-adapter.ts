@@ -1,4 +1,5 @@
 import type { SyncConfig } from "@tanstack/db";
+import type { TrackerCollectionUtils } from "../tracker-collection-utils";
 import type { SqlDriver } from "./driver-types";
 import type { RowAdapter, RowWriteOptions } from "./row-adapter";
 import {
@@ -228,6 +229,6 @@ export function sqliteCollectionOptions<
             updateLocally,
             deleteLocally,
             refresh,
-        },
+        } satisfies TrackerCollectionUtils<TRow, TKey>,
     };
 }

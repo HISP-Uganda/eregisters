@@ -1,16 +1,7 @@
 import type { SqlDriver } from "./driver-types";
+import type { RowWriteOptions } from "../tracker-collection-utils";
 
-/**
- * Which side originated a write. Threaded through so a future sync.ts pull
- * can mark rows `source: 'server'` explicitly instead of every write
- * silently defaulting to `'local'` — the per-field merge model (wayfinder
- * ticket "Normalized SQLite Schema for Tracker Collections") depends on
- * this being right. Adapters with no concept of per-field origin (the
- * uniform metadata tables, ruleResults) simply ignore it.
- */
-export interface RowWriteOptions {
-    source?: "local" | "server";
-}
+export type { RowWriteOptions };
 
 /**
  * Per-collection read/write mapping between a row's application shape and
