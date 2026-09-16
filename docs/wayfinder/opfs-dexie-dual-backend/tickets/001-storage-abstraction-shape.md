@@ -147,3 +147,26 @@ Resolved, in full:
 decide *when*/*how* a device picks which backend to instantiate through
 this shape — that's tickets 002 (OPFS detection strategy) and 004
 (settings UI placement).
+
+## Implementation progress
+
+Built (commit `6572b51`, `main`): `TrackerCollectionUtils` interface and
+SQL conformance, the revived Dexie tracker collections (trackedEntities/
+enrollments/events, async-factory shape, flattened rows), and
+`MetadataStore` (interface + SQL facade over the existing config-rows.ts/
+metadata-info.ts + Dexie implementation). Reviewed via `/code-review`
+(standards + spec axes) before landing; two real findings from that
+review were fixed before commit (a misleading docblock referencing a
+dispatcher module that doesn't exist yet, and `MetadataStore` itself,
+originally missed).
+
+**Not built**: any wiring into `App.tsx` or `src/machines/sync.ts` —
+confirmed during implementation that `sync.ts` has 52 direct
+`sqlDriver: SqlDriver` references across 1427 lines (CLAUDE.md calls this
+file load-bearing). Making metadata pull/push and the tracker sync
+pipeline backend-agnostic is real, substantial, separate follow-up work,
+not yet started. The pieces built here are independently correct and
+tested (SQL side under `node:sqlite`; Dexie side untested — no
+`fake-indexeddb` dependency in this repo yet, a real gap consistent with
+the map's own "Testing/CI strategy" fog item) but are not in the live
+app's call path.
