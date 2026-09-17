@@ -70,6 +70,27 @@ updates.
   (would need new per-device reporting infrastructure that doesn't exist
   today) — out of scope here, chart separately if wanted.
 
+## Implementation progress
+
+Built (commit `973a301`, `main`), matching every decision above.
+`/code-review`'s spec-axis review confirmed all six decisions hold with
+no missing requirements, no scope creep, and no behavioral deviations.
+Its standards-axis review caught one real duplication —
+`SyncContext.useSelector((a) => a.context.metadataStore)` independently
+reached-into from two files — fixed with a new `useMetadataStore()`
+hook; also collapsed the resulting triplicated reload-signal
+read-and-compare logic in `__root.tsx`'s `checkSignals` into a shared
+`isNewSignal` helper.
+
+Also fixed along the way, a real bug this feature depends on:
+`dexieMetadataStore.putRow` was missing the `notifyConfigChanged` call
+`sqliteMetadataStore`'s equivalent path already had (transitively via
+`config-rows.ts`'s `putConfigRow`) — without it, the reload-banner
+mechanism's same-tab reactive refresh would have silently never fired
+on the Dexie backend. `reactive-config.ts` moved out of `db/sqlite/`
+(no SQL dependency) to a backend-neutral location; `useSqliteConfigRow`
+(SQL-only, threw on Dexie) replaced by `useConfigRow`.
+
 ## Not yet specified
 
 (none — charting surfaced no fog)
