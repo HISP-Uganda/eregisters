@@ -7,6 +7,7 @@ import {
     type BackendSetting,
     type StorageBackend,
 } from "../db/backend";
+import { SyncContext } from "../machines/sync";
 
 const { Text, Paragraph } = Typography;
 
@@ -18,35 +19,24 @@ const { Text, Paragraph } = Typography;
  * flow are built for real and match the ticket's resolved design
  * (prototyped at https://claude.ai/artifact/B2LLpaxAjCbg9TwxW6TXTA).
  *
- * What's deliberately NOT real yet: actually executing a switch.
- * `App.tsx`'s bootstrap always initializes SQLite unconditionally and
- * doesn't consult this setting — wiring that in requires making
- * `SyncContext`'s `sqlDriver` input backend-aware across `sync.ts`'s 52
- * direct references to it (see ticket 001's "Not built" note), which is
- * its own separate, carefully-scoped piece of work. Running the reverse
- * migration (`src/db/dexie/migrate-from-sqlite.ts`) for real here, before
- * that wiring exists, would be actively harmful: `App.tsx`'s already-live
- * *forward* migration would see the freshly-copied Dexie data on the very
- * next reload and silently copy it straight back to SQLite, undoing the
- * switch without telling the user. So confirming a switch here only
- * persists the choice (for whenever that wiring lands) — it does not
- * move any data. The prototype's progress/per-table-checklist/failure
- * states aren't built for the same reason: there's no real progress to
- * show yet.
+ * Confirming a switch persists the setting, then reloads the page —
+ * `App.tsx`'s bootstrap now branches on the resolved backend (commit
+ * `a017cb0`) and, on the reload that lands on Dexie, makes a best-effort
+ * attempt to run the real reverse migration
+ * (`src/db/dexie/migrate-from-sqlite.ts`) in the background per wayfinder
+ * ticket "Wiring the reverse migration to actually execute on a backend
+ * switch" (`docs/wayfinder/opfs-dexie-dual-backend/tickets/006-wire-backend-switch-migration.md`).
+ * Progress/failure are reported by the existing `MigrationProgressBanner`
+ * (same pub/sub the forward direction already used) — this component
+ * itself has no progress/per-table-checklist UI of its own, by that
+ * ticket's design (reusing the existing banner instead of building a
+ * second one).
  */
 
 const BACKEND_LABEL: Record<StorageBackend, string> = {
     sqlite: "SQLite",
     dexie: "IndexedDB",
 };
-
-/**
- * Which backend this device is ACTUALLY running on right now. Hardcoded
- * to "sqlite" — true unconditionally today, since `App.tsx` never
- * initializes anything else. Replace with a real read (e.g. from
- * `SyncContext`) once the backend-selection wiring above lands.
- */
-const ACTUAL_CURRENT_BACKEND: StorageBackend = "sqlite";
 
 function detectedBackend(): StorageBackend {
     // Lightweight, synchronous hint only — the same capability pre-check
@@ -85,9 +75,12 @@ export function DeviceStorageSettings({
     onClose: () => void;
 }) {
     const { message } = App.useApp();
-    const [setting, setSetting] = useState<BackendSetting>(() =>
-        getBackendSetting(),
+    const actualCurrentBackend = SyncContext.useSelector(
+        (a) => a.context.backend,
     );
+    // No setter needed — confirming a switch reloads the page (see
+    // confirmSwitch below), so this never needs to update in place.
+    const [setting] = useState<BackendSetting>(() => getBackendSetting());
     const [pendingSetting, setPendingSetting] = useState<BackendSetting | null>(
         null,
     );
@@ -102,9 +95,11 @@ export function DeviceStorageSettings({
     const confirmSwitch = () => {
         if (!pendingSetting) return;
         setBackendSetting(pendingSetting);
-        setSetting(pendingSetting);
-        setPendingSetting(null);
-        message.success("Storage setting saved for this device.");
+        message.success("Storage setting saved — reloading…");
+        // A reload is required: App.tsx's bootstrap resolves the backend
+        // (and, for a switch to Dexie, attempts the real reverse
+        // migration) once, at startup — there's no live hot-swap path.
+        window.location.reload();
     };
 
     return (
@@ -158,7 +153,7 @@ export function DeviceStorageSettings({
                                             {(option.value === "sqlite" ||
                                                 option.value === "dexie") &&
                                                 option.value ===
-                                                    ACTUAL_CURRENT_BACKEND && (
+                                                    actualCurrentBackend && (
                                                     <Tag color="blue">
                                                         current
                                                     </Tag>
@@ -194,20 +189,22 @@ export function DeviceStorageSettings({
                 open={pendingSetting !== null}
                 onCancel={() => setPendingSetting(null)}
                 onOk={confirmSwitch}
-                okText="Save setting"
+                okText="Save and reload"
                 cancelText="Cancel"
             >
                 <Paragraph>
                     This device currently runs on{" "}
-                    <Text strong>{BACKEND_LABEL[ACTUAL_CURRENT_BACKEND]}</Text>
+                    <Text strong>{BACKEND_LABEL[actualCurrentBackend]}</Text>
                     .
                 </Paragraph>
                 <Paragraph>
-                    Actually moving your data between storage backends
-                    isn&apos;t available in this app version yet — saving
-                    this won&apos;t move anything or change what this device
-                    uses today. It records your preference so it takes
-                    effect automatically once that update ships.
+                    The app will reload to apply this. Your existing client
+                    and visit data on this device will be copied over
+                    automatically in the background after reload — nothing
+                    is deleted from{" "}
+                    <Text strong>{BACKEND_LABEL[actualCurrentBackend]}</Text>{" "}
+                    until the copy is verified. Don&apos;t close the app
+                    while a "Upgrading local storage…" banner is showing.
                 </Paragraph>
             </Modal>
         </>

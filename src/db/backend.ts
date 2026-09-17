@@ -52,7 +52,7 @@ interface CachedOpfsFailure {
     version: string;
 }
 
-function getCachedOpfsFailure(): boolean {
+export function getCachedOpfsFailure(): boolean {
     try {
         const raw = localStorage.getItem(OPFS_FAILURE_CACHE_KEY);
         if (!raw) return false;
@@ -63,7 +63,7 @@ function getCachedOpfsFailure(): boolean {
     }
 }
 
-function setCachedOpfsFailure(): void {
+export function setCachedOpfsFailure(): void {
     try {
         localStorage.setItem(
             OPFS_FAILURE_CACHE_KEY,
@@ -76,7 +76,7 @@ function setCachedOpfsFailure(): void {
     }
 }
 
-function clearCachedOpfsFailure(): void {
+export function clearCachedOpfsFailure(): void {
     try {
         localStorage.removeItem(OPFS_FAILURE_CACHE_KEY);
     } catch {

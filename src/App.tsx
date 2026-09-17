@@ -3,12 +3,21 @@ import { RouterProvider } from "@tanstack/react-router";
 import { App, ConfigProvider, Typography } from "antd";
 import React, { FC, useEffect, useState } from "react";
 import { Spinner } from "./components/spinner";
-import { getBackendSetting, resolveBackend, type StorageBackend } from "./db/backend";
+import {
+    clearCachedOpfsFailure,
+    getBackendSetting,
+    getCachedOpfsFailure,
+    resolveBackend,
+    setCachedOpfsFailure,
+    type StorageBackend,
+} from "./db/backend";
 import { initCollections } from "./db/collections";
 import { dexieMetadataStore } from "./db/dexie/metadata-store";
+import { realDexieMigrationTarget } from "./db/dexie/real-dexie-migration-target";
+import { runSqliteMigrationIfNeeded } from "./db/dexie/migrate-from-sqlite";
 import { realDexieMigrationSource } from "./db/sqlite/dexie-migration-source";
 import type { SqlDriver } from "./db/sqlite/driver-types";
-import { initSqlDriver } from "./db/sqlite/instance";
+import { initSqlDriver, openStandaloneSqlDriver } from "./db/sqlite/instance";
 import { sqliteMetadataStore } from "./db/sqlite/metadata-store";
 import { runDexieMigrationIfNeeded } from "./db/sqlite/migrate-from-dexie";
 import {
@@ -28,6 +37,50 @@ const ME_QUERY = {
         },
     },
 } as const;
+
+/**
+ * Reverse migration (SQLite -> Dexie), fire-and-forget on the Dexie
+ * branch of bootstrap — wayfinder ticket "Wiring the reverse migration to
+ * actually execute on a backend switch"
+ * (`docs/wayfinder/opfs-dexie-dual-backend/tickets/006-wire-backend-switch-migration.md`).
+ *
+ * `resolveBackend()` never attempts `initSqlDriver` for a *forced*
+ * setting, so a device that was just switched to Dexie has no `SqlDriver`
+ * to read its old SQLite data from. `hasCompletedMigration()` is cheap
+ * and Dexie-only, so it gates a separate, best-effort `initSqlDriver`
+ * attempt made ONLY to feed this migration — that driver is discarded
+ * afterwards, never wired into the app's live collections (those stay on
+ * Dexie throughout). Deliberately has no `requestPrimaryTab()` duplicate-
+ * tab lock (ticket 005: Dexie needs none for its own correctness) — any
+ * `initSqlDriver` failure, a real multi-tab OPFS conflict included, is
+ * treated the same as "can't migrate right now" and retried next reload,
+ * reusing `runSqliteMigrationIfNeeded`'s own failure path rather than a
+ * second blocking UI. Reuses `backend.ts`'s OPFS-failure cache so a
+ * device that's structurally incapable of OPFS (the common reason it
+ * resolved to Dexie in the first place) only pays the failed-attempt
+ * cost once.
+ *
+ * Uses `openStandaloneSqlDriver`, NOT `initSqlDriver` — the latter
+ * populates a module-level singleton `getSqlDriver()` returns from
+ * anywhere, which would let this backend's several still-unconditional
+ * `getSqlDriver()` call sites (admin routes, `useSqliteConfigRow.ts`)
+ * silently start operating on a database that's mid-migration or already
+ * dropped, instead of throwing their current "not initialized" error on a
+ * device that's genuinely on Dexie. This driver is used once, here, and
+ * discarded.
+ */
+async function attemptReverseMigrationIfNeeded(): Promise<void> {
+    if (await realDexieMigrationTarget.hasCompletedMigration()) return;
+    if (getCachedOpfsFailure()) return;
+
+    try {
+        const driver = await openStandaloneSqlDriver("eregisters-metadata");
+        clearCachedOpfsFailure();
+        await runSqliteMigrationIfNeeded(driver, realDexieMigrationTarget);
+    } catch {
+        setCachedOpfsFailure();
+    }
+}
 
 const Main = () => {
     const syncActor = SyncContext.useActorRef();
@@ -103,17 +156,13 @@ const FullApp: FC<{
                 setMetadataStore(sqliteMetadataStore(sqliteDriver));
                 setBackend("sqlite");
             } else {
-                // Dexie path: no reverse migration runs automatically here
-                // — running it unattended would need the device to already
-                // be past this same bootstrap once, which it isn't, and
-                // per `device-storage-settings.tsx`'s documented scope
-                // cut, an explicit switch-and-migrate flow isn't wired to
-                // execute yet. A device that resolves to Dexie either
-                // never had SQLite data, or was force-set to Dexie by the
-                // (not-yet-migrating) settings UI.
                 initCollections("dexie");
                 setMetadataStore(dexieMetadataStore());
                 setBackend("dexie");
+                // Fire-and-forget, same non-blocking shape as the forward
+                // direction above — see attemptReverseMigrationIfNeeded's
+                // own doc comment.
+                void attemptReverseMigrationIfNeeded();
             }
         }
 
