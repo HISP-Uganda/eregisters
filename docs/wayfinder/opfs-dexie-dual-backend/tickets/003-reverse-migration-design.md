@@ -75,3 +75,25 @@ symmetric rather than requiring new machinery:
    trust stale retained data that could have diverged since) — so
    retaining the old backend's data wouldn't skip any work on a future
    switch-back, only cost storage for no functional benefit.
+
+## Implementation progress
+
+Built (commit `b76c306`, `main`): `migrate-from-sqlite.ts` (orchestration
++ `DexieMigrationTarget`), `real-dexie-migration-target.ts`,
+`dexie-verification.ts` (Dexie-native count, per decision 4),
+`drop-all-data.ts` (per decision 6). Reviewed via `/code-review` before
+landing; the spec-axis review caught a real data-loss bug — the
+fresh-install guard (point 1) only checked tracker tables, so a device
+with `hmis_drafts` rows but no tracker data would silently skip both
+copying and dropping its HMIS drafts. Fixed (guard now also checks
+`hmis_drafts`), with a regression test. Also found and fixed, during
+testing rather than review: `drop-all-data.ts`'s first pass dropped
+parent tables before their children, tripping SQLite's FK constraints —
+fixed the drop order, added a direct regression test.
+
+**Not built**: same boundary as ticket 001 — no wiring into `App.tsx` or
+`src/machines/sync.ts`. This migration is independently correct and
+tested (SQL side under `node:sqlite`; the Dexie-writing side is faked
+for orchestration tests, same documented gap as ticket 001 — no
+`fake-indexeddb` dependency in this repo) but isn't in the live app's
+call path yet.
