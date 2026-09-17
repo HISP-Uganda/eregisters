@@ -56,14 +56,21 @@ in production, old Dexie databases are gone, and `pnpm test:vitest` /
   strategy, not necessarily production rollout pacing.
 - Invoke `/grilling` and `/domain-modeling` for any grilling-type ticket.
 - The COOP/COEP mechanism itself is now proven locally (ticket 001), and
-  the real integration into `scripts/patch-sw.js` is written and locally
-  verified against the actual app bundle (ticket 012's progress note,
-  branch `task/coi-sw-patch-integration`, not merged). The remaining
-  gating risk is ticket 012's items 2-6 (real production DHIS2 servlet +
-  Safari + PWA-update-flow verification), which needs a human with
-  deployment access. Not a hard tracker blocker on other tickets, but the
-  one thing that could still redraw the destination if production behaves
-  differently than the local simulation.
+  `task/coi-sw-patch-integration` (commit `f6ba002`) has since merged to
+  `main`. **Update**: ticket 012's items 2 and 4 turned out to redraw part
+  of the plan for real — patch 3's in-place regex approach failed in a
+  real user's production deployment, replaced by patch 7 (see ticket 018,
+  now `main`'s actual mechanism). Item 4's cross-origin-asset sweep is also
+  done (one real instance found and fixed, ticket 018's third finding; a
+  full static-analysis sweep for any others turned up nothing more, done
+  directly on ticket 012). The remaining gating risk is now narrower:
+  ticket 012's items **3, 5, 6** (PWA-update-flow verification, Safari,
+  and confirming `single-tab-lock.ts` — tickets 016/017 — actually
+  prevents the multi-tab OPFS conflict in a real browser, not just under
+  `node:sqlite` tests), which still need a human with deployment access
+  and multiple real browsers. Not a hard tracker blocker on other tickets,
+  but the one thing that could still redraw the destination if Safari or
+  the update flow behaves differently than what's been verified so far.
 - No issue tracker is configured for this repo; using the local-markdown
   tracker. Open tickets live as files under `tickets/`; a ticket is
   "unclaimed" if its frontmatter has no `assignee`, and "unblocked" if its

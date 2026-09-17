@@ -2,7 +2,7 @@
 title: Verify COOP/COEP Header-Injection on Real Production DHIS2 and Safari
 type: wayfinder:task
 status: open
-assignee: null
+assignee: claude-session
 blocked_by: []
 ---
 
@@ -32,7 +32,70 @@ Resolved when someone with deployment access has run through the
 remaining list (items 2-6) against the real server and browsers, and
 recorded what broke (if anything) and how it was fixed.
 
-## Progress (AFK-doable subset done)
+## Update (2026-09-16) — reality overtook this ticket's plan
+
+Items 1, 2, and most of 4 didn't happen via this ticket's own runbook —
+they happened for real, in production, reactively, documented in
+[ticket 018](018-coi-injection-production-failure.md). The
+"Progress" section below (written when this ticket was first opened) is
+now historically stale: it describes **patch 3**, extending patch 2's
+in-place regex match — that approach itself turned out to be exactly the
+"could still redraw the destination" risk this ticket's item 2 was meant
+to catch. Patch 2's regex didn't match this user's real production build,
+silently cascading into patch 6 (COI headers) never running, and OPFS
+never isolating at all. Ticket 018 replaced it with **patch 7** — an
+independent `fetch` listener for navigation/worker requests that needs no
+Workbox structure-matching at all — through three live production
+incident-response rounds (COI itself, then op-sqlite's worker script
+needing its own COEP header, then one hardcoded cross-origin image). See
+`scripts/patch-sw.js`'s own header comment (patch 7) for the current
+mechanism. Patches 2/5/6 remain in the file as harmless dead code.
+
+**Revised status per original item**:
+
+1. ~~Wire the header-injection patch into `scripts/patch-sw.js`~~ **Done**,
+   superseded twice (patch 3 → patch 7). Current mechanism: patch 7.
+2. **Substantively done, reactively** — real production deployment (this
+   user's), real failure found and fixed (ticket 018), not a clean
+   first-try pass. `window.crossOriginIsolated` confirmed `true` in real
+   production after the fix. Not tested against a *second*, independent
+   production DHIS2 instance — this was one user's deployment.
+3. **Still open** — PWA update-flow verification (vs. fresh install) has
+   not been done against patch 7 specifically. Runbook below still
+   applies; only the patch number references needed fixing.
+4. **Sweep now done (AFK, this session)** — `grep`'d every `.ts`/`.tsx`
+   file in `src/` for hardcoded `https?://` URLs: exactly one was ever a
+   real runtime cross-origin asset load (`upload.wikimedia.org`'s header
+   logo, `src/routes/__root.tsx`), already fixed with
+   `crossOrigin="anonymous"` per ticket 018's third finding. The other
+   two matches (`github.com` in `id.ts`, `who.int` in
+   `who-zscore-tables.ts`) are doc-comment citations, not fetched
+   resources. No `<script src="http...">`/`<link href="http...">` in any
+   `index.html`. Ticket 018's "not yet swept" gap is closed — nothing
+   else to find via static analysis. A *new* hardcoded cross-origin asset
+   added later would still need the same treatment; this was a
+   point-in-time sweep, not an enforced invariant.
+5. **Still open** — Safari/WebKit untested, explicitly noted as a
+   remaining gap in ticket 018 too. Genuinely needs a human with a Safari
+   browser; also needs re-checking against patch 7 specifically now that
+   Safari's own history of differing SW/OPFS behavior is one of the things
+   most likely to surface a *third* kind of failure this hasn't hit yet.
+6. **Underlying risk now mitigated by design, still needs real
+   verification** — the sibling tickets
+   [016](016-multi-tab-opfs-conflict.md)/[017](017-multi-tab-opfs-decision.md)
+   built `src/db/sqlite/single-tab-lock.ts` specifically to *prevent* this
+   conflict (a losing tab never calls `initSqlDriver` at all, so the OPFS
+   error can't occur) rather than just detect it after the fact. That
+   changes what item 6 is actually testing now: not "does raw OPFS
+   conflict handling work," but "does the lock itself correctly prevent
+   two tabs from both trying" — still unverified against patch 7's
+   integrated build in a real two-tab scenario. Runbook step below
+   updated to test the lock's actual behavior, not a raw conflict.
+
+Genuinely remaining, still needs a human with deployment access and
+multiple real browsers: **items 3, 5, 6**.
+
+## Progress (AFK-doable subset done) — historical, see Update above
 
 Item 1 didn't actually need production access — done and verified on
 branch `task/coi-sw-patch-integration`, commit `f6ba002` (not merged into
@@ -66,11 +129,15 @@ assets existed in this test to check against COEP; no Safari available in
 this environment; and the multi-tab OPFS conflict (tickets 001/011 both
 hit it) hasn't been tested against this integrated patch specifically.
 
-## Runbook (items 2-6) — for whoever has deployment access
+## Runbook (items 3, 5, 6 — the genuinely remaining ones) — for whoever has deployment access
 
-Prerequisite: merge `task/coi-sw-patch-integration` (commit `f6ba002`) into
-`main` first (or deploy straight from that branch for the test round —
-your call, but don't ship it to real users until items 2-6 below pass).
+Items 2 and 4 are done (see Update above) — kept below only as a
+historical record of what to check if either ever needs re-verifying
+(e.g. after a `@dhis2/pwa` upgrade or a new hardcoded cross-origin asset
+is added). Start straight at Item 3 for what's actually still open.
+
+Prerequisite: patch 7 (current `main`, no branch merge needed — ticket
+018's fix is already in). Deploy current `main`.
 
 ### Setup
 
@@ -85,7 +152,7 @@ production instance users depend on — this is unverified code.
 Open DevTools before you do anything else and keep the Console + Network
 tabs visible for every step below.
 
-### Item 2 — real servlet, cold install
+### Item 2 — real servlet, cold install (done — see Update; kept for re-verification reference)
 
 1. In an **incognito/private window** (guarantees no leftover SW), open the
    app's real URL on the target DHIS2 instance.
@@ -109,10 +176,12 @@ tabs visible for every step below.
    `Cross-Origin-Opener-Policy` to something else and `new Headers(...).set`
    silently overwrote it in a way the browser rejects — check for a console
    warning about header conflicts).
-5. Also check the console for `[patch-sw] Patch 3: navigation handler
-   pattern not found` — if you see this, patch 2's own output shape
-   differs on this build (Workbox version drift) and patch 3 silently
-   no-opped; needs a fix before proceeding.
+5. Also check the console for
+   `[patch-sw] Applied patch 7: independent navigation handler` — confirm
+   it actually applied (not skipped). Patch 7 doesn't depend on matching
+   Workbox's structure, so it shouldn't skip — if it did, that's a new,
+   different failure mode than ticket 018's and worth its own
+   investigation, not an expected outcome.
 
 ### Item 3 — PWA update flow (not fresh install)
 
@@ -127,17 +196,22 @@ only ever tested fresh installs).
 3. Per root `CLAUDE.md`'s note on `scripts/patch-sw.js`, the existing patch
    1 (`clients.claim()`) should cause `controllerchange` to fire and the
    new SW to take over without a manual reload requirement — confirm this
-   still happens with patch 3 in place.
+   still happens with patch 7 in place (patch 7 takes exclusive ownership
+   of navigation requests via `stopImmediatePropagation()`, which is new
+   since this item was first written — worth specifically confirming it
+   doesn't interfere with the update/`controllerchange` flow, since that
+   interaction was never tested).
 4. After the update completes, check `window.crossOriginIsolated` again.
    **Pass**: becomes `true` without the user needing to manually close and
    reopen the tab (beyond whatever your existing update-prompt UX already
    asks them to do).
 
-### Item 4 — COEP `require-corp` vs. real cross-origin assets
+### Item 4 — COEP `require-corp` vs. real cross-origin assets (done — see Update; kept for re-verification reference)
 
 COEP blocks any cross-origin subresource load that doesn't send a CORP (or
-CORS) header allowing it. Ticket 001's test had no such assets to check
-against.
+CORS) header allowing it. The one real instance found (Wikimedia header
+logo) is fixed; re-run this if a new hardcoded cross-origin asset is ever
+added, since the static-analysis sweep only catches what exists today.
 
 1. With the app loaded and cross-origin isolated, check the Network tab
    for any **failed** or **blocked** request — COEP failures show as a
@@ -170,29 +244,43 @@ against.
    the migration further, per the map's Notes ("the one thing that could
    still redraw the destination").
 
-### Item 6 — multi-tab OPFS conflict
+### Item 6 — multi-tab OPFS conflict (revised — tests the lock now, not a raw conflict)
 
 Tickets 001 and 011 both independently hit a real OPFS
 `createSyncAccessHandle` conflict when a leftover tab holds a database file
-open.
+open. Tickets 016/017 (same map) subsequently designed and built
+`src/db/sqlite/single-tab-lock.ts` specifically to *prevent* this — a
+losing tab races a Web Lock at load and never calls `initSqlDriver` at all
+if it loses, so the raw OPFS conflict this item originally worried about
+should now be structurally unreachable. What actually needs verifying is
+whether the lock itself behaves correctly in a real browser, not the raw
+conflict `single-tab-lock.test.ts` already covers under `node:sqlite`.
 
-1. Open the app in two tabs simultaneously (both already past the reload,
-   both cross-origin isolated).
-2. In each tab, trigger something that reads/writes OPFS (any tracker
-   action that would touch the SQLite file once that layer exists; for
-   this ticket's purposes, at minimum confirm the app doesn't error out or
-   deadlock just from being open twice).
-3. **Pass**: no OPFS access-handle error surfaces in either tab's console,
-   or if one does, it's handled gracefully (not a white screen / hard
-   crash). **Fail**: note the exact error and which tab/operation
-   triggered it — this needs a single-tab-enforcement or leader-election
-   fix before the real SQLite migration ships, not just a caveat.
+1. Open the app in two tabs simultaneously, both against the same real
+   deployment.
+2. **Pass**: exactly one tab actually initializes SQLite/OPFS (check for
+   the driver-init success log/side effect in each tab's console); the
+   other tab shows the "duplicate tab" UX (per ticket 017's design —
+   check `single-tab-lock.ts`/its consumer in `App.tsx` for the exact
+   copy/behavior) and never attempts `initSqlDriver` at all — confirm via
+   console, no OPFS access-handle error should be possible to trigger
+   from either tab.
+3. Close the primary tab (the one that won the lock) while the secondary
+   is still open. **Pass**: the secondary tab (or a newly opened third
+   tab) can now acquire the lock and initialize normally — confirms the
+   lock releases correctly on tab close, not just on graceful handoff.
+4. **Fail**: any OPFS access-handle error in either tab's console at any
+   point in steps 1-3, or the lock failing to release in step 3 (a device
+   stuck "locked out" until a full browser restart) — either is a real bug
+   in `single-tab-lock.ts`'s real-browser behavior, not covered by its
+   `node:sqlite`-based unit tests, and blocks shipping regardless of how
+   the other items go.
 
 ### Recording the result
 
-Come back and update this ticket's Resolution (once all of 2-6 are done)
-with: pass/fail per item, exact browser/OS versions tested, and any fix
-applied. If anything in items 2-6 fails in a way that changes the
+Come back and update this ticket's Resolution (once all of 3, 5, 6 are
+done) with: pass/fail per item, exact browser/OS versions tested, and any
+fix applied. If anything in items 3, 5, 6 fails in a way that changes the
 approach (not just a small patch tweak), flag it against the map's
 Destination note about COOP/COEP being "the one thing that could still
 redraw the destination" rather than silently patching around it here.
