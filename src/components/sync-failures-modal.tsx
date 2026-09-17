@@ -23,7 +23,7 @@ import {
     getEnrollmentsCollection,
     getEventsCollection,
     getTrackedEntitiesCollection,
-} from "../db/sqlite/tracker-collections-instance";
+} from "../db/collections";
 import { useMetadata } from "../hooks/useMetadata";
 import { SyncContext } from "../machines/sync";
 import {

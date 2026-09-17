@@ -13,7 +13,7 @@ import {
     programRuleResultsEqual,
 } from "../utils/utils";
 import { applyRuleResultsToForm, FormEvent } from "./common";
-import { getTrackedEntitiesCollection } from "../db/sqlite/tracker-collections-instance";
+import { getTrackedEntitiesCollection } from "../db/collections";
 
 const trackedEntityFormMachine = setup({
     types: {

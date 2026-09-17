@@ -1,13 +1,14 @@
 import { afterEach, describe, expect, it } from "vitest";
-import type { TrackedEntity } from "../../../schemas";
-import { createNodeSqliteDriver } from ".././test-support/node-sqlite-driver";
-import { createSchema } from ".././schema";
+import type { TrackedEntity } from "../../schemas";
+import { createNodeSqliteDriver } from "../sqlite/test-support/node-sqlite-driver";
+import { createSchema } from "../sqlite/schema";
 import {
     createEnrollmentsSqliteCollection,
     createEventsSqliteCollection,
     createTrackedEntitiesSqliteCollection,
-} from ".././collections";
-import { writePulledTrackedEntityPage } from ".././pull-page";
+} from "../sqlite/collections";
+import { sqlLocalLookups } from "../sqlite/pull-page-lookups";
+import { writePulledTrackedEntityPage } from "../pull-page";
 
 // A real DHIS2 tracker-API wire-shape TrackedEntity, exercising the exact
 // nested attributes/enrollments/events array shape flattenTrackedEntity
@@ -103,9 +104,9 @@ describe("writePulledTrackedEntityPage", () => {
         ]);
 
         await writePulledTrackedEntityPage(
-            driver,
             [makeWireTrackedEntity()],
             { trackedEntities, enrollments, events },
+            sqlLocalLookups(driver),
         );
 
         const teRows = await trackedEntities.toArrayWhenReady();
@@ -150,9 +151,9 @@ describe("writePulledTrackedEntityPage", () => {
 
         // First pull.
         await writePulledTrackedEntityPage(
-            driver,
             [makeWireTrackedEntity()],
             { trackedEntities, enrollments, events },
+            sqlLocalLookups(driver),
         );
 
         const sourceRows = await driver.execute<{ source: string }>(
@@ -173,7 +174,6 @@ describe("writePulledTrackedEntityPage", () => {
         // Second pull re-encounters the SAME entity from the server, with
         // its own (different) attribute set.
         await writePulledTrackedEntityPage(
-            driver,
             [
                 makeWireTrackedEntity({
                     updatedAt: "2026-02-01T00:00:00Z",
@@ -181,6 +181,7 @@ describe("writePulledTrackedEntityPage", () => {
                 }),
             ],
             { trackedEntities, enrollments, events },
+            sqlLocalLookups(driver),
         );
 
         const rows = await trackedEntities.toArrayWhenReady();

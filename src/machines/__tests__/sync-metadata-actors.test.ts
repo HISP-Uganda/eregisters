@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createNodeSqliteDriver } from "../../db/sqlite/test-support/node-sqlite-driver";
 import { createSchema } from "../../db/sqlite/schema";
+import { sqliteMetadataStore } from "../../db/sqlite/metadata-store";
 import {
     emptyStageHierarchyConfig,
     emptyUIConfig,
@@ -36,7 +37,8 @@ describe("sync-metadata-actors", () => {
                 }),
             );
 
-            const result = await pullUiConfig(driver, engine);
+            const result = await pullUiConfig(
+                sqliteMetadataStore(driver), engine);
 
             expect(result).toEqual({ dataPullPageSize: 42 });
             const row = await driver.execute<{ data: string }>(
@@ -56,7 +58,8 @@ describe("sync-metadata-actors", () => {
                 vi.fn().mockRejectedValue(new Error("offline")),
             );
 
-            const result = await pullUiConfig(driver, engine);
+            const result = await pullUiConfig(
+                sqliteMetadataStore(driver), engine);
 
             expect(result).toEqual(emptyUIConfig);
             const row = await driver.execute<{ data: string }>(
@@ -80,7 +83,7 @@ describe("sync-metadata-actors", () => {
                 }),
             );
 
-            const result = await pullStageHierarchyConfig(driver, engine);
+            const result = await pullStageHierarchyConfig(sqliteMetadataStore(driver), engine);
 
             expect(result).toEqual([{ parent: "a", child: "b" }]);
         });
@@ -93,7 +96,7 @@ describe("sync-metadata-actors", () => {
                 vi.fn().mockRejectedValue(new Error("offline")),
             );
 
-            const result = await pullStageHierarchyConfig(driver, engine);
+            const result = await pullStageHierarchyConfig(sqliteMetadataStore(driver), engine);
 
             expect(result).toEqual(emptyStageHierarchyConfig);
         });
@@ -110,7 +113,8 @@ describe("sync-metadata-actors", () => {
                 }),
             );
 
-            const result = await getConfiguredPageSize(driver, engine);
+            const result = await getConfiguredPageSize(
+                sqliteMetadataStore(driver), engine);
 
             expect(result).toBe(250);
         });
@@ -120,7 +124,7 @@ describe("sync-metadata-actors", () => {
             close = c;
             await createSchema(driver);
             await pullUiConfig(
-                driver,
+                sqliteMetadataStore(driver),
                 fakeEngine(
                     vi.fn().mockResolvedValue({
                         uiConfig: { dataPullPageSize: 99 },
@@ -129,7 +133,7 @@ describe("sync-metadata-actors", () => {
             );
 
             const result = await getConfiguredPageSize(
-                driver,
+                sqliteMetadataStore(driver),
                 fakeEngine(vi.fn().mockRejectedValue(new Error("offline"))),
             );
 
@@ -142,7 +146,7 @@ describe("sync-metadata-actors", () => {
             await createSchema(driver);
 
             const result = await getConfiguredPageSize(
-                driver,
+                sqliteMetadataStore(driver),
                 fakeEngine(vi.fn().mockRejectedValue(new Error("offline"))),
             );
 
@@ -156,7 +160,7 @@ describe("sync-metadata-actors", () => {
             close = c;
             await createSchema(driver);
 
-            await persistCurrentSyncState(driver, {
+            await persistCurrentSyncState(sqliteMetadataStore(driver), {
                 lastDataPull: "2026-01-01T00:00:00Z",
                 lastDataPush: "2026-01-02T00:00:00Z",
             });
@@ -177,7 +181,7 @@ describe("sync-metadata-actors", () => {
             close = c;
             await createSchema(driver);
 
-            const result = await getMetadataVersionRecord(driver);
+            const result = await getMetadataVersionRecord(sqliteMetadataStore(driver));
 
             expect(result).toBeUndefined();
         });

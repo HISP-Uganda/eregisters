@@ -1,7 +1,7 @@
 import { createActorContext } from "@xstate/react";
 import { FormInstance } from "antd";
 import { assertEvent, assign, fromPromise, setup } from "xstate";
-import { getEventsCollection } from "../db/sqlite/tracker-collections-instance";
+import { getEventsCollection } from "../db/collections";
 import {
     FlattenedEnrollment,
     FlattenedEvent,

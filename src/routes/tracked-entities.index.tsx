@@ -39,7 +39,7 @@ import { useMetadata } from "../hooks/useMetadata";
 import {
     getEnrollmentsCollection,
     getTrackedEntitiesCollection,
-} from "../db/sqlite/tracker-collections-instance";
+} from "../db/collections";
 
 const { Text } = Typography;
 export const TrackedEntitiesIndexRoute = createRoute({

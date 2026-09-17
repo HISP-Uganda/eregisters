@@ -6,7 +6,7 @@ import {
     fromPromise,
     setup,
 } from "xstate";
-import { getEnrollmentsCollection } from "../db/sqlite/tracker-collections-instance";
+import { getEnrollmentsCollection } from "../db/collections";
 import { FlattenedEnrollment, FlattenedTrackedEntity } from "../schemas";
 
 import { FormEvent } from "./common";

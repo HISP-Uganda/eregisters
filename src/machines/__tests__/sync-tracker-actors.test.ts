@@ -8,7 +8,7 @@ import { beforeAll, describe, expect, it, vi } from "vitest";
 vi.stubGlobal("navigator", { onLine: true });
 import { createNodeSqliteDriver } from "../../db/sqlite/test-support/node-sqlite-driver";
 import { createSchema } from "../../db/sqlite/schema";
-import { initTrackerCollections } from "../../db/sqlite/tracker-collections-instance";
+import { initCollections } from "../../db/collections";
 import { enrollmentsRowAdapter } from "../../db/sqlite/row-adapters/enrollments";
 import { eventsRowAdapter } from "../../db/sqlite/row-adapters/events";
 import { trackedEntitiesRowAdapter } from "../../db/sqlite/row-adapters/tracked-entities";
@@ -23,7 +23,7 @@ const { driver } = createNodeSqliteDriver();
 
 beforeAll(async () => {
     await createSchema(driver);
-    initTrackerCollections(driver);
+    initCollections("sqlite", driver);
 });
 
 function fakeEngine({
@@ -101,6 +101,7 @@ describe("syncReportToLocal", () => {
         const result = await syncReportToLocal({
             entities: [],
             engine,
+            backend: "sqlite",
             sqlDriver: driver,
             validAttributeIds: new Set(),
             validDataElementsByStage: new Map(),
@@ -149,6 +150,7 @@ describe("syncReportToLocal", () => {
         const result = await syncReportToLocal({
             entities: [entity],
             engine,
+            backend: "sqlite",
             sqlDriver: driver,
             validAttributeIds: new Set(),
             validDataElementsByStage: new Map(),
@@ -193,6 +195,7 @@ describe("syncReportToLocal", () => {
         const result = await syncReportToLocal({
             entities: [entity],
             engine,
+            backend: "sqlite",
             sqlDriver: driver,
             validAttributeIds: new Set(),
             validDataElementsByStage: new Map(),
@@ -219,6 +222,7 @@ describe("syncDeleteToLocal", () => {
             deletedTrackedEntities: [],
             deletedEnrollments: [],
             engine,
+            backend: "sqlite",
             sqlDriver: driver,
         });
         expect(result).toEqual({ succeeded: 0, failed: 0 });
@@ -260,6 +264,7 @@ describe("syncDeleteToLocal", () => {
             deletedTrackedEntities: [entity],
             deletedEnrollments: [],
             engine,
+            backend: "sqlite",
             sqlDriver: driver,
         });
 
@@ -301,6 +306,7 @@ describe("syncDeleteToLocal", () => {
             deletedTrackedEntities: [entity],
             deletedEnrollments: [],
             engine,
+            backend: "sqlite",
             sqlDriver: driver,
         });
 
@@ -342,6 +348,7 @@ describe("syncDeleteToLocal", () => {
             deletedTrackedEntities: [entity],
             deletedEnrollments: [],
             engine,
+            backend: "sqlite",
             sqlDriver: driver,
         });
 
@@ -363,6 +370,7 @@ describe("processBatchSync", () => {
 
         const engine = fakeEngine({ reachable: true });
         const result = await processBatchSync({
+            backend: "sqlite",
             sqlDriver: emptyDriver,
             engine,
             validAttributeIds: new Set(),

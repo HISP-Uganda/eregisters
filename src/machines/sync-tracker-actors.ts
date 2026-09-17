@@ -9,6 +9,12 @@ import {
     transformEvent,
     transformTrackedEntity,
 } from "../db/transformers";
+import type { StorageBackend } from "../db/backend";
+import {
+    getEnrollmentsCollection,
+    getEventsCollection,
+    getTrackedEntitiesCollection,
+} from "../db/collections";
 import type { SqlDriver } from "../db/sqlite/driver-types";
 import {
     deleteEnrollmentCascade,
@@ -23,10 +29,19 @@ import { findEnrollmentsBySyncStatusIn } from "../db/sqlite/row-adapters/enrollm
 import { findEventsBySyncStatusIn } from "../db/sqlite/row-adapters/events";
 import { findTrackedEntitiesBySyncStatusIn } from "../db/sqlite/row-adapters/tracked-entities";
 import {
-    getEnrollmentsCollection,
-    getEventsCollection,
-    getTrackedEntitiesCollection,
-} from "../db/sqlite/tracker-collections-instance";
+    applyPushResultsDexie,
+    deleteEnrollmentCascadeDexie,
+    deleteEventCascadeDexie,
+    deleteTrackedEntityCascadeDexie,
+    findEnrollmentsBySyncStatusInDexie,
+    findEventsBySyncStatusInDexie,
+    findTrackedEntitiesBySyncStatusInDexie,
+} from "../db/dexie/push-support";
+import {
+    getEnrollmentsDexieCollection,
+    getEventsDexieCollection,
+    getTrackedEntitiesDexieCollection,
+} from "../db/dexie/tracker-collections-instance";
 import {
     DataElement,
     Dhis2Report,
@@ -42,16 +57,16 @@ import {
 } from "../schemas";
 
 /**
- * SQL-touching bodies for `src/machines/sync.ts`'s tracker push/delete/batch
- * actors, extracted for the same reason Phase 1's `sync-metadata-actors.ts`
- * extracted the metadata ones: `sync.ts` is explicitly load-bearing/fragile
- * per root `CLAUDE.md`, and this keeps the new SQL logic testable without
- * spinning up the whole XState machine. `syncReportToLocal`/
- * `syncDeleteToLocal` are moved here near-verbatim from `sync.ts` (same
- * business logic — reachability checks, tracker-import payload
- * construction, error-report parsing, the E1082/E1113/E1114
- * already-deleted special-casing) with only the local write-back step
- * (step 7) swapped from Dexie collection calls to the SQLite equivalents.
+ * Backend-agnostic bodies for `src/machines/sync.ts`'s tracker
+ * push/delete/batch actors, extracted for the same reason
+ * `sync-metadata-actors.ts` extracted the metadata ones: `sync.ts` is
+ * explicitly load-bearing/fragile per root `CLAUDE.md`, and this keeps the
+ * new logic testable without spinning up the whole XState machine.
+ * `syncReportToLocal`/`syncDeleteToLocal` branch on `backend` only at the
+ * write-back/cascade-delete/find-by-status call sites (SQL row-adapters vs
+ * `db/dexie/push-support.ts`) — the surrounding orchestration (reachability
+ * checks, tracker-import payload construction, error-report parsing, the
+ * E1082/E1113/E1114 already-deleted special-casing) stays shared.
  */
 
 type SyncSubResult = {
@@ -81,6 +96,7 @@ async function submitTrackerImportAndWaitForReport({
 export async function syncReportToLocal({
     entities,
     engine,
+    backend,
     sqlDriver,
     validAttributeIds,
     validDataElementsByStage,
@@ -92,7 +108,8 @@ export async function syncReportToLocal({
         FlattenedTrackedEntity | FlattenedEnrollment | FlattenedEvent
     >;
     engine: Engine;
-    sqlDriver: SqlDriver;
+    backend: StorageBackend;
+    sqlDriver: SqlDriver | undefined;
     validAttributeIds: Set<string>;
     validDataElementsByStage: Map<string, Set<string>>;
     dataElements: Map<string, DataElement> | undefined;
@@ -250,20 +267,38 @@ export async function syncReportToLocal({
         }));
     }
 
-    // ONE atomic transaction across all three tables (push-results.ts) —
-    // real correctness improvement over 3 separate Dexie writes. Bypasses
-    // the collection adapters' own write path, so each touched collection
-    // needs an explicit refresh() to pick the change back up.
-    await applyPushResults(sqlDriver, {
-        trackedEntities: toUpdate(updatedEntities, (r) => r.trackedEntity),
-        enrollments: toUpdate(updatedEnrolments, (r) => r.enrollment),
-        events: toUpdate(updatedEvents, (r) => r.event),
-    });
-    await Promise.all([
-        getTrackedEntitiesCollection().utils.refresh(),
-        getEnrollmentsCollection().utils.refresh(),
-        getEventsCollection().utils.refresh(),
-    ]);
+    if (backend === "sqlite") {
+        // ONE atomic transaction across all three tables (push-results.ts)
+        // — real correctness improvement over 3 separate writes. Bypasses
+        // the collection adapters' own write path, so each touched
+        // collection needs an explicit refresh() to pick the change back
+        // up.
+        await applyPushResults(sqlDriver!, {
+            trackedEntities: toUpdate(updatedEntities, (r) => r.trackedEntity),
+            enrollments: toUpdate(updatedEnrolments, (r) => r.enrollment),
+            events: toUpdate(updatedEvents, (r) => r.event),
+        });
+        await Promise.all([
+            getTrackedEntitiesCollection().utils.refresh(),
+            getEnrollmentsCollection().utils.refresh(),
+            getEventsCollection().utils.refresh(),
+        ]);
+    } else {
+        // Dexie's `.utils.updateLocally` is itself the natural write path
+        // (no separate bypass-and-refresh step needed).
+        await applyPushResultsDexie(
+            {
+                trackedEntities: getTrackedEntitiesDexieCollection(),
+                enrollments: getEnrollmentsDexieCollection(),
+                events: getEventsDexieCollection(),
+            },
+            {
+                trackedEntities: toUpdate(updatedEntities, (r) => r.trackedEntity),
+                enrollments: toUpdate(updatedEnrolments, (r) => r.enrollment),
+                events: toUpdate(updatedEvents, (r) => r.event),
+            },
+        );
+    }
 
     return {
         processed: entities.length,
@@ -279,13 +314,15 @@ export async function syncDeleteToLocal({
     deletedTrackedEntities,
     deletedEnrollments,
     engine,
+    backend,
     sqlDriver,
 }: {
     deletedEvents: FlattenedEvent[];
     deletedTrackedEntities: FlattenedTrackedEntity[];
     deletedEnrollments: FlattenedEnrollment[];
     engine: Engine;
-    sqlDriver: SqlDriver;
+    backend: StorageBackend;
+    sqlDriver: SqlDriver | undefined;
 }): Promise<SyncSubResult> {
     const hasAnything =
         deletedEvents.length > 0 ||
@@ -361,17 +398,31 @@ export async function syncDeleteToLocal({
         }
     }
 
-    // Atomic cascading deletes (delete-cascade.ts) — each call handles its
-    // own whole subtree in one transaction, so no pre-fetch of children is
-    // needed here (unlike utils.ts's recursive soft/hard-delete walk, which
-    // needs to inspect each child individually).
+    // Atomic cascading deletes — each call handles its own whole subtree
+    // (SQL: one transaction via delete-cascade.ts; Dexie: sequential
+    // deleteLocally calls via push-support.ts's Dexie equivalents, per
+    // wayfinder ticket 003's decision 5 — flat rows need no FK cascade) —
+    // so no pre-fetch of children is needed here (unlike utils.ts's
+    // recursive soft/hard-delete walk, which needs to inspect each child
+    // individually).
     let touchedTE = false;
     let touchedEnrollment = false;
     let touchedEvent = false;
 
     for (const te of deletedTrackedEntities) {
         if (cleanupTeUids.has(te.trackedEntity)) {
-            await deleteTrackedEntityCascade(sqlDriver, te.trackedEntity);
+            if (backend === "sqlite") {
+                await deleteTrackedEntityCascade(sqlDriver!, te.trackedEntity);
+            } else {
+                await deleteTrackedEntityCascadeDexie(
+                    {
+                        trackedEntities: getTrackedEntitiesDexieCollection(),
+                        enrollments: getEnrollmentsDexieCollection(),
+                        events: getEventsDexieCollection(),
+                    },
+                    te.trackedEntity,
+                );
+            }
             touchedTE = touchedEnrollment = touchedEvent = true;
         }
     }
@@ -381,7 +432,17 @@ export async function syncDeleteToLocal({
             cleanupEnrollmentUids.has(enrollment.enrollment) &&
             !deletedTeIds.has(enrollment.trackedEntity)
         ) {
-            await deleteEnrollmentCascade(sqlDriver, enrollment.enrollment);
+            if (backend === "sqlite") {
+                await deleteEnrollmentCascade(sqlDriver!, enrollment.enrollment);
+            } else {
+                await deleteEnrollmentCascadeDexie(
+                    {
+                        enrollments: getEnrollmentsDexieCollection(),
+                        events: getEventsDexieCollection(),
+                    },
+                    enrollment.enrollment,
+                );
+            }
             touchedEnrollment = touchedEvent = true;
         }
     }
@@ -391,16 +452,27 @@ export async function syncDeleteToLocal({
             cleanupEventUids.has(event.event) &&
             !deletedTeIds.has(event.trackedEntity)
         ) {
-            await deleteEventCascade(sqlDriver, event.event);
+            if (backend === "sqlite") {
+                await deleteEventCascade(sqlDriver!, event.event);
+            } else {
+                await deleteEventCascadeDexie(
+                    { events: getEventsDexieCollection() },
+                    event.event,
+                );
+            }
             touchedEvent = true;
         }
     }
 
-    await Promise.all([
-        touchedTE ? getTrackedEntitiesCollection().utils.refresh() : null,
-        touchedEnrollment ? getEnrollmentsCollection().utils.refresh() : null,
-        touchedEvent ? getEventsCollection().utils.refresh() : null,
-    ]);
+    if (backend === "sqlite") {
+        await Promise.all([
+            touchedTE ? getTrackedEntitiesCollection().utils.refresh() : null,
+            touchedEnrollment
+                ? getEnrollmentsCollection().utils.refresh()
+                : null,
+            touchedEvent ? getEventsCollection().utils.refresh() : null,
+        ]);
+    }
 
     return {
         succeeded:
@@ -413,8 +485,9 @@ export async function syncDeleteToLocal({
 }
 
 export async function processBatchSync(input: {
-    sqlDriver: SqlDriver;
     engine: Engine;
+    backend: StorageBackend;
+    sqlDriver: SqlDriver | undefined;
     validAttributeIds: Set<string>;
     validDataElementsByStage: Map<string, Set<string>>;
     dataElements: Map<string, DataElement> | undefined;
@@ -422,8 +495,9 @@ export async function processBatchSync(input: {
     optionSets: Map<string, FlattenedOptionSet[]> | undefined;
 }): Promise<SyncUpsertResult> {
     const {
-        sqlDriver,
         engine,
+        backend,
+        sqlDriver,
         validAttributeIds,
         validDataElementsByStage,
         dataElements,
@@ -438,14 +512,48 @@ export async function processBatchSync(input: {
         deletedTEs,
         deletedEnrollments,
         deletedEvents,
-    ] = await Promise.all([
-        findTrackedEntitiesBySyncStatusIn(sqlDriver, ["pending", "failed"]),
-        findEnrollmentsBySyncStatusIn(sqlDriver, ["pending", "failed"]),
-        findEventsBySyncStatusIn(sqlDriver, ["pending", "failed"]),
-        findTrackedEntitiesBySyncStatusIn(sqlDriver, ["deleted"]),
-        findEnrollmentsBySyncStatusIn(sqlDriver, ["deleted"]),
-        findEventsBySyncStatusIn(sqlDriver, ["deleted"]),
-    ]);
+    ] =
+        backend === "sqlite"
+            ? await Promise.all([
+                  findTrackedEntitiesBySyncStatusIn(sqlDriver!, [
+                      "pending",
+                      "failed",
+                  ]),
+                  findEnrollmentsBySyncStatusIn(sqlDriver!, [
+                      "pending",
+                      "failed",
+                  ]),
+                  findEventsBySyncStatusIn(sqlDriver!, ["pending", "failed"]),
+                  findTrackedEntitiesBySyncStatusIn(sqlDriver!, ["deleted"]),
+                  findEnrollmentsBySyncStatusIn(sqlDriver!, ["deleted"]),
+                  findEventsBySyncStatusIn(sqlDriver!, ["deleted"]),
+              ])
+            : [
+                  findTrackedEntitiesBySyncStatusInDexie(
+                      getTrackedEntitiesDexieCollection(),
+                      ["pending", "failed"],
+                  ),
+                  findEnrollmentsBySyncStatusInDexie(
+                      getEnrollmentsDexieCollection(),
+                      ["pending", "failed"],
+                  ),
+                  findEventsBySyncStatusInDexie(
+                      getEventsDexieCollection(),
+                      ["pending", "failed"],
+                  ),
+                  findTrackedEntitiesBySyncStatusInDexie(
+                      getTrackedEntitiesDexieCollection(),
+                      ["deleted"],
+                  ),
+                  findEnrollmentsBySyncStatusInDexie(
+                      getEnrollmentsDexieCollection(),
+                      ["deleted"],
+                  ),
+                  findEventsBySyncStatusInDexie(
+                      getEventsDexieCollection(),
+                      ["deleted"],
+                  ),
+              ];
     const pendingEnrollments = pendingEnrollmentsRaw.filter(
         (e) => !!e.enrolledAt,
     );
@@ -475,6 +583,7 @@ export async function processBatchSync(input: {
         upsertResult = await syncReportToLocal({
             entities: [...pendingTEs, ...pendingEnrollments, ...pendingEvents],
             engine,
+            backend,
             sqlDriver,
             validAttributeIds,
             validDataElementsByStage,
@@ -495,6 +604,7 @@ export async function processBatchSync(input: {
             deletedTrackedEntities: deletedTEs,
             deletedEnrollments,
             engine,
+            backend,
             sqlDriver,
         });
     }

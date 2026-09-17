@@ -19,7 +19,7 @@ import { ClientSchema } from "../schemas";
 import { RootRoute } from "./__root";
 
 import dayjs from "dayjs";
-import { getTrackedEntitiesCollection } from "../db/sqlite/tracker-collections-instance";
+import { getTrackedEntitiesCollection } from "../db/collections";
 import { useMetadata } from "../hooks/useMetadata";
 
 const { Content } = Layout;

@@ -28,17 +28,21 @@ import {
 import { createActorContext } from "@xstate/react";
 import { MessageInstance } from "antd/es/message/interface";
 import { isEmpty } from "lodash";
-import type { SqlDriver } from "../db/sqlite/driver-types";
-import type {
-    CheckMetadataInfoResult,
-    QueryMetadataInfoResult,
-} from "../db/sqlite/metadata-info";
-import { writePulledTrackedEntityPage } from "../db/sqlite/pull-page";
+import type { StorageBackend } from "../db/backend";
 import {
     getEnrollmentsCollection,
     getEventsCollection,
     getTrackedEntitiesCollection,
-} from "../db/sqlite/tracker-collections-instance";
+} from "../db/collections";
+import type {
+    CheckMetadataInfoResult,
+    QueryMetadataInfoResult,
+} from "../db/metadata-operations";
+import type { MetadataStore } from "../db/metadata-store";
+import { writePulledTrackedEntityPage } from "../db/pull-page";
+import { dexieLocalLookups } from "../db/dexie/pull-page-lookups";
+import type { SqlDriver } from "../db/sqlite/driver-types";
+import { sqlLocalLookups } from "../db/sqlite/pull-page-lookups";
 import { type ConnectivityStatus } from "./network-reachability";
 import {
     checkMetadataSyncStatus,
@@ -125,7 +129,14 @@ export interface SyncContext {
     error: Error | null;
     info: string | undefined;
     engine: Engine;
-    sqlDriver: SqlDriver;
+    backend: StorageBackend;
+    metadataStore: MetadataStore;
+    // Only present on the SQLite backend — a handful of actors still need
+    // raw driver access where no Dexie equivalent applies generically
+    // (pullData's local-row lookups, the tracker push actors' SQL
+    // row-adapters). Kept narrow and threaded explicitly, not a general
+    // escape hatch back to SqlDriver-everywhere.
+    sqlDriver: SqlDriver | undefined;
     lastDataPull: string | undefined;
     lastDataPush: string | undefined;
     lastMetadataPull: string | undefined;
@@ -185,7 +196,9 @@ const syncMachine = setup({
         events: {} as SyncEvent,
         input: {} as {
             engine: Engine;
-            sqlDriver: SqlDriver;
+            backend: StorageBackend;
+            metadataStore: MetadataStore;
+            sqlDriver: SqlDriver | undefined;
             initialLastMetadataPull?: string;
             initialLastDataPull?: string;
             initialLastDataPush?: string;
@@ -212,7 +225,7 @@ const syncMachine = setup({
         }),
 
         persistSyncState: ({ context }) => {
-            void persistCurrentSyncState(context.sqlDriver, {
+            void persistCurrentSyncState(context.metadataStore, {
                 lastDataPull: context.lastDataPull,
                 lastDataPush: context.lastDataPush,
             });
@@ -252,15 +265,18 @@ const syncMachine = setup({
         }),
         checkIndexDB: fromPromise<
             CheckMetadataInfoResult,
-            { sqlDriver: SqlDriver }
-        >(async ({ input: { sqlDriver } }) => {
-            return checkMetadataSyncStatus(sqlDriver);
+            { metadataStore: MetadataStore }
+        >(async ({ input: { metadataStore } }) => {
+            return checkMetadataSyncStatus(metadataStore);
         }),
         queryIndexDB: fromPromise<
             QueryMetadataInfoResult,
-            { sqlDriver: SqlDriver; userInfo: MeUser }
-        >(async ({ input: { sqlDriver, userInfo } }) => {
-            return queryMetadata(sqlDriver, userInfo.organisationUnits[0].path);
+            { metadataStore: MetadataStore; userInfo: MeUser }
+        >(async ({ input: { metadataStore, userInfo } }) => {
+            return queryMetadata(
+                metadataStore,
+                userInfo.organisationUnits[0].path,
+            );
         }),
         pullData: fromPromise<
             string | undefined,
@@ -269,7 +285,9 @@ const syncMachine = setup({
                 orgUnit: string;
                 lastDataPull: string | undefined;
                 engine: Engine;
-                sqlDriver: SqlDriver;
+                backend: StorageBackend;
+                metadataStore: MetadataStore;
+                sqlDriver: SqlDriver | undefined;
                 dataPullMode: DataPullMode;
             }
         >(
@@ -279,6 +297,8 @@ const syncMachine = setup({
                     orgUnit,
                     program,
                     engine,
+                    backend,
+                    metadataStore,
                     sqlDriver,
                     dataPullMode,
                 },
@@ -304,7 +324,7 @@ const syncMachine = setup({
                 // the local mirror, then the hardcoded default, when the
                 // dataStore is unreachable (offline pull).
                 const configuredPageSize = await getConfiguredPageSize(
-                    sqlDriver,
+                    metadataStore,
                     engine,
                 );
                 const pageSize =
@@ -360,11 +380,18 @@ const syncMachine = setup({
                     // already-stored row), and write this page — see
                     // pull-page.ts's own doc comment for why the merge
                     // logic and write order live there, standalone-tested.
-                    await writePulledTrackedEntityPage(sqlDriver, instances, {
+                    const collections = {
                         trackedEntities: getTrackedEntitiesCollection(),
                         enrollments: getEnrollmentsCollection(),
                         events: getEventsCollection(),
-                    });
+                    };
+                    await writePulledTrackedEntityPage(
+                        instances,
+                        collections,
+                        backend === "sqlite"
+                            ? sqlLocalLookups(sqlDriver!)
+                            : dexieLocalLookups(collections as any),
+                    );
 
                     hasMoreData = shouldContinueDataPull({
                         receivedCount: instances.length,
@@ -382,28 +409,28 @@ const syncMachine = setup({
         ),
         saveMetadata: fromPromise<
             void,
-            { sqlDriver: SqlDriver; metadata: Metadata }
-        >(async ({ input: { sqlDriver, metadata } }) => {
-            await saveMetadataToSqlite(sqlDriver, metadata);
+            { metadataStore: MetadataStore; metadata: Metadata }
+        >(async ({ input: { metadataStore, metadata } }) => {
+            await saveMetadataToSqlite(metadataStore, metadata);
         }),
         pullUIConfig: fromPromise<
             UIConfig,
-            { sqlDriver: SqlDriver; engine: Engine }
-        >(async ({ input: { sqlDriver, engine } }) => {
-            return pullUiConfig(sqlDriver, engine);
+            { metadataStore: MetadataStore; engine: Engine }
+        >(async ({ input: { metadataStore, engine } }) => {
+            return pullUiConfig(metadataStore, engine);
         }),
         pullStageHierarchy: fromPromise<
             StageHierarchyConfig,
-            { sqlDriver: SqlDriver; engine: Engine }
-        >(async ({ input: { sqlDriver, engine } }) => {
-            return pullStageHierarchyConfig(sqlDriver, engine);
+            { metadataStore: MetadataStore; engine: Engine }
+        >(async ({ input: { metadataStore, engine } }) => {
+            return pullStageHierarchyConfig(metadataStore, engine);
         }),
         pullResource: fromPromise<
             Metadata,
             {
                 resources: Resource[];
                 engine: Engine;
-                sqlDriver: SqlDriver;
+                metadataStore: MetadataStore;
                 lastMetadataPull: string | undefined;
                 metadataSyncMode: MetadataSyncMode;
                 userOrgUnit: string;
@@ -412,7 +439,7 @@ const syncMachine = setup({
             const {
                 resources,
                 engine,
-                sqlDriver,
+                metadataStore,
                 lastMetadataPull,
                 metadataSyncMode,
                 userOrgUnit,
@@ -770,7 +797,8 @@ const syncMachine = setup({
                         serverDate ??
                         lastMetadataPull ??
                         new Date().toISOString();
-                    let version = await getMetadataVersionRecord(sqlDriver);
+                    let version =
+                        await getMetadataVersionRecord(metadataStore);
                     if (version === undefined) {
                         version = {
                             id: "metadata-version",
@@ -794,13 +822,13 @@ const syncMachine = setup({
         }),
         deleteAllMetadata: fromPromise<
             void,
-            { sqlDriver: SqlDriver; metadata: Metadata }
-        >(async ({ input: { sqlDriver, metadata } }) => {
-            await deleteMetadataForResync(sqlDriver, metadata);
+            { metadataStore: MetadataStore; metadata: Metadata }
+        >(async ({ input: { metadataStore, metadata } }) => {
+            await deleteMetadataForResync(metadataStore, metadata);
         }),
-        resetDatabase: fromPromise<void, { sqlDriver: SqlDriver }>(
-            async ({ input: { sqlDriver } }) => {
-                await resetMetadataForRecovery(sqlDriver);
+        resetDatabase: fromPromise<void, { metadataStore: MetadataStore }>(
+            async ({ input: { metadataStore } }) => {
+                await resetMetadataForRecovery(metadataStore);
             },
         ),
         deleteAllData: fromPromise<void>(async () => {}),
@@ -810,7 +838,8 @@ const syncMachine = setup({
             }: {
                 input: {
                     engine: Engine;
-                    sqlDriver: SqlDriver;
+                    backend: StorageBackend;
+                    sqlDriver: SqlDriver | undefined;
                     validAttributeIds: Set<string>;
                     validDataElementsByStage: Map<string, Set<string>>;
                     dataElements: Map<string, DataElement> | undefined;
@@ -852,9 +881,13 @@ const syncMachine = setup({
             }),
         },
     },
-    context: ({ input: { engine, sqlDriver, message, userInfo } }) => {
+    context: ({
+        input: { engine, backend, metadataStore, sqlDriver, message, userInfo },
+    }) => {
         return {
             engine,
+            backend,
+            metadataStore,
             sqlDriver,
             error: null,
             connectivityStatus: "healthy",
@@ -990,8 +1023,8 @@ const syncMachine = setup({
                 idle: {
                     invoke: {
                         src: "checkIndexDB",
-                        input: ({ context: { sqlDriver } }) => ({
-                            sqlDriver,
+                        input: ({ context: { metadataStore } }) => ({
+                            metadataStore,
                         }),
                         onDone: [
                             {
@@ -1062,8 +1095,8 @@ const syncMachine = setup({
                 savingMetadata: {
                     invoke: {
                         src: "saveMetadata",
-                        input: ({ context: { sqlDriver, rawMetadata } }) => {
-                            return { sqlDriver, metadata: rawMetadata };
+                        input: ({ context: { metadataStore, rawMetadata } }) => {
+                            return { metadataStore, metadata: rawMetadata };
                         },
                         onDone: {
                             target: "pullingUIConfig",
@@ -1076,8 +1109,8 @@ const syncMachine = setup({
                 resetIndexDB: {
                     invoke: {
                         src: "resetDatabase",
-                        input: ({ context: { sqlDriver } }) => ({
-                            sqlDriver,
+                        input: ({ context: { metadataStore } }) => ({
+                            metadataStore,
                         }),
                         onDone: {
                             target: "idle",
@@ -1087,8 +1120,8 @@ const syncMachine = setup({
                 pullingUIConfig: {
                     invoke: {
                         src: "pullUIConfig",
-                        input: ({ context: { sqlDriver, engine } }) => ({
-                            sqlDriver,
+                        input: ({ context: { metadataStore, engine } }) => ({
+                            metadataStore,
                             engine,
                         }),
                         onDone: {
@@ -1103,8 +1136,8 @@ const syncMachine = setup({
                 pullingStageHierarchy: {
                     invoke: {
                         src: "pullStageHierarchy",
-                        input: ({ context: { sqlDriver, engine } }) => ({
-                            sqlDriver,
+                        input: ({ context: { metadataStore, engine } }) => ({
+                            metadataStore,
                             engine,
                         }),
                         onDone: {
@@ -1120,7 +1153,7 @@ const syncMachine = setup({
                     invoke: {
                         src: "queryIndexDB",
                         input: ({ context }) => ({
-                            sqlDriver: context.sqlDriver,
+                            metadataStore: context.metadataStore,
                             userInfo: context.userInfo,
                         }),
                         onDone: {
@@ -1141,8 +1174,8 @@ const syncMachine = setup({
                 deletingMetadata: {
                     invoke: {
                         src: "deleteAllMetadata",
-                        input: ({ context: { sqlDriver, rawMetadata } }) => ({
-                            sqlDriver,
+                        input: ({ context: { metadataStore, rawMetadata } }) => ({
+                            metadataStore,
                             metadata: rawMetadata,
                         }),
                         onDone: "savingMetadata",
@@ -1156,7 +1189,7 @@ const syncMachine = setup({
                         input: ({
                             context: {
                                 engine,
-                                sqlDriver,
+                                metadataStore,
                                 resources,
                                 lastMetadataPull,
                                 metadataSyncMode,
@@ -1166,7 +1199,7 @@ const syncMachine = setup({
                             return {
                                 resources,
                                 engine,
-                                sqlDriver,
+                                metadataStore,
                                 lastMetadataPull,
                                 metadataSyncMode,
                                 userOrgUnit: userInfo.organisationUnits[0].id,
@@ -1260,6 +1293,7 @@ const syncMachine = setup({
                         src: "processBatchSync",
                         input: ({ context }) => ({
                             engine: context.engine,
+                            backend: context.backend,
                             sqlDriver: context.sqlDriver,
                             validAttributeIds: context.validAttributeIds,
                             validDataElementsByStage:
@@ -1354,6 +1388,8 @@ const syncMachine = setup({
                         input: ({
                             context: {
                                 engine,
+                                backend,
+                                metadataStore,
                                 sqlDriver,
                                 lastDataPull,
                                 userInfo,
@@ -1361,6 +1397,8 @@ const syncMachine = setup({
                             },
                         }) => ({
                             engine,
+                            backend,
+                            metadataStore,
                             sqlDriver,
                             lastDataPull,
                             orgUnit: userInfo.organisationUnits[0].id,

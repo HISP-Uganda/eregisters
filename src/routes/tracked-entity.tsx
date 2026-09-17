@@ -48,7 +48,7 @@ import {
     getEnrollmentsCollection,
     getEventsCollection,
     getTrackedEntitiesCollection,
-} from "../db/sqlite/tracker-collections-instance";
+} from "../db/collections";
 import { DataModal } from "../components/data-modal";
 import MainEventCapture from "../components/main-event-capture";
 import {

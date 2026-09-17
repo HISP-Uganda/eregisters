@@ -20,7 +20,7 @@ import { TrackerRegistration } from "./tracker-registration";
 import {
     getEnrollmentsCollection,
     getTrackedEntitiesCollection,
-} from "../db/sqlite/tracker-collections-instance";
+} from "../db/collections";
 
 const { Title, Text } = Typography;
 type NoPatientsCardProps = {

@@ -10,7 +10,7 @@ import {
     getEnrollmentsCollection,
     getEventsCollection,
     getTrackedEntitiesCollection,
-} from "../db/sqlite/tracker-collections-instance";
+} from "../db/collections";
 
 const RELATIONSHIP_TABS_CLASS = "eregisters-relationship-tabs";
 const RELATIONSHIP_TABS_CSS = `

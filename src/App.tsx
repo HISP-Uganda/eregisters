@@ -3,15 +3,19 @@ import { RouterProvider } from "@tanstack/react-router";
 import { App, ConfigProvider, Typography } from "antd";
 import React, { FC, useEffect, useState } from "react";
 import { Spinner } from "./components/spinner";
+import { getBackendSetting, resolveBackend, type StorageBackend } from "./db/backend";
+import { initCollections } from "./db/collections";
+import { dexieMetadataStore } from "./db/dexie/metadata-store";
 import { realDexieMigrationSource } from "./db/sqlite/dexie-migration-source";
 import type { SqlDriver } from "./db/sqlite/driver-types";
 import { initSqlDriver } from "./db/sqlite/instance";
+import { sqliteMetadataStore } from "./db/sqlite/metadata-store";
 import { runDexieMigrationIfNeeded } from "./db/sqlite/migrate-from-dexie";
 import {
     notifyPrimaryTabToFocus,
     requestPrimaryTab,
 } from "./db/sqlite/single-tab-lock";
-import { initTrackerCollections } from "./db/sqlite/tracker-collections-instance";
+import type { MetadataStore } from "./db/metadata-store";
 import { SyncContext } from "./machines/sync";
 import { router } from "./router";
 import { MeData, MeUser } from "./schemas";
@@ -39,6 +43,10 @@ const FullApp: FC<{
     const engine = useDataEngine();
     const { message } = App.useApp();
     const [sqlDriver, setSqlDriver] = useState<SqlDriver | null>(null);
+    const [backend, setBackend] = useState<StorageBackend | null>(null);
+    const [metadataStore, setMetadataStore] = useState<MetadataStore | null>(
+        null,
+    );
     const [isDuplicateTab, setIsDuplicateTab] = useState(false);
     const [sqlDriverError, setSqlDriverError] = useState<Error | null>(null);
 
@@ -48,48 +56,71 @@ const FullApp: FC<{
         // "How Should the App Handle OPFS's Multi-Tab Access-Handle
         // Conflict?"). Rather than catch that error after the fact, race
         // every tab for a lock first: the losing (duplicate) tab never
-        // calls initSqlDriver at all, so the conflict never happens.
-        requestPrimaryTab().then((isPrimary) => {
-            if (!isPrimary) {
-                notifyPrimaryTabToFocus();
-                setIsDuplicateTab(true);
-                return;
-            }
+        // calls initSqlDriver at all, so the conflict never happens. Only
+        // relevant on the SQLite/OPFS path — the Dexie path has no
+        // access-handle exclusivity problem (wayfinder ticket 005 on the
+        // dual-backend map: "no lock needed"), so it skips this dance
+        // entirely and is resolved directly below.
+        async function bootstrap() {
+            const setting = getBackendSetting();
+            let sqliteDriver: SqlDriver | undefined;
 
-            // Requires cross-origin isolation (OPFS) — the COOP/COEP
-            // header-injection patch (wayfinder ticket 012) must actually
-            // be taking effect in this deployment for this to resolve.
-            // If it isn't (unverified/misconfigured environment, or the
-            // patch's pattern-matching failed against this build's
-            // service-worker.js), this rejects rather than hanging — caught
-            // below so the user sees a real error instead of an unhandled
-            // promise rejection and an infinite "Preparing local storage…"
-            // spinner.
-            initSqlDriver("eregisters-metadata")
-                .then((driver) => {
-                    initTrackerCollections(driver);
-                    // Fire-and-forget (wayfinder ticket "Migration and
-                    // Cutover Procedure Design" decision 4: non-blocking) —
-                    // copying an existing device's Dexie data into SQLite
-                    // runs in the background; the app renders immediately,
-                    // and a banner (subscribed to migration-progress.ts)
-                    // reports status independently. A fresh install
-                    // resolves this instantly (nothing to copy). This never
-                    // throws — failures are caught internally and published
-                    // as progress, not rejected.
-                    void runDexieMigrationIfNeeded(
-                        driver,
-                        realDexieMigrationSource,
-                    );
-                    setSqlDriver(driver);
-                })
-                .catch((error: unknown) => {
-                    setSqlDriverError(
-                        error instanceof Error
-                            ? error
-                            : new Error(String(error)),
-                    );
-                });
+            const resolved = await resolveBackend(setting, async () => {
+                const isPrimary = await requestPrimaryTab();
+                if (!isPrimary) {
+                    notifyPrimaryTabToFocus();
+                    setIsDuplicateTab(true);
+                    // Never resolves — the duplicate tab shows its own
+                    // screen and never proceeds to initialize anything.
+                    await new Promise<never>(() => {});
+                }
+                // Requires cross-origin isolation (OPFS) — the COOP/COEP
+                // header-injection patch (wayfinder ticket 012) must
+                // actually be taking effect in this deployment for this to
+                // resolve. If it isn't (unverified/misconfigured
+                // environment, or the patch's pattern-matching failed
+                // against this build's service-worker.js), this rejects
+                // rather than hanging.
+                sqliteDriver = await initSqlDriver("eregisters-metadata");
+            });
+
+            if (resolved === "sqlite" && sqliteDriver) {
+                initCollections("sqlite", sqliteDriver);
+                // Fire-and-forget (wayfinder ticket "Migration and Cutover
+                // Procedure Design" decision 4: non-blocking) — copying an
+                // existing device's Dexie data into SQLite runs in the
+                // background; the app renders immediately, and a banner
+                // (subscribed to migration-progress.ts) reports status
+                // independently. A fresh install resolves this instantly
+                // (nothing to copy). This never throws — failures are
+                // caught internally and published as progress, not
+                // rejected.
+                void runDexieMigrationIfNeeded(
+                    sqliteDriver,
+                    realDexieMigrationSource,
+                );
+                setSqlDriver(sqliteDriver);
+                setMetadataStore(sqliteMetadataStore(sqliteDriver));
+                setBackend("sqlite");
+            } else {
+                // Dexie path: no reverse migration runs automatically here
+                // — running it unattended would need the device to already
+                // be past this same bootstrap once, which it isn't, and
+                // per `device-storage-settings.tsx`'s documented scope
+                // cut, an explicit switch-and-migrate flow isn't wired to
+                // execute yet. A device that resolves to Dexie either
+                // never had SQLite data, or was force-set to Dexie by the
+                // (not-yet-migrating) settings UI.
+                initCollections("dexie");
+                setMetadataStore(dexieMetadataStore());
+                setBackend("dexie");
+            }
+        }
+
+        bootstrap().catch((error: unknown) => {
+            setSqlDriverError(
+                error instanceof Error ? error : new Error(String(error)),
+            );
         });
     }, []);
 
@@ -122,7 +153,7 @@ const FullApp: FC<{
         );
     }
 
-    if (!sqlDriver) {
+    if (!backend || !metadataStore) {
         return (
             <Spinner
                 component={
@@ -137,7 +168,9 @@ const FullApp: FC<{
             options={{
                 input: {
                     engine,
-                    sqlDriver,
+                    backend,
+                    metadataStore,
+                    sqlDriver: sqlDriver ?? undefined,
                     userInfo,
                     message,
                 },

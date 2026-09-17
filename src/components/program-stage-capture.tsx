@@ -47,7 +47,7 @@ import { EventRuleAwareForm } from "./rule-aware-form";
 import { computeSaveBlock } from "../utils/save-block";
 import type { ProgramRuleResult } from "../schemas";
 
-import { getEventsCollection } from "../db/sqlite/tracker-collections-instance";
+import { getEventsCollection } from "../db/collections";
 
 const { Text } = Typography;
 

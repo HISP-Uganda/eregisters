@@ -45,7 +45,7 @@ import {
     getEnrollmentsCollection,
     getEventsCollection,
     getTrackedEntitiesCollection,
-} from "../db/sqlite/tracker-collections-instance";
+} from "../db/collections";
 
 const GRID_TOTAL = 24;
 

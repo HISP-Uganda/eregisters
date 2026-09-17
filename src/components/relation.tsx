@@ -4,7 +4,7 @@ import React, { useMemo } from "react";
 import {
     getEnrollmentsCollection,
     getEventsCollection,
-} from "../db/sqlite/tracker-collections-instance";
+} from "../db/collections";
 import { useMetadata } from "../hooks/useMetadata";
 import { EventContext } from "../machines";
 import { FlattenedEvent, FlattenedTrackedEntity } from "../schemas";

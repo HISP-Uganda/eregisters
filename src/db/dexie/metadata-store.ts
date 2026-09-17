@@ -47,12 +47,19 @@ export function dexieMetadataStore(): MetadataStore {
             const row = await db.rows.get([table, id]);
             return row ? (row.data as T) : undefined;
         },
-        async putRow<T extends { id: string }>(table: string, row: T) {
-            await db.rows.put({ table, id: row.id, data: row });
+        async putRow<T extends { id: string }>(
+            table: string,
+            row: T,
+            key?: string,
+        ) {
+            await db.rows.put({ table, id: key ?? row.id, data: row });
         },
         async listRows<T extends object>(table: string) {
             const rows = await db.rows.where("table").equals(table).toArray();
             return rows.map((row) => row.data as T);
+        },
+        async deleteRow(table: string, key: string) {
+            await db.rows.delete([table, key]);
         },
     };
 }

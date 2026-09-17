@@ -38,7 +38,7 @@ import {
     getEnrollmentsCollection,
     getEventsCollection,
     getTrackedEntitiesCollection,
-} from "../db/sqlite/tracker-collections-instance";
+} from "../db/collections";
 import { DeviceStorageSettings } from "../components/device-storage-settings";
 import { MigrationProgressBanner } from "../components/migration-progress-banner";
 import { Spinner } from "../components/spinner";

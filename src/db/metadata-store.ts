@@ -25,19 +25,39 @@
  * `config-rows.ts` needs to resolve it for those two-plus-one tables
  * specifically.
  *
- * Not yet wired into `sync-metadata-actors.ts`/`config-rows.ts` (which
- * still call `SqlDriver`-based functions directly) — that wiring is
- * deferred alongside `sync.ts`'s broader backend-agnostic rewiring (see
- * the map's "Not yet specified": `src/machines/sync.ts` has 52 direct
+ * Wired into `sync-metadata-actors.ts` via `src/db/metadata-operations.ts`'s
+ * generic save/query/check/delete/reset functions, as part of the broader
+ * `sync.ts` backend-agnostic rewiring (see the map's former "Not yet
+ * specified" note — `src/machines/sync.ts` had 52 direct
  * `sqlDriver: SqlDriver` references, and CLAUDE.md calls this file
- * load-bearing). This interface and its two implementations exist and are
- * independently correct/tested now, ready for that later wiring.
+ * load-bearing).
+ *
+ * `organisation_units`'s indexed path-prefix query stays SQL-only
+ * (`findOrgUnitsByPathPrefix`, unrelated to this interface — `queryMetadata`
+ * in `metadata-operations.ts` filters `listRows("organisation_units")` by
+ * path in memory instead for both backends, since per-device org-unit
+ * counts are small). `option_sets`/`option_groups`' composite `(id, group)`
+ * primary key is handled via `putRow`'s optional `key` param — callers
+ * compute a synthetic composite key (`optionSetKey`/`optionGroupKey`,
+ * `src/db/sqlite/row-adapters/option-{sets,groups}.ts`) and pass it
+ * explicitly; the stored row itself keeps its real `id`/`optionSet` fields
+ * untouched.
  */
 export interface MetadataStore {
     getRow: <T extends object>(
         table: string,
         id: string,
     ) => Promise<T | undefined>;
-    putRow: <T extends { id: string }>(table: string, row: T) => Promise<void>;
+    /**
+     * `key` defaults to `row.id` — pass an explicit composite key (e.g.
+     * `optionSetKey(row)`) for the two composite-key tables, since a plain
+     * `id` is not unique across different option sets/groups.
+     */
+    putRow: <T extends { id: string }>(
+        table: string,
+        row: T,
+        key?: string,
+    ) => Promise<void>;
     listRows: <T extends object>(table: string) => Promise<T[]>;
+    deleteRow: (table: string, key: string) => Promise<void>;
 }

@@ -32,7 +32,7 @@ import {
     getEnrollmentsCollection,
     getEventsCollection,
     getTrackedEntitiesCollection,
-} from "../db/sqlite/tracker-collections-instance";
+} from "../db/collections";
 import { useComputedColumns } from "../hooks/useComputedColumns";
 import { useIsMobile } from "../hooks/useIsMobile";
 import { useMetadata } from "../hooks/useMetadata";
