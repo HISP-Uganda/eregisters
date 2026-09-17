@@ -61,3 +61,37 @@ existing `checking → copying → verifying → done/failed` phases from
 it failed at, confirms explicitly that nothing switched and no data was
 lost (ticket 003's copy-and-verify-before-drop design guarantees this),
 and offers "Try again" or "Keep &lt;current backend&gt;".
+
+## Implementation progress
+
+Built (commit `cdf24a9`, `main`): `src/components/device-storage-settings.tsx`
+(Drawer + confirm Modal, 3-option radio, live-detected label via
+`hasOpfsCapability()`), wired into `__root.tsx`'s nav Drawer as a
+"Device Storage" item, not admin-gated, persisted via `src/db/backend.ts`.
+
+**Scope cut, confirmed with the user before building** (not yet reflected
+above, recorded here instead): confirming a switch does **not** run a
+real migration or show the progress/per-table-checklist/failure states
+this ticket designed. Reason discovered during implementation: `App.tsx`
+doesn't consult this setting yet (same boundary as tickets 001/003), so
+if the reverse migration ran for real, the already-wired *forward*
+migration would see the freshly-copied Dexie data on the very next
+reload and silently copy it straight back to SQLite — undoing the
+switch without telling the user. Running it for real before that wiring
+exists would be actively harmful, not just incomplete. Confirming a
+switch here only persists the localStorage setting with an honest "not
+available yet, nothing moved" notice. The progress/checklist/failure UI
+this ticket designed has nothing real to show until execution is wired
+in, and gets built then — the mechanics it would visualize
+(`publishMigrationProgress`'s phases) already exist and work
+(`src/db/dexie/migrate-from-sqlite.ts`, ticket 003).
+
+Also not yet real: the "current" pill is hardcoded to SQLite (documented
+in the component) rather than reflecting an actually-live backend, for
+the same reason.
+
+**Not built**: same boundary as tickets 001/003 — no `App.tsx`/`sync.ts`
+wiring. No component-test coverage — this repo has no React
+component-testing infrastructure at all (no jsdom/testing-library,
+`vitest.config.ts` runs in plain Node), consistent with every other UI
+component here.
