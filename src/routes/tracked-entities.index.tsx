@@ -202,16 +202,21 @@ function TrackedEntitiesSearch() {
                 fixed: "right",
                 width: 100,
                 render: (_, record) => (
-                    <Dropdown menu={actionMenu} trigger={["click"]}>
-                        <Button
-                            type="text"
-                            icon={<MoreOutlined />}
-                            style={{
-                                color: "#666",
-                                fontSize: 20,
-                            }}
-                        />
-                    </Dropdown>
+                    // The row itself is clickable (see the Table's `onRow`
+                    // below) — stop the click here so opening this dropdown
+                    // doesn't also trigger the row's navigation.
+                    <span onClick={(e) => e.stopPropagation()}>
+                        <Dropdown menu={actionMenu} trigger={["click"]}>
+                            <Button
+                                type="text"
+                                icon={<MoreOutlined />}
+                                style={{
+                                    color: "#666",
+                                    fontSize: 20,
+                                }}
+                            />
+                        </Dropdown>
+                    </span>
                 ),
             };
         }

@@ -5,6 +5,7 @@ import {
     DeleteOutlined,
     EditOutlined,
     PlusOutlined,
+    SendOutlined,
     UserOutlined,
 } from "@ant-design/icons";
 import { createRoute, useNavigate } from "@tanstack/react-router";
@@ -74,6 +75,7 @@ import {
     createEmptyEvent,
     deleteEventWithChildren,
     deleteTrackedEntityWithChildren,
+    resendEventWithChildren,
 } from "../utils/utils";
 import { RootRoute } from "./__root";
 
@@ -340,6 +342,9 @@ function TrackedEntityComponent() {
     const dob = trackedEntity.attributes?.["Y3DE5CZWySr"];
     const age = dob ? dayjs().diff(dayjs(String(dob)), "year") : null;
 
+    const openVisitModal = (record: FlattenedEvent) =>
+        openModal(record, enrollment);
+
     const columns: TableProps<FlattenedEvent>["columns"] = useMemo(
         () => [
             {
@@ -389,15 +394,50 @@ function TrackedEntityComponent() {
                 key: "action",
                 width: 100,
                 render: (_, record) => (
-                    <Flex gap="small" align="center">
+                    <Flex
+                        gap="small"
+                        align="center"
+                        // The row itself is clickable (see the Table's
+                        // `onRow` below) — stop the click here so these
+                        // buttons don't also trigger the row's open action.
+                        onClick={(e) => e.stopPropagation()}
+                    >
                         <Button
                             icon={<EditOutlined />}
-                            onClick={async () => {
-                                openModal(record, enrollment);
-                            }}
+                            onClick={() => openVisitModal(record)}
                         >
                             Edit
                         </Button>
+                        {(record.syncStatus === "synced" ||
+                            record.syncStatus === "failed") && (
+                            <Popconfirm
+                                title="Resend visit"
+                                description="Resend this visit and all its child events to DHIS2 with their current values?"
+                                okText="Resend"
+                                onConfirm={async () => {
+                                    try {
+                                        const { resent } =
+                                            await resendEventWithChildren(
+                                                record.event,
+                                            );
+                                        if (resent.length > 0) {
+                                            syncActor.send({
+                                                type: "PUSH_DATA",
+                                            });
+                                        }
+                                    } catch (error) {
+                                        console.error(
+                                            "Failed to resend event:",
+                                            error,
+                                        );
+                                    }
+                                }}
+                            >
+                                <Button icon={<SendOutlined />}>
+                                    Resend
+                                </Button>
+                            </Popconfirm>
+                        )}
                         <Popconfirm
                             title="Delete Event"
                             description="Are you sure you want to delete this event? This will sync the deletion to DHIS2."
@@ -487,6 +527,10 @@ function TrackedEntityComponent() {
                 pagination={false}
                 rowKey="event"
                 scroll={{ x: "max-content" }}
+                onRow={(record) => ({
+                    onClick: () => openVisitModal(record),
+                    style: { cursor: "pointer" },
+                })}
             />
         </Card>
     );

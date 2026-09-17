@@ -1358,6 +1358,46 @@ export async function deleteEventWithChildren(
     return { markedDeleted };
 }
 
+/**
+ * Resends a visit (main event) together with every non-deleted child event
+ * under it (recursively, via `parentEvent`) — flips each already-`synced`
+ * or `failed` event's `syncStatus` back to `pending` with its values
+ * otherwise unchanged, so the next `processBatchSync` sweep re-POSTs the
+ * same payload. `draft`/`pending`/`editing` events are left alone (either
+ * mid-edit, not ready to submit, or already queued).
+ */
+export async function resendEventWithChildren(
+    eventId: string,
+): Promise<{ resent: FlattenedEvent[] }> {
+    const sqlDriver = getSqlDriver();
+    const resent: FlattenedEvent[] = [];
+
+    const rootEvent = await getEventById(sqlDriver, eventId);
+    if (!rootEvent) return { resent };
+
+    async function processEvent(event: FlattenedEvent): Promise<void> {
+        const directChildEvents = await findEventsByParentEvent(
+            sqlDriver,
+            event.event,
+        );
+        for (const child of directChildEvents) {
+            await processEvent(child);
+        }
+
+        if (event.syncStatus === "deleted" || event.deleted) return;
+        if (event.syncStatus === "synced" || event.syncStatus === "failed") {
+            const tx = getEventsCollection().update(event.event, (d) => {
+                d.syncStatus = "pending";
+            });
+            await tx.isPersisted.promise;
+            resent.push({ ...event, syncStatus: "pending" });
+        }
+    }
+
+    await processEvent(rootEvent);
+    return { resent };
+}
+
 export async function deleteTrackedEntityWithChildren(
     trackedEntityId: string,
 ): Promise<{ needsSync: boolean }> {

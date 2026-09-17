@@ -788,7 +788,14 @@ export const ProgramStageCapture: React.FC<{
             width: isMobile ? 80 : 100,
             fixed: "right",
             render: (_, record) => (
-                <Flex gap="small" align="center">
+                <Flex
+                    gap="small"
+                    align="center"
+                    // The row itself is clickable (see `onRow` below) — stop
+                    // the click here so opening this cell's own actions
+                    // doesn't also trigger the row's open/expand behavior.
+                    onClick={(e) => e.stopPropagation()}
+                >
                     <Popconfirm
                         title="Delete Event"
                         description="Are you sure you want to delete this event? This will sync the deletion to DHIS2."
@@ -820,18 +827,7 @@ export const ProgramStageCapture: React.FC<{
                         <Button
                             icon={<EyeOutlined />}
                             size={isMobile ? "small" : "middle"}
-                            onClick={() =>
-                                openModal(
-                                    {
-                                        ...record,
-                                        dataValues: {
-                                            ...record.dataValues,
-                                            occurredAt: record.occurredAt,
-                                        },
-                                    },
-                                    enrollment,
-                                )
-                            }
+                            onClick={() => openViewModal(record)}
                         >
                             {!isMobile && "View"}
                         </Button>
@@ -840,13 +836,7 @@ export const ProgramStageCapture: React.FC<{
                         <Button
                             icon={<EditOutlined />}
                             size={isMobile ? "small" : "middle"}
-                            onClick={() =>
-                                setExpandedRowKeys((prev) =>
-                                    prev.includes(record.event)
-                                        ? prev.filter((k) => k !== record.event)
-                                        : [...prev, record.event],
-                                )
-                            }
+                            onClick={() => toggleExpanded(record.event)}
                         >
                             {!isMobile &&
                                 (expandedRowKeys.includes(record.event)
@@ -907,6 +897,42 @@ export const ProgramStageCapture: React.FC<{
           }
         : undefined;
 
+    const openViewModal = (record: FlattenedEvent) =>
+        openModal(
+            {
+                ...record,
+                dataValues: {
+                    ...record.dataValues,
+                    occurredAt: record.occurredAt,
+                },
+            },
+            enrollment,
+        );
+
+    const toggleExpanded = (eventId: string) =>
+        setExpandedRowKeys((prev) =>
+            prev.includes(eventId)
+                ? prev.filter((k) => k !== eventId)
+                : [...prev, eventId],
+        );
+
+    // Clicking a row opens it the same way its own mode's action button
+    // does (View's modal in "modal" mode, Edit's inline expand in
+    // "inline-expand" mode). Not wired up in "inline-row" mode — its cells
+    // are already directly editable in place, so there's nothing to "open".
+    const onRow: TableProps<FlattenedEvent>["onRow"] = isInlineRow
+        ? undefined
+        : (record) => ({
+              onClick: () => {
+                  if (captureMode === "modal") {
+                      openViewModal(record);
+                  } else if (isInlineExpand) {
+                      toggleExpanded(record.event);
+                  }
+              },
+              style: { cursor: "pointer" },
+          });
+
     const expandable: TableProps<FlattenedEvent>["expandable"] = isInlineExpand
         ? {
               expandedRowKeys,
@@ -945,6 +971,7 @@ export const ProgramStageCapture: React.FC<{
                 scroll={{ x: "max-content" }}
                 expandable={expandable}
                 components={rowComponents}
+                onRow={onRow}
                 title={() => {
                     return (
                         <Flex
