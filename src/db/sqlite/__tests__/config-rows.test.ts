@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createNodeSqliteDriver } from ".././test-support/node-sqlite-driver";
 import { createSchema } from ".././schema";
 import { getConfigRow, putConfigRow } from ".././config-rows";
-import { subscribeConfigChanged } from ".././reactive-config";
+import { subscribeConfigChanged } from "../../reactive-config";
 
 describe("config-rows", () => {
     let close: (() => void) | undefined;

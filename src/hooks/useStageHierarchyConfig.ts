@@ -1,8 +1,8 @@
 import { emptyStageHierarchyConfig, StageHierarchyConfig } from "../schemas";
-import { useSqliteConfigRow } from "./useSqliteConfigRow";
+import { useConfigRow } from "./useConfigRow";
 
 export const useStageHierarchyConfig = (): StageHierarchyConfig => {
-    return useSqliteConfigRow<StageHierarchyConfig>(
+    return useConfigRow<StageHierarchyConfig>(
         "stage_hierarchy",
         "main",
         emptyStageHierarchyConfig,

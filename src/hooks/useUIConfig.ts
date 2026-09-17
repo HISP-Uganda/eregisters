@@ -1,6 +1,6 @@
 import { emptyUIConfig, UIConfig } from "../schemas";
-import { useSqliteConfigRow } from "./useSqliteConfigRow";
+import { useConfigRow } from "./useConfigRow";
 
 export const useUIConfig = (): UIConfig => {
-    return useSqliteConfigRow<UIConfig>("ui_config", "main", emptyUIConfig);
+    return useConfigRow<UIConfig>("ui_config", "main", emptyUIConfig);
 };

@@ -754,6 +754,20 @@ export type UIConfig = {
         metadata: { timestamp: string } | null;
     };
     dataPullPageSize?: number;
+    /**
+     * Admin-controlled device storage backend policy — wayfinder map
+     * "Centrally admin-controlled device storage configuration"
+     * (docs/wayfinder/admin-storage-backend-policy/map.md). Set by an
+     * admin in admin.app-settings.tsx, applied via the same
+     * reloadSignal/"Reload now" banner pattern as app/metadata updates.
+     * The literal union mirrors db/backend.ts's BackendSetting, kept
+     * inline here rather than imported to avoid a schemas.ts -> db/
+     * dependency.
+     */
+    storageBackendPolicy?: {
+        value: "auto" | "sqlite" | "dexie";
+        timestamp: string;
+    } | null;
 };
 
 export const DEFAULT_DATA_PULL_PAGE_SIZE = 50;
@@ -762,6 +776,7 @@ export const emptyUIConfig: UIConfig = {
     subsections: {},
     formLayouts: {},
     reloadSignal: { app: null, metadata: null },
+    storageBackendPolicy: null,
 };
 
 export interface StagePair {

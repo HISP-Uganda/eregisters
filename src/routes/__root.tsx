@@ -2,7 +2,6 @@ import {
     CloudDownloadOutlined,
     CloudUploadOutlined,
     BarChartOutlined,
-    DatabaseOutlined,
     DownOutlined,
     ExclamationCircleOutlined,
     HomeOutlined,
@@ -39,10 +38,10 @@ import {
     getEventsCollection,
     getTrackedEntitiesCollection,
 } from "../db/collections";
-import { DeviceStorageSettings } from "../components/device-storage-settings";
 import { MigrationProgressBanner } from "../components/migration-progress-banner";
 import { Spinner } from "../components/spinner";
 import { SyncFailuresModal } from "../components/sync-failures-modal";
+import { setBackendSetting } from "../db/backend";
 import { useMetadata } from "../hooks/useMetadata";
 import { useUIConfig } from "../hooks/useUIConfig";
 import { SyncContext } from "../machines/sync";
@@ -589,28 +588,74 @@ function LayoutWithDrafts() {
     const uiConfig = useUIConfig();
     const [showAppReload, setShowAppReload] = useState(false);
     const [showMetadataReload, setShowMetadataReload] = useState(false);
+    const [showStorageBackendReload, setShowStorageBackendReload] =
+        useState(false);
 
     useEffect(() => {
+        // Shared "is this timestamp newer than the one we last saw" check
+        // for every reload-style signal below — each still owns its own
+        // "mark as seen" timing (app/metadata only mark seen when the
+        // user interacts with the banner; the storage-backend policy marks
+        // seen immediately, see its own comment below), so only the
+        // read-and-compare shape is factored out.
+        function isNewSignal(
+            timestamp: string | undefined,
+            lastSeenKey: string,
+        ): boolean {
+            if (!timestamp) return false;
+            const lastSeen = localStorage.getItem(lastSeenKey);
+            return !lastSeen || timestamp > lastSeen;
+        }
+
         function checkSignals() {
-            const appTs = uiConfig.reloadSignal.app?.timestamp;
-            const metaTs = uiConfig.reloadSignal.metadata?.timestamp;
-            const lastApp = localStorage.getItem(
-                "eregisters.lastSeenAppSignal",
-            );
-            const lastMeta = localStorage.getItem(
-                "eregisters.lastSeenMetadataSignal",
-            );
-            if (appTs && (!lastApp || appTs > lastApp)) {
+            if (
+                isNewSignal(
+                    uiConfig.reloadSignal.app?.timestamp,
+                    "eregisters.lastSeenAppSignal",
+                )
+            ) {
                 setShowAppReload(true);
             }
-            if (metaTs && (!lastMeta || metaTs > lastMeta)) {
+            if (
+                isNewSignal(
+                    uiConfig.reloadSignal.metadata?.timestamp,
+                    "eregisters.lastSeenMetadataSignal",
+                )
+            ) {
                 setShowMetadataReload(true);
+            }
+
+            // Admin-controlled device storage backend policy — wayfinder
+            // map "Centrally admin-controlled device storage
+            // configuration" (docs/wayfinder/admin-storage-backend-policy/map.md).
+            // Unlike the two signals above (pure "please reload" nags),
+            // this one has a real side effect: the resolved policy value
+            // is written into the same localStorage slot resolveBackend()
+            // reads at bootstrap as soon as it's detected — not deferred
+            // to the user clicking "Reload now" — so it takes effect on
+            // ANY subsequent reload, not only one triggered from this
+            // banner. "Seen" is marked at the same time, since that
+            // durable write is the real event being tracked here, not the
+            // banner's dismissal.
+            const policy = uiConfig.storageBackendPolicy;
+            if (
+                isNewSignal(
+                    policy?.timestamp,
+                    "eregisters.lastSeenStorageBackendPolicy",
+                )
+            ) {
+                setBackendSetting(policy!.value);
+                localStorage.setItem(
+                    "eregisters.lastSeenStorageBackendPolicy",
+                    policy!.timestamp,
+                );
+                setShowStorageBackendReload(true);
             }
         }
         checkSignals();
         const interval = setInterval(checkSignals, 60_000);
         return () => clearInterval(interval);
-    }, [uiConfig.reloadSignal]);
+    }, [uiConfig.reloadSignal, uiConfig.storageBackendPolicy]);
     const { data: pendingTrackedEntities } = useLiveSuspenseQuery((q) =>
         q
             .from({ trackedEntities: trackedEntitiesCollection })
@@ -684,7 +729,6 @@ function LayoutWithDrafts() {
     const isMobile = !screens.lg;
     const isLarge = !screens.xl;
     const [drawerOpen, setDrawerOpen] = useState(false);
-    const [storageSettingsOpen, setStorageSettingsOpen] = useState(false);
 
     const navItems = (vertical: boolean) => (
         <Flex
@@ -800,18 +844,6 @@ function LayoutWithDrafts() {
                     onClick={() => {}}
                 />
             </Link>
-            <SyncButton
-                tooltip="Device Storage"
-                icon={<DatabaseOutlined />}
-                isLoading={false}
-                idleLabel="Device Storage"
-                loadingLabel="Loading..."
-                lastTime={"Storage settings"}
-                onClick={() => {
-                    setStorageSettingsOpen(true);
-                    setDrawerOpen(false);
-                }}
-            />
             {isAdmin && (
                 <Link
                     to="/admin/section-layout"
@@ -974,14 +1006,33 @@ function LayoutWithDrafts() {
                     style={{ borderRadius: 0 }}
                 />
             )}
+            {showStorageBackendReload && (
+                <Alert
+                    type="warning"
+                    title="Device storage policy changed by your administrator — reload to apply it."
+                    action={
+                        <Button
+                            size="small"
+                            type="primary"
+                            style={{
+                                background: "#d97706",
+                                borderColor: "#d97706",
+                            }}
+                            onClick={() => window.location.reload()}
+                        >
+                            Reload now
+                        </Button>
+                    }
+                    closable={{
+                        onClose: () => setShowStorageBackendReload(false),
+                    }}
+                    style={{ borderRadius: 0 }}
+                />
+            )}
             <Outlet />
             <SyncFailuresModal
                 open={failuresOpen}
                 onClose={() => setFailuresOpen(false)}
-            />
-            <DeviceStorageSettings
-                open={storageSettingsOpen}
-                onClose={() => setStorageSettingsOpen(false)}
             />
         </Layout>
     );

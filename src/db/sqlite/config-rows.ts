@@ -1,6 +1,6 @@
 import type { SqlDriver } from "./driver-types";
 import { getRowById } from "./metadata-info";
-import { notifyConfigChanged } from "./reactive-config";
+import { notifyConfigChanged } from "../reactive-config";
 import { saveMetadataTable } from "./save-metadata";
 
 /**

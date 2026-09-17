@@ -1,5 +1,6 @@
 import Dexie, { type Table } from "dexie";
 import type { MetadataStore } from "../metadata-store";
+import { notifyConfigChanged } from "../reactive-config";
 
 /**
  * Dexie implementation of `MetadataStore` — see `../metadata-store.ts` for
@@ -52,7 +53,12 @@ export function dexieMetadataStore(): MetadataStore {
             row: T,
             key?: string,
         ) {
-            await db.rows.put({ table, id: key ?? row.id, data: row });
+            const id = key ?? row.id;
+            await db.rows.put({ table, id, data: row });
+            // Mirrors sqliteMetadataStore's putRow, which reaches
+            // notifyConfigChanged transitively via config-rows.ts's
+            // putConfigRow — see reactive-config.ts's doc comment.
+            notifyConfigChanged(table, id);
         },
         async listRows<T extends object>(table: string) {
             const rows = await db.rows.where("table").equals(table).toArray();
