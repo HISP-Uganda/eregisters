@@ -28,19 +28,6 @@ export type EventForRules = {
 };
 
 import { db } from "../db";
-import { getSqlDriver } from "../db/sqlite/instance";
-import {
-    findEnrollmentsByTrackedEntity,
-} from "../db/sqlite/row-adapters/enrollments";
-import {
-    findEventsByParentEvent,
-    findEventsByTrackedEntity,
-    getEventById,
-} from "../db/sqlite/row-adapters/events";
-import {
-    findTrackedEntitiesByParentEntity,
-    getTrackedEntityById,
-} from "../db/sqlite/row-adapters/tracked-entities";
 import {
     getEnrollmentsCollection,
     getEventsCollection,
@@ -1194,6 +1181,47 @@ export function buildCurrentAttributes(program: Program) {
 }
 
 /**
+ * Backend-agnostic local lookups for the cascade-delete/resend walks below.
+ * Each collection returned by `../db/collections` (SQL or Dexie, whichever
+ * backend is active) already holds this device's full local dataset in
+ * memory for its live queries, so filtering `.toArray`/using `.get` here
+ * needs no SQL-specific row-adapter — it works identically on either
+ * backend.
+ */
+function findEventsByParentEvent(parentEvent: string): FlattenedEvent[] {
+    return getEventsCollection().toArray.filter(
+        (e) => e.parentEvent === parentEvent,
+    );
+}
+function findEventsByTrackedEntity(trackedEntity: string): FlattenedEvent[] {
+    return getEventsCollection().toArray.filter(
+        (e) => e.trackedEntity === trackedEntity,
+    );
+}
+function getEventById(eventId: string): FlattenedEvent | undefined {
+    return getEventsCollection().get(eventId);
+}
+function findTrackedEntitiesByParentEntity(
+    parentEntity: string,
+): FlattenedTrackedEntity[] {
+    return getTrackedEntitiesCollection().toArray.filter(
+        (te) => te.parentEntity === parentEntity,
+    );
+}
+function getTrackedEntityById(
+    trackedEntity: string,
+): FlattenedTrackedEntity | undefined {
+    return getTrackedEntitiesCollection().get(trackedEntity);
+}
+function findEnrollmentsByTrackedEntity(
+    trackedEntity: string,
+): FlattenedEnrollment[] {
+    return getEnrollmentsCollection().toArray.filter(
+        (e) => e.trackedEntity === trackedEntity,
+    );
+}
+
+/**
  * Recursively deletes all draft descendants of a given event or tracked entity.
  * Deletes children only — does NOT delete the root node itself (caller's responsibility).
  * Uses depth-first order: children are deleted before their parent.
@@ -1202,12 +1230,10 @@ async function deleteRecursiveDraftSubtree(
     eventId: string | undefined,
     trackedEntityId: string | undefined,
 ): Promise<void> {
-    const sqlDriver = getSqlDriver();
-
     if (eventId) {
-        const childEvents = (
-            await findEventsByParentEvent(sqlDriver, eventId)
-        ).filter((e) => e.syncStatus === "draft");
+        const childEvents = findEventsByParentEvent(eventId).filter(
+            (e) => e.syncStatus === "draft",
+        );
         for (const child of childEvents) {
             await deleteRecursiveDraftSubtree(child.event, undefined);
             const tx = getEventsCollection().delete(child.event);
@@ -1216,13 +1242,12 @@ async function deleteRecursiveDraftSubtree(
     }
 
     if (trackedEntityId) {
-        const childTEs = (
-            await findTrackedEntitiesByParentEntity(sqlDriver, trackedEntityId)
+        const childTEs = findTrackedEntitiesByParentEntity(
+            trackedEntityId,
         ).filter((te) => te.syncStatus === "draft");
         for (const childTE of childTEs) {
             // Delete enrollments for this child TE
-            const childEnrollments = await findEnrollmentsByTrackedEntity(
-                sqlDriver,
+            const childEnrollments = findEnrollmentsByTrackedEntity(
                 childTE.trackedEntity,
             );
             for (const enrollment of childEnrollments) {
@@ -1232,11 +1257,8 @@ async function deleteRecursiveDraftSubtree(
                 await tx.isPersisted.promise;
             }
             // Delete events for this child TE (recurse into their children first)
-            const childEvents = (
-                await findEventsByTrackedEntity(
-                    sqlDriver,
-                    childTE.trackedEntity,
-                )
+            const childEvents = findEventsByTrackedEntity(
+                childTE.trackedEntity,
             ).filter((e) => e.syncStatus === "draft");
             for (const event of childEvents) {
                 await deleteRecursiveDraftSubtree(event.event, undefined);
@@ -1262,42 +1284,35 @@ async function deleteRecursiveDraftSubtree(
 export async function deleteEventWithChildren(
     eventId: string,
 ): Promise<{ markedDeleted: FlattenedEvent[] }> {
-    const sqlDriver = getSqlDriver();
     const markedDeleted: FlattenedEvent[] = [];
 
     // Get the root event to know its trackedEntity (needed for TE-children dimension)
-    const rootEvent = await getEventById(sqlDriver, eventId);
+    const rootEvent = getEventById(eventId);
     if (!rootEvent) return { markedDeleted };
 
     // --- Recursive helper ---
     async function processEvent(event: FlattenedEvent): Promise<void> {
         // 1. Event-children dimension: events whose parentEvent === this event
-        const directChildEvents = await findEventsByParentEvent(
-            sqlDriver,
-            event.event,
-        );
+        const directChildEvents = findEventsByParentEvent(event.event);
         for (const child of directChildEvents) {
             await processEvent(child);
         }
 
         // 2. TE-children dimension: TEs whose parentEntity === this event's trackedEntity
         //    then process all events belonging to those child TEs
-        const childTEs = await findTrackedEntitiesByParentEntity(
-            sqlDriver,
+        const childTEs = findTrackedEntitiesByParentEntity(
             event.trackedEntity,
         );
         for (const childTE of childTEs) {
             // Find all events for this child TE
-            const childTEEvents = await findEventsByTrackedEntity(
-                sqlDriver,
+            const childTEEvents = findEventsByTrackedEntity(
                 childTE.trackedEntity,
             );
             for (const childTEEvent of childTEEvents) {
                 await processEvent(childTEEvent);
             }
             // Clean up the child TE's enrollments
-            const childEnrollments = await findEnrollmentsByTrackedEntity(
-                sqlDriver,
+            const childEnrollments = findEnrollmentsByTrackedEntity(
                 childTE.trackedEntity,
             );
             for (const enrollment of childEnrollments) {
@@ -1369,17 +1384,13 @@ export async function deleteEventWithChildren(
 export async function resendEventWithChildren(
     eventId: string,
 ): Promise<{ resent: FlattenedEvent[] }> {
-    const sqlDriver = getSqlDriver();
     const resent: FlattenedEvent[] = [];
 
-    const rootEvent = await getEventById(sqlDriver, eventId);
+    const rootEvent = getEventById(eventId);
     if (!rootEvent) return { resent };
 
     async function processEvent(event: FlattenedEvent): Promise<void> {
-        const directChildEvents = await findEventsByParentEvent(
-            sqlDriver,
-            event.event,
-        );
+        const directChildEvents = findEventsByParentEvent(event.event);
         for (const child of directChildEvents) {
             await processEvent(child);
         }
@@ -1401,17 +1412,12 @@ export async function resendEventWithChildren(
 export async function deleteTrackedEntityWithChildren(
     trackedEntityId: string,
 ): Promise<{ needsSync: boolean }> {
-    const sqlDriver = getSqlDriver();
-
-    const rootTE = await getTrackedEntityById(sqlDriver, trackedEntityId);
+    const rootTE = getTrackedEntityById(trackedEntityId);
     if (!rootTE) return { needsSync: false };
 
     let needsSync = false;
 
-    const allEvents = await findEventsByTrackedEntity(
-        sqlDriver,
-        trackedEntityId,
-    );
+    const allEvents = findEventsByTrackedEntity(trackedEntityId);
 
     for (const event of allEvents) {
         if (event.syncStatus === "draft" || event.syncStatus === "pending") {
@@ -1427,10 +1433,7 @@ export async function deleteTrackedEntityWithChildren(
         }
     }
 
-    const enrollments = await findEnrollmentsByTrackedEntity(
-        sqlDriver,
-        trackedEntityId,
-    );
+    const enrollments = findEnrollmentsByTrackedEntity(trackedEntityId);
 
     for (const enrollment of enrollments) {
         if (
@@ -1497,8 +1500,7 @@ export async function cancelDataModal(
             );
             await tx.isPersisted.promise;
             // Delete the linked enrollment (guard: enrollment may not exist)
-            const [enrollment] = await findEnrollmentsByTrackedEntity(
-                getSqlDriver(),
+            const [enrollment] = findEnrollmentsByTrackedEntity(
                 data.trackedEntity,
             );
             if (enrollment) {
