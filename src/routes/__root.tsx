@@ -2,6 +2,7 @@ import {
     CloudDownloadOutlined,
     CloudUploadOutlined,
     BarChartOutlined,
+    DatabaseOutlined,
     DownOutlined,
     ExclamationCircleOutlined,
     HomeOutlined,
@@ -38,6 +39,7 @@ import {
     getEventsCollection,
     getTrackedEntitiesCollection,
 } from "../db/sqlite/tracker-collections-instance";
+import { DeviceStorageSettings } from "../components/device-storage-settings";
 import { MigrationProgressBanner } from "../components/migration-progress-banner";
 import { Spinner } from "../components/spinner";
 import { SyncFailuresModal } from "../components/sync-failures-modal";
@@ -682,6 +684,7 @@ function LayoutWithDrafts() {
     const isMobile = !screens.lg;
     const isLarge = !screens.xl;
     const [drawerOpen, setDrawerOpen] = useState(false);
+    const [storageSettingsOpen, setStorageSettingsOpen] = useState(false);
 
     const navItems = (vertical: boolean) => (
         <Flex
@@ -797,6 +800,18 @@ function LayoutWithDrafts() {
                     onClick={() => {}}
                 />
             </Link>
+            <SyncButton
+                tooltip="Device Storage"
+                icon={<DatabaseOutlined />}
+                isLoading={false}
+                idleLabel="Device Storage"
+                loadingLabel="Loading..."
+                lastTime={"Storage settings"}
+                onClick={() => {
+                    setStorageSettingsOpen(true);
+                    setDrawerOpen(false);
+                }}
+            />
             {isAdmin && (
                 <Link
                     to="/admin/section-layout"
@@ -963,6 +978,10 @@ function LayoutWithDrafts() {
             <SyncFailuresModal
                 open={failuresOpen}
                 onClose={() => setFailuresOpen(false)}
+            />
+            <DeviceStorageSettings
+                open={storageSettingsOpen}
+                onClose={() => setStorageSettingsOpen(false)}
             />
         </Layout>
     );
