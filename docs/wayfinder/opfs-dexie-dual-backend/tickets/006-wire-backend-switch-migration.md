@@ -114,3 +114,22 @@ The two real decisions:
      first place) pays the failed-attempt cost once, not every reload;
      a successful attempt clears any stale cached failure, same as
      `resolveBackend`'s own "auto" path already does.
+
+## Implementation progress
+
+Built (commit `5970e21`, `main`). Matches the design above, plus one
+fix caught by `/code-review`'s spec-axis review: the migration attempt
+must NOT use `initSqlDriver` (which populates a module-level singleton
+`getSqlDriver()` returns from anywhere) — several still-unconditional
+`getSqlDriver()` call sites (`useSqliteConfigRow.ts`, the `admin.*`
+routes, none backend-gated) would otherwise silently start operating
+on a database that's mid-migration or already dropped, on a device
+that's actually on Dexie, instead of throwing their current "not
+initialized" error. Fixed with a new `openStandaloneSqlDriver`
+(`src/db/sqlite/instance.ts`) that opens a driver without touching
+that singleton — used once for the migration attempt, then discarded.
+
+`device-storage-settings.tsx`'s confirm action now calls
+`window.location.reload()` after persisting the setting, and its
+"current" pill reads the live backend via `SyncContext.useSelector`
+instead of a hardcoded constant.
