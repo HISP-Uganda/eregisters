@@ -3,7 +3,13 @@ import { and, eq, useLiveSuspenseQuery } from "@tanstack/react-db";
 import { createRoute, useNavigate } from "@tanstack/react-router";
 import { Badge, Button, Empty, Flex, Spin, Tabs } from "antd";
 import dayjs from "dayjs";
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, {
+    useEffect,
+    useLayoutEffect,
+    useMemo,
+    useRef,
+    useState,
+} from "react";
 import { z } from "zod";
 import {
     applyComputedColumns,
@@ -11,6 +17,7 @@ import {
 } from "../analytics/computed-columns";
 import type { ComputedColumnDefinition } from "../analytics/computed-columns";
 import { buildParentEventDataset } from "../analytics/parent-event-dataset";
+import type { SavedLineListView } from "../analytics/saved-views";
 import type { AnalyticsDataset, AnalyticsRow } from "../analytics/types";
 import {
     exportLineListWorkbook,
@@ -28,6 +35,7 @@ import {
 import type { LineListTableState } from "../components/analytics/line-list-table";
 import { PivotBuilder } from "../components/analytics/pivot-builder";
 import type { PivotExportInfo } from "../components/analytics/pivot-builder";
+import { SavedViewsModal } from "../components/analytics/saved-views-modal";
 import {
     getEnrollmentsCollection,
     getEventsCollection,
@@ -36,6 +44,7 @@ import {
 import { useComputedColumns } from "../hooks/useComputedColumns";
 import { useIsMobile } from "../hooks/useIsMobile";
 import { useMetadata } from "../hooks/useMetadata";
+import { useSavedViews } from "../hooks/useSavedViews";
 import { useStageHierarchyConfig } from "../hooks/useStageHierarchyConfig";
 import { useUIConfig } from "../hooks/useUIConfig";
 import { RootRoute } from "./__root";
@@ -137,7 +146,14 @@ function AnalyticsPage() {
     });
     // The restored snapshot is only needed once, on arrival — drop it from
     // the URL so a later reload/share doesn't stick to a stale selection.
-    useEffect(() => {
+    // useLayoutEffect (not useEffect) so this fires synchronously right
+    // after mount, before the dataset-build effect below gets a chance to
+    // run its deliberately-deferred (setTimeout) heavy computation — that
+    // gap was previously wide enough that a slow device could still be
+    // sitting on a URL with `restore=...` in it (a user refreshing right
+    // after returning from a record's detail view could land back on the
+    // stale filters/table-column-filters that snapshot captured).
+    useLayoutEffect(() => {
         if (!routeSearch.restore) return;
         routeNavigate({
             search: (prev) => ({ ...prev, restore: undefined }),
@@ -287,6 +303,8 @@ function AnalyticsPage() {
     const dataset = datasetState.dataset;
     const { definitions: computedColumnDefinitions, save: saveComputedColumn, remove: removeComputedColumn } =
         useComputedColumns(filters.programId);
+    const { views: savedViews, save: saveView, remove: removeSavedView } =
+        useSavedViews(filters.programId);
     const numericSourceColumns = useMemo(
         () => dataset.columns.filter((column) => column.valueKind === "number"),
         [dataset.columns],
@@ -356,6 +374,18 @@ function AnalyticsPage() {
             ...snapshot,
             tableState: undefined,
         } satisfies AnalyticsRestoredState);
+    };
+    const buildSavedViewSnapshot = () => ({
+        programId: filters.programId,
+        filters,
+        visibleColumnKeys,
+        tableState,
+    });
+    const loadSavedView = (view: SavedLineListView) => {
+        setFilters(view.filters);
+        setVisibleColumnKeys(view.visibleColumnKeys);
+        setTableState(view.tableState);
+        setActiveTab("line-list");
     };
     const openTrackedEntity = (trackedEntity: string) => {
         navigate({
@@ -496,6 +526,13 @@ function AnalyticsPage() {
                                             definitions={computedColumnDefinitions}
                                             onSave={handleSaveComputedColumn}
                                             onDelete={removeComputedColumn}
+                                        />
+                                        <SavedViewsModal
+                                            views={savedViews}
+                                            onSave={saveView}
+                                            onLoad={loadSavedView}
+                                            onDelete={removeSavedView}
+                                            buildSnapshot={buildSavedViewSnapshot}
                                         />
                                         <Button
                                             icon={<DownloadOutlined />}
