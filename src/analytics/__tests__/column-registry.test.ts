@@ -776,14 +776,14 @@ describe("buildColumnRegistry", () => {
         expect(
             columns.find((c) => c.key === "linkedParent.visit000001.event")
                 ?.groupPath,
-        ).toEqual(["Linked Parent", "Visit", "System"]);
+        ).toEqual(["Visit", "System"]);
         expect(
             columns.find(
                 (c) =>
                     c.key ===
                     "linkedParent.visit000001.dataValue.weightuid01",
             )?.groupPath,
-        ).toEqual(["Linked Parent", "Visit", "Triage"]);
+        ).toEqual(["Visit", "Triage"]);
         expect(
             columns.find(
                 (c) =>

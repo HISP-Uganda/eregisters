@@ -418,7 +418,7 @@ export function buildColumnRegistry({
                 source: "parentEvent",
                 sourceFieldId: "event",
                 valueKind: "string",
-                groupPath: ["Linked Parent", stage.name, "System"],
+                groupPath: [stage.name, "System"],
             }),
         );
 
@@ -446,8 +446,8 @@ export function buildColumnRegistry({
                     valueKind,
                     optionSetId: de.optionSet?.id,
                     groupPath: subsectionLabel
-                        ? ["Linked Parent", stage.name, section, subsectionLabel]
-                        : ["Linked Parent", stage.name, section],
+                        ? [stage.name, section, subsectionLabel]
+                        : [stage.name, section],
                     canMeasure: valueKind === "number",
                 }),
             );

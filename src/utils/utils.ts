@@ -1150,7 +1150,7 @@ export function calculateColSpan(
  * main-event-capture.tsx, and tracker-registration.tsx so all capture
  * forms stay visually consistent and the spacing only needs changing in
  * one place. */
-export const FORM_ROW_GUTTER: [number, number] = [16, 8];
+export const FORM_ROW_GUTTER: [number, number] = [16, 16];
 
 export const spans = new Map<string, number>([
     ["XjgpfkoxffK", 5],
