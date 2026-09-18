@@ -123,6 +123,7 @@ export function buildParentEventDataset(
         selectedServiceTypes: input.selectedServiceTypes,
         serviceTypeOptions:
             input.metadata.optionSets.get(SERVICE_TYPE_OPTION_SET_ID) ?? [],
+        uiConfig: input.uiConfig,
     });
 
     const rows = mainEvents.map((parentEvent) => {

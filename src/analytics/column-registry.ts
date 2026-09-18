@@ -1,6 +1,15 @@
-import type { Program, ProgramStage } from "../schemas";
+import type { Program, ProgramStage, UIConfig } from "../schemas";
+import { groupByLayout, groupBySubsections } from "../utils/subsection-grouping";
 import type { AnalyticsColumn, AnalyticsMetadata } from "./types";
 import { valueKindFromDhis2 } from "./value-format";
+
+/** The two `UIConfig` fields this file actually needs — callers pass the
+ * whole `UIConfig` (from `useUIConfig()`), but narrowing the parameter
+ * type keeps this module decoupled from `UIConfig`'s other, unrelated
+ * fields (reloadSignal, storageBackendPolicy, etc). */
+type SubsectionLayoutConfig = Partial<
+    Pick<UIConfig, "subsections" | "formLayouts">
+>;
 
 /** The main event's Service Type data element — captured directly on the
  * capture form (see main-event-capture.tsx) rather than within its
@@ -37,6 +46,13 @@ interface RegistryInput {
      * used both to recognize which sections are "service sections" and to
      * resolve a selected code to the name a section might be titled with. */
     serviceTypeOptions?: Array<{ code: string; name: string }>;
+    /** Admin-configured subsection layout (`admin.section-layout.tsx`),
+     * keyed by `programStageSection`/`programSection` id — the same data
+     * `subsection-groups.tsx` renders as cards on the capture form. When a
+     * section has one configured, its columns are further ordered/grouped
+     * by subsection instead of stopping at section-level; a section with
+     * none configured behaves exactly as before. */
+    uiConfig?: SubsectionLayoutConfig;
 }
 
 function normalizeServiceLabel(label: string): string {
@@ -70,34 +86,94 @@ function bySortOrder<T extends { sortOrder?: number }>(items: T[]): T[] {
     });
 }
 
+interface SectionedItem<T> {
+    item: T;
+    /** Section display label, or undefined when the item is in no section
+     * (renders as "Ungrouped"/"Ungrouped Attributes" by the caller). */
+    sectionLabel: string | undefined;
+    /** Subsection display label, or null when the item's section has no
+     * configured subsection layout, or the item isn't referenced by it. */
+    subsectionLabel: string | null;
+}
+
+/**
+ * Reorders (and, when configured, further sub-groups) one section's worth
+ * of items by the admin-configured subsection layout for `sectionId` —
+ * `formLayouts` preferred over the legacy `subsections`, matching
+ * `subsection-groups.tsx`'s own precedence. No layout configured for this
+ * section: items pass through in their given (DHIS2 section) order,
+ * unlabeled.
+ */
+function withSubsections<T>(
+    sectionId: string,
+    items: T[],
+    getId: (item: T) => string,
+    uiConfig: SubsectionLayoutConfig | undefined,
+): Array<{ item: T; subsectionLabel: string | null }> {
+    const formLayout = uiConfig?.formLayouts?.[sectionId];
+    const subsections = uiConfig?.subsections?.[sectionId];
+    if ((!formLayout || formLayout.length === 0) && !subsections?.length) {
+        return items.map((item) => ({ item, subsectionLabel: null }));
+    }
+    const groups =
+        formLayout && formLayout.length > 0
+            ? groupByLayout(items, formLayout, getId)
+            : groupBySubsections(items, subsections, getId);
+    return groups.flatMap((group) =>
+        group.items.map((item) => ({ item, subsectionLabel: group.label })),
+    );
+}
+
 /**
  * Orders a stage's `programStageDataElements` by each data element's
  * position within its `programStageSections` (walked in section
  * `sortOrder`, matching how program-stage-capture.tsx/basic-form.tsx etc.
  * already render sections/fields) instead of the stage-wide PSDE
  * `sortOrder`, which can legitimately diverge from a section's own
- * internal order. A data element in no section falls back to
- * `bySortOrder`, appended after every sectioned element.
+ * internal order — then, within each section, further orders/labels by
+ * subsection (see `withSubsections`). A data element in no section falls
+ * back to `bySortOrder`, appended after every sectioned element, with no
+ * subsection label.
  */
 function orderDataElementsBySection(
     stage: ProgramStage,
     psdes: ProgramStage["programStageDataElements"],
-): ProgramStage["programStageDataElements"] {
+    uiConfig: SubsectionLayoutConfig | undefined,
+): SectionedItem<ProgramStage["programStageDataElements"][number]>[] {
     const byDataElementId = new Map(psdes.map((psde) => [psde.dataElement.id, psde]));
-    const ordered: ProgramStage["programStageDataElements"] = [];
+    const getId = (psde: ProgramStage["programStageDataElements"][number]) =>
+        psde.dataElement.id;
+    const ordered: SectionedItem<
+        ProgramStage["programStageDataElements"][number]
+    >[] = [];
     const seen = new Set<string>();
     for (const section of bySortOrder(stage.programStageSections ?? [])) {
+        const sectionPsdes: ProgramStage["programStageDataElements"] = [];
         for (const de of section.dataElements ?? []) {
             const psde = byDataElementId.get(de.id);
             if (psde && !seen.has(de.id)) {
-                ordered.push(psde);
+                sectionPsdes.push(psde);
                 seen.add(de.id);
             }
+        }
+        if (sectionPsdes.length === 0) continue;
+        const sectionLabel = section.displayName || section.name;
+        for (const { item, subsectionLabel } of withSubsections(
+            section.id,
+            sectionPsdes,
+            getId,
+            uiConfig,
+        )) {
+            ordered.push({ item, sectionLabel, subsectionLabel });
         }
     }
     for (const psde of bySortOrder(psdes)) {
         if (!seen.has(psde.dataElement.id)) {
-            ordered.push(psde);
+            ordered.push({
+                item: psde,
+                sectionLabel: undefined,
+                subsectionLabel: null,
+            });
             seen.add(psde.dataElement.id);
         }
     }
@@ -111,24 +187,44 @@ function orderDataElementsBySection(
 function orderAttributesBySection(
     program: Program,
     pteas: Program["programTrackedEntityAttributes"],
-): Program["programTrackedEntityAttributes"] {
+    uiConfig: SubsectionLayoutConfig | undefined,
+): SectionedItem<Program["programTrackedEntityAttributes"][number]>[] {
     const byAttributeId = new Map(
         pteas.map((ptea) => [ptea.trackedEntityAttribute.id, ptea]),
     );
-    const ordered: Program["programTrackedEntityAttributes"] = [];
+    const getId = (ptea: Program["programTrackedEntityAttributes"][number]) =>
+        ptea.trackedEntityAttribute.id;
+    const ordered: SectionedItem<
+        Program["programTrackedEntityAttributes"][number]
+    >[] = [];
     const seen = new Set<string>();
     for (const section of bySortOrder(program.programSections ?? [])) {
+        const sectionPteas: Program["programTrackedEntityAttributes"] = [];
         for (const attribute of section.trackedEntityAttributes ?? []) {
             const ptea = byAttributeId.get(attribute.id);
             if (ptea && !seen.has(attribute.id)) {
-                ordered.push(ptea);
+                sectionPteas.push(ptea);
                 seen.add(attribute.id);
             }
+        }
+        if (sectionPteas.length === 0) continue;
+        const sectionLabel = section.displayName || section.name;
+        for (const { item, subsectionLabel } of withSubsections(
+            section.id,
+            sectionPteas,
+            getId,
+            uiConfig,
+        )) {
+            ordered.push({ item, sectionLabel, subsectionLabel });
         }
     }
     for (const ptea of bySortOrder(pteas)) {
         if (!seen.has(ptea.trackedEntityAttribute.id)) {
-            ordered.push(ptea);
+            ordered.push({
+                item: ptea,
+                sectionLabel: undefined,
+                subsectionLabel: null,
+            });
             seen.add(ptea.trackedEntityAttribute.id);
         }
     }
@@ -161,6 +257,7 @@ export function buildColumnRegistry({
     realizedParentStageIds,
     selectedServiceTypes,
     serviceTypeOptions = [],
+    uiConfig,
 }: RegistryInput): AnalyticsColumn[] {
     const mainStage = metadata.program.programStages.find(
         (stage) => stage.id === mainStageId,
@@ -189,26 +286,16 @@ export function buildColumnRegistry({
 
     const columns: AnalyticsColumn[] = [];
 
-    const attributeSections = new Map<string, string>();
-    for (const section of metadata.program.programSections ?? []) {
-        for (const attribute of section.trackedEntityAttributes ?? []) {
-            attributeSections.set(
-                attribute.id,
-                section.displayName || section.name,
-            );
-        }
-    }
-
-    for (const ptea of orderAttributesBySection(
+    for (const { item: ptea, sectionLabel, subsectionLabel } of orderAttributesBySection(
         metadata.program,
         metadata.program.programTrackedEntityAttributes ?? [],
+        uiConfig,
     )) {
         const tea =
             metadata.trackedEntityAttributes.get(
                 ptea.trackedEntityAttribute.id,
             ) ?? ptea.trackedEntityAttribute;
-        const section =
-            attributeSections.get(tea.id) ?? "Ungrouped Attributes";
+        const section = sectionLabel ?? "Ungrouped Attributes";
         const valueKind = valueKindFromDhis2(tea.valueType);
         columns.push(
             column({
@@ -223,20 +310,22 @@ export function buildColumnRegistry({
                 sourceFieldId: tea.id,
                 valueKind,
                 optionSetId: tea.optionSet?.id,
-                groupPath: ["Profile", section],
+                groupPath: subsectionLabel
+                    ? ["Profile", section, subsectionLabel]
+                    : ["Profile", section],
                 canMeasure: valueKind === "number",
             }),
         );
     }
 
-    for (const psde of orderDataElementsBySection(
+    for (const { item: psde, sectionLabel, subsectionLabel } of orderDataElementsBySection(
         mainStage,
         mainStage.programStageDataElements ?? [],
+        uiConfig,
     )) {
         const de = metadata.dataElements.get(psde.dataElement.id) ?? psde.dataElement;
-        const rawSection = findStageSection(mainStage, de.id);
-        if (!sectionAllowed(rawSection)) continue;
-        const section = rawSection ?? "Ungrouped";
+        if (!sectionAllowed(sectionLabel)) continue;
+        const section = sectionLabel ?? "Ungrouped";
         const valueKind = valueKindFromDhis2(de.valueType);
         columns.push(
             column({
@@ -246,7 +335,9 @@ export function buildColumnRegistry({
                 sourceFieldId: de.id,
                 valueKind,
                 optionSetId: de.optionSet?.id,
-                groupPath: [mainStage.name, section],
+                groupPath: subsectionLabel
+                    ? [mainStage.name, section, subsectionLabel]
+                    : [mainStage.name, section],
                 canMeasure: valueKind === "number",
             }),
         );
@@ -269,16 +360,16 @@ export function buildColumnRegistry({
                 }),
             );
 
-            for (const psde of orderDataElementsBySection(
+            for (const { item: psde, sectionLabel, subsectionLabel } of orderDataElementsBySection(
                 stage,
                 stage.programStageDataElements ?? [],
+                uiConfig,
             )) {
                 const de =
                     metadata.dataElements.get(psde.dataElement.id) ??
                     psde.dataElement;
-                const rawSection = findStageSection(stage, de.id);
-                if (!sectionAllowed(rawSection)) continue;
-                const section = rawSection ?? "Ungrouped";
+                if (!sectionAllowed(sectionLabel)) continue;
+                const section = sectionLabel ?? "Ungrouped";
                 const valueKind = valueKindFromDhis2(de.valueType);
                 const deLabel = labelFrom(de.name, de.formName, de.id);
                 columns.push(
@@ -289,7 +380,9 @@ export function buildColumnRegistry({
                         sourceFieldId: de.id,
                         valueKind,
                         optionSetId: de.optionSet?.id,
-                        groupPath: [stage.name, section],
+                        groupPath: subsectionLabel
+                            ? [stage.name, section, subsectionLabel]
+                            : [stage.name, section],
                         canMeasure: valueKind === "number",
                         chooserKey: `childEvent.${stageId}.dataValue.${de.id}`,
                         chooserLabel: deLabel,
@@ -319,16 +412,16 @@ export function buildColumnRegistry({
             }),
         );
 
-        for (const psde of orderDataElementsBySection(
+        for (const { item: psde, sectionLabel, subsectionLabel } of orderDataElementsBySection(
             stage,
             stage.programStageDataElements ?? [],
+            uiConfig,
         )) {
             const de =
                 metadata.dataElements.get(psde.dataElement.id) ??
                 psde.dataElement;
-            const rawSection = findStageSection(stage, de.id);
-            if (!sectionAllowed(rawSection)) continue;
-            const section = rawSection ?? "Ungrouped";
+            if (!sectionAllowed(sectionLabel)) continue;
+            const section = sectionLabel ?? "Ungrouped";
             const valueKind = valueKindFromDhis2(de.valueType);
             const deLabel = labelFrom(de.name, de.formName, de.id);
             columns.push(
@@ -339,7 +432,9 @@ export function buildColumnRegistry({
                     sourceFieldId: de.id,
                     valueKind,
                     optionSetId: de.optionSet?.id,
-                    groupPath: ["Linked Parent", stage.name, section],
+                    groupPath: subsectionLabel
+                        ? ["Linked Parent", stage.name, section, subsectionLabel]
+                        : ["Linked Parent", stage.name, section],
                     canMeasure: valueKind === "number",
                 }),
             );
@@ -457,19 +552,6 @@ function addSystemColumns(
             }),
         );
     }
-}
-
-function findStageSection(
-    stage: AnalyticsMetadata["program"]["programStages"][number],
-    dataElementId: string,
-): string | undefined {
-    const section = bySortOrder(stage.programStageSections ?? []).find(
-        (candidate) =>
-            (candidate.dataElements ?? []).some(
-                (dataElement) => dataElement.id === dataElementId,
-            ),
-    );
-    return section ? section.displayName || section.name : undefined;
 }
 
 function labelFrom(...candidates: Array<string | undefined>): string {

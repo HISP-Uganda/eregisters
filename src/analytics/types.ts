@@ -6,6 +6,7 @@ import type {
     Program,
     ProgramStage,
     TrackedEntityAttribute,
+    UIConfig,
 } from "../schemas";
 
 export type AnalyticsSource =
@@ -110,6 +111,10 @@ export interface AnalyticsDatasetInput {
      * `parent-event-dataset.ts` for how this narrows both rows and which
      * service-gated child-stage columns are offered. */
     selectedServiceTypes: string[];
+    /** Admin-configured subsection layout (`useUIConfig()`) — threaded
+     * through to `buildColumnRegistry` so a section with subsections
+     * configured further groups/orders its columns by subsection. */
+    uiConfig?: Partial<Pick<UIConfig, "subsections" | "formLayouts">>;
 }
 
 export interface AnalyticsDataset {

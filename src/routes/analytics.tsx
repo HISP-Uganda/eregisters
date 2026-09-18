@@ -37,6 +37,7 @@ import { useComputedColumns } from "../hooks/useComputedColumns";
 import { useIsMobile } from "../hooks/useIsMobile";
 import { useMetadata } from "../hooks/useMetadata";
 import { useStageHierarchyConfig } from "../hooks/useStageHierarchyConfig";
+import { useUIConfig } from "../hooks/useUIConfig";
 import { RootRoute } from "./__root";
 
 export const AnalyticsRoute = createRoute({
@@ -119,6 +120,7 @@ function AnalyticsPage() {
         dataElements,
         optionSets,
     } = useMetadata();
+    const uiConfig = useUIConfig();
     const stageHierarchyPairs = useStageHierarchyConfig();
     const trackedEntitiesCollection = getTrackedEntitiesCollection();
     const enrollmentsCollection = getEnrollmentsCollection();
@@ -261,6 +263,7 @@ function AnalyticsPage() {
                 selectedServiceTypes: filters.serviceTypes,
                 startDate: filters.startDate,
                 endDate: filters.endDate,
+                uiConfig,
             });
             if (computeTokenRef.current !== token) return;
             setDatasetState({ status: "ready", dataset: built });
@@ -279,6 +282,7 @@ function AnalyticsPage() {
         program,
         trackedEntities,
         trackedEntityAttributes,
+        uiConfig,
     ]);
     const dataset = datasetState.dataset;
     const { definitions: computedColumnDefinitions, save: saveComputedColumn, remove: removeComputedColumn } =

@@ -425,6 +425,236 @@ describe("buildColumnRegistry", () => {
         ).toEqual(["Visit", "Ungrouped"]);
     });
 
+    describe("subsection grouping (admin-configured uiConfig)", () => {
+        const height = {
+            id: "heightuid01",
+            name: "Height",
+            formName: "Height",
+            code: "height",
+            valueType: "NUMBER",
+            optionSetValue: false,
+        };
+
+        function metadataWithHeight() {
+            return {
+                ...metadata,
+                program: {
+                    ...metadata.program,
+                    programStages: [
+                        {
+                            ...metadata.program.programStages[0],
+                            programStageDataElements: [
+                                ...metadata.program.programStages[0]
+                                    .programStageDataElements,
+                                {
+                                    id: "psdeheight1",
+                                    compulsory: false,
+                                    allowFutureDate: false,
+                                    dataElement: height,
+                                },
+                            ],
+                            programStageSections: [
+                                {
+                                    ...metadata.program.programStages[0]
+                                        .programStageSections[0],
+                                    dataElements: [weight, height],
+                                },
+                            ],
+                        },
+                        metadata.program.programStages[1],
+                    ],
+                },
+                dataElements: new Map([
+                    ...metadata.dataElements,
+                    ["heightuid01", height],
+                ]),
+            } as unknown as AnalyticsMetadata;
+        }
+
+        it("groups and orders a section's columns by its formLayouts subsections", () => {
+            const columns = buildColumnRegistry({
+                metadata: metadataWithHeight(),
+                mainStageId: "visit000001",
+                childStageSlotCounts: new Map(),
+                uiConfig: {
+                    formLayouts: {
+                        // Section id from `programStageSections[0].id` above.
+                        triage00001: [
+                            { kind: "section", id: "vitals", name: "Vitals" },
+                            { kind: "element", id: "heightuid01" },
+                            { kind: "element", id: "weightuid01" },
+                        ],
+                    },
+                },
+            });
+
+            const height = columns.find(
+                (c) => c.key === "parentEvent.dataValue.heightuid01",
+            );
+            const weightCol = columns.find(
+                (c) => c.key === "parentEvent.dataValue.weightuid01",
+            );
+            expect(height?.groupPath).toEqual(["Visit", "Triage", "Vitals"]);
+            expect(weightCol?.groupPath).toEqual(["Visit", "Triage", "Vitals"]);
+            // formLayouts put height before weight, opposite of the
+            // section's own dataElements array order ([weight, height]).
+            const heightIndex = columns.indexOf(height!);
+            const weightIndex = columns.indexOf(weightCol!);
+            expect(heightIndex).toBeLessThan(weightIndex);
+        });
+
+        it("groups a section's columns by the legacy subsections config when no formLayouts entry exists", () => {
+            const columns = buildColumnRegistry({
+                metadata: metadataWithHeight(),
+                mainStageId: "visit000001",
+                childStageSlotCounts: new Map(),
+                uiConfig: {
+                    subsections: {
+                        triage00001: [
+                            {
+                                id: "vitals-sub",
+                                name: "Vitals",
+                                dataElementIds: ["heightuid01", "weightuid01"],
+                            },
+                        ],
+                    },
+                },
+            });
+
+            expect(
+                columns.find(
+                    (c) => c.key === "parentEvent.dataValue.heightuid01",
+                )?.groupPath,
+            ).toEqual(["Visit", "Triage", "Vitals"]);
+        });
+
+        it("leaves a section's columns at section-level (no third groupPath segment) when no subsection layout is configured for it", () => {
+            const columns = buildColumnRegistry({
+                metadata: metadataWithHeight(),
+                mainStageId: "visit000001",
+                childStageSlotCounts: new Map(),
+            });
+
+            expect(
+                columns.find(
+                    (c) => c.key === "parentEvent.dataValue.weightuid01",
+                )?.groupPath,
+            ).toEqual(["Visit", "Triage"]);
+        });
+
+        it("puts an item not referenced by the subsection layout into a trailing unlabeled (section-level) group", () => {
+            const columns = buildColumnRegistry({
+                metadata: metadataWithHeight(),
+                mainStageId: "visit000001",
+                childStageSlotCounts: new Map(),
+                uiConfig: {
+                    formLayouts: {
+                        triage00001: [
+                            { kind: "section", id: "vitals", name: "Vitals" },
+                            { kind: "element", id: "heightuid01" },
+                            // weight deliberately not referenced.
+                        ],
+                    },
+                },
+            });
+
+            expect(
+                columns.find(
+                    (c) => c.key === "parentEvent.dataValue.heightuid01",
+                )?.groupPath,
+            ).toEqual(["Visit", "Triage", "Vitals"]);
+            expect(
+                columns.find(
+                    (c) => c.key === "parentEvent.dataValue.weightuid01",
+                )?.groupPath,
+            ).toEqual(["Visit", "Triage"]);
+        });
+
+        it("also applies subsection grouping to Profile (tracked-entity attribute) sections", () => {
+            const lastName = {
+                id: "lastName001",
+                name: "Last name",
+                displayFormName: "Last name",
+                formName: "Last name",
+                valueType: "TEXT",
+                confidential: false,
+                unique: false,
+                generated: false,
+                pattern: "",
+                optionSetValue: false,
+            };
+            const profileMetadata = {
+                ...metadata,
+                program: {
+                    ...metadata.program,
+                    programTrackedEntityAttributes: [
+                        ...metadata.program.programTrackedEntityAttributes,
+                        {
+                            ...metadata.program
+                                .programTrackedEntityAttributes[0],
+                            id: "ptea0000002",
+                            sortOrder: 2,
+                            trackedEntityAttribute: lastName,
+                        },
+                    ],
+                    programSections: [
+                        {
+                            ...metadata.program.programSections[0],
+                            trackedEntityAttributes: [
+                                { id: "firstName01" },
+                                { id: "lastName001" },
+                            ],
+                        },
+                    ],
+                },
+                trackedEntityAttributes: new Map([
+                    ...metadata.trackedEntityAttributes,
+                    ["lastName001", lastName],
+                ]),
+            } as unknown as AnalyticsMetadata;
+
+            const columns = buildColumnRegistry({
+                metadata: profileMetadata,
+                mainStageId: "visit000001",
+                childStageSlotCounts: new Map(),
+                uiConfig: {
+                    // Section id from `programSections[0].id` in the shared fixture.
+                    subsections: {
+                        section0001: [
+                            {
+                                id: "name-sub",
+                                name: "Name",
+                                dataElementIds: ["lastName001", "firstName01"],
+                            },
+                        ],
+                    },
+                },
+            });
+
+            const firstName = columns.find(
+                (c) => c.key === "te.attribute.firstName01",
+            );
+            const lastNameCol = columns.find(
+                (c) => c.key === "te.attribute.lastName001",
+            );
+            expect(firstName?.groupPath).toEqual([
+                "Profile",
+                "Registration Details",
+                "Name",
+            ]);
+            expect(lastNameCol?.groupPath).toEqual([
+                "Profile",
+                "Registration Details",
+                "Name",
+            ]);
+            // subsection config lists lastName before firstName, opposite of
+            // programTrackedEntityAttributes' own sortOrder.
+            expect(columns.indexOf(lastNameCol!)).toBeLessThan(
+                columns.indexOf(firstName!),
+            );
+        });
+    });
+
     it("prefers name over formName so colliding form names don't produce identical column labels", () => {
         const collidingMetadata = {
             ...metadata,
