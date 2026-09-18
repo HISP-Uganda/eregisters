@@ -15,17 +15,22 @@ of them read live data, and concurrent writes are safely serialized (not
 lost, not corrupted, not requiring a raw `SQLITE_BUSY` retry loop in app
 code) rather than locking every tab but one out entirely.
 `single-tab-lock.ts` and its "this app is already open in another tab"
-screen are removed once this lands. A real device that already has
-op-sqlite data (once op-sqlite itself has actually shipped to
-production — see the correction in Notes below) must not lose it on the
-swap; a copy-and-verify migration exists for that case regardless of how
-much real op-sqlite data is actually out there at the time this ships.
+screen are removed once this lands.
+
+**Final scope (revised after landing)**: a copy-and-verify op-sqlite ->
+wa-sqlite migration was built as a safety net (ticket 002), then
+deliberately removed once `@op-engineering/op-sqlite`/`@sqlite.org/
+sqlite-wasm` were dropped entirely — confirmed directly with the user
+that op-sqlite never actually reached production (still Dexie.js live
+today, per ticket 002's own correction), so the migration protected
+against data that never existed. `op-sqlite-driver.ts`/`instance.ts`
+are gone; there is no fallback path from op-sqlite anymore, only
+wa-sqlite and Dexie.
 
 Done means: `SqlDriver`'s existing interface (`src/db/sqlite/driver-types.ts`)
-is satisfied by a new wa-sqlite-backed implementation, a device with
-existing op-sqlite data upgrades cleanly with nothing lost, and two tabs
-of the same browser can both be open against the same device without
-either being redirected away.
+is satisfied by a wa-sqlite-backed implementation, and two tabs of the
+same browser can both be open against the same device without either
+being redirected away.
 
 ## Notes
 
@@ -137,6 +142,25 @@ it, those call sites would have thrown on both backends. Fixed by
 routing them through the existing `useMetadataStore()`/live-collections
 abstractions. `/code-review`'s two-axis review came back clean on both
 axes.
+
+**Follow-up (commit `444c964`)**: `@op-engineering/op-sqlite` and
+`@sqlite.org/sqlite-wasm` removed entirely, along with
+`op-sqlite-driver.ts`, `instance.ts`, and `migrate-from-op-sqlite.ts` +
+its test — confirmed with the user that op-sqlite never actually
+reached production, so the migration safety net (ticket 002) was
+protecting against data that never existed. `App.tsx`'s bootstrap is
+back to a single fire-and-forget `runDexieMigrationIfNeeded` call on the
+sqlite branch (the sequencing wrapper it needed only while the op-sqlite
+migration also existed is gone). `viteConfigExtensions.mts`'s COOP/COEP
+dev-server headers were also dropped (wa-sqlite needs none) —
+production's `scripts/patch-sw.js` mechanism is untouched, per this
+map's already-deferred decision on that. Also caught and fixed a real,
+separate bug while doing this cleanup: `createWaSqliteDriver` never
+called `createSchema()` — the deleted op-sqlite driver's
+`initSqlDriver()` always did — meaning the live wa-sqlite backend had no
+database tables at all until this fix, covered now by a regression
+test. `/code-review` came back clean on both axes (one missed
+doc-comment fixed before commit).
 
 ## Not yet specified
 
