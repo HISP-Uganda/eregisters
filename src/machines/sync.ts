@@ -225,9 +225,15 @@ const syncMachine = setup({
         }),
 
         persistSyncState: ({ context }) => {
+            // Previously a bare `void fn(...)` with no error handling — a
+            // rejected write (e.g. a wa-sqlite worker hiccup) was silently
+            // swallowed, so "last pulled" could fail to persist even after
+            // an otherwise-successful pull with no visible error anywhere.
             void persistCurrentSyncState(context.metadataStore, {
                 lastDataPull: context.lastDataPull,
                 lastDataPush: context.lastDataPush,
+            }).catch((error: unknown) => {
+                console.error("Failed to persist sync state:", error);
             });
         },
     },
@@ -1256,7 +1262,26 @@ const syncMachine = setup({
                     },
                 },
 
-                failure: {},
+                // Same dead-end bug as dataPull's failure state (was
+                // `failure: {}`, no recovery path short of a page reload)
+                // — matches `waiting`'s exact recovery shape.
+                failure: {
+                    on: {
+                        START_METADATA_SYNC: {
+                            target: "syncing",
+                            actions: assign({
+                                metadataSyncMode: () => "incremental",
+                            }),
+                        },
+
+                        FULL_METADATA_SYNC: {
+                            target: "syncing",
+                            actions: assign({
+                                metadataSyncMode: () => "full",
+                            }),
+                        },
+                    },
+                },
             },
         },
         dataSync: {
@@ -1456,7 +1481,43 @@ const syncMachine = setup({
                         },
                     },
                 },
-                failure: {},
+                // Was a dead end with no `on`/`after` handlers — a single
+                // failed pull left the machine permanently stuck here,
+                // accepting no further sync requests until the whole
+                // `SyncContext.Provider` remounted (a full page reload).
+                // Same recovery shape as `waiting`: retries automatically
+                // on the next scheduled interval, and accepts the same
+                // manual/network-triggered re-pull events immediately.
+                failure: {
+                    after: {
+                        dataPullInterval: {
+                            target: "syncing",
+                            actions: assign({
+                                dataPullMode: () => "incremental",
+                            }),
+                        },
+                    },
+                    on: {
+                        START_DATA_SYNC: {
+                            target: "syncing",
+                            actions: assign({
+                                dataPullMode: () => "incremental",
+                            }),
+                        },
+                        FULL_DATA_SYNC: {
+                            target: "fullRefresh",
+                            actions: assign({
+                                dataPullMode: () => "full",
+                            }),
+                        },
+                        NETWORK_RECONNECT: {
+                            target: "syncing",
+                            actions: assign({
+                                dataPullMode: () => "incremental",
+                            }),
+                        },
+                    },
+                },
             },
         },
     },
