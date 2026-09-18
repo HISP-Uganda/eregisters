@@ -1241,7 +1241,15 @@ const syncMachine = setup({
                             },
                         ],
 
-                        onError: "failure",
+                        onError: {
+                            target: "failure",
+                            actions: ({ event }) => {
+                                console.error(
+                                    "Metadata pull error:",
+                                    event.error,
+                                );
+                            },
+                        },
                     },
                 },
                 waiting: {
@@ -1443,7 +1451,12 @@ const syncMachine = setup({
                             }),
                         },
 
-                        onError: "failure",
+                        onError: {
+                            target: "failure",
+                            actions: ({ event }) => {
+                                console.error("Data pull error:", event.error);
+                            },
+                        },
                     },
                 },
                 updateLastDataPull: {
