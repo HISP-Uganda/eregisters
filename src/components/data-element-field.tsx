@@ -154,6 +154,15 @@ export const DataElementField = React.memo<{
             );
         }, []);
 
+        // A radio group with many options (e.g. "Next of Kin Relationship"
+        // with 7) wraps onto a second line and grows noticeably taller than
+        // a single-line field — but since it shares a flex Row with unrelated
+        // sibling fields, that height gets applied to the WHOLE row, leaving
+        // visible blank space under the shorter fields beside it. Giving it
+        // the full row width instead (set below in the RADIOBUTTONS branch)
+        // avoids squeezing it into a column too narrow for its own options.
+        let forceFullWidth = false;
+
         // Tracks whether `element` ended up as one of the option-set
         // Selects below, so the wrap CSS can be rendered as a sibling of
         // Form.Item (which clones its single child to inject value/onChange
@@ -278,6 +287,11 @@ export const DataElementField = React.memo<{
                 desktopRenderType,
             )
         ) {
+            // More than 4 options reliably wraps to a second line within a
+            // shared-row column width — verified live (7-option "Next of Kin
+            // Relationship" wraps and grows to 80.5px vs. 64.5px for
+            // single-line fields; 4-option groups stayed single-line).
+            forceFullWidth = (finalOptions?.length ?? 0) > 4;
             const handleRadioChange = useCallback(
                 (e: any) => {
                     onFieldChange(dataElement.id, e.target.value);
@@ -498,11 +512,11 @@ export const DataElementField = React.memo<{
         return (
             <Col
                 key={dataElement.id}
-                sm={{ span: sm }}
-                md={{ span: md }}
-                lg={{ span: lg }}
+                sm={{ span: forceFullWidth ? 24 : sm }}
+                md={{ span: forceFullWidth ? 24 : md }}
+                lg={{ span: forceFullWidth ? 24 : lg }}
                 xs={{ span: xs }}
-                xl={{ span: xl }}
+                xl={{ span: forceFullWidth ? 24 : xl }}
             >
                 {isOptionSelect && <style>{OPTION_SELECT_WRAP_CSS}</style>}
                 <Form.Item
