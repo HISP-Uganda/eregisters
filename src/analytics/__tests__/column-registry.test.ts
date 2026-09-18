@@ -294,6 +294,137 @@ describe("buildColumnRegistry", () => {
         expect(firstNameIndex).toBeLessThan(lastNameIndex);
     });
 
+    it("orders data-element columns by their position within their section, not the stage-wide PSDE sortOrder", () => {
+        const height = {
+            id: "heightuid01",
+            name: "Height",
+            formName: "Height",
+            code: "height",
+            valueType: "NUMBER",
+            optionSetValue: false,
+        };
+
+        // Global PSDE sortOrder puts weight (implicit, unset -> last) after
+        // height (sortOrder 1) — but the Triage section itself lists them
+        // in the opposite order: weight, then height. Section order should
+        // win.
+        const sectionOrderedMetadata = {
+            ...metadata,
+            program: {
+                ...metadata.program,
+                programStages: [
+                    {
+                        ...metadata.program.programStages[0],
+                        programStageDataElements: [
+                            {
+                                id: "psdeheight1",
+                                compulsory: false,
+                                allowFutureDate: false,
+                                sortOrder: 1,
+                                dataElement: height,
+                            },
+                            metadata.program.programStages[0]
+                                .programStageDataElements[0],
+                        ],
+                        programStageSections: [
+                            {
+                                id: "triage00001",
+                                name: "Triage",
+                                displayName: "Triage",
+                                sortOrder: 1,
+                                dataElements: [weight, height],
+                            },
+                        ],
+                    },
+                    metadata.program.programStages[1],
+                ],
+            },
+            dataElements: new Map([
+                ...metadata.dataElements,
+                ["heightuid01", height],
+            ]),
+        } as unknown as AnalyticsMetadata;
+
+        const columns = buildColumnRegistry({
+            metadata: sectionOrderedMetadata,
+            mainStageId: "visit000001",
+            childStageSlotCounts: new Map(),
+        });
+
+        const weightIndex = columns.findIndex(
+            (c) => c.key === "parentEvent.dataValue.weightuid01",
+        );
+        const heightIndex = columns.findIndex(
+            (c) => c.key === "parentEvent.dataValue.heightuid01",
+        );
+        expect(weightIndex).toBeGreaterThanOrEqual(0);
+        expect(heightIndex).toBeGreaterThanOrEqual(0);
+        expect(weightIndex).toBeLessThan(heightIndex);
+    });
+
+    it("appends a data element in no section after every sectioned element, ordered by its own sortOrder", () => {
+        const notes = {
+            id: "notesuid001",
+            name: "Notes",
+            formName: "Notes",
+            code: "notes",
+            valueType: "TEXT",
+            optionSetValue: false,
+        };
+
+        const unsectionedMetadata = {
+            ...metadata,
+            program: {
+                ...metadata.program,
+                programStages: [
+                    {
+                        ...metadata.program.programStages[0],
+                        programStageDataElements: [
+                            {
+                                id: "psdenotes01",
+                                compulsory: false,
+                                allowFutureDate: false,
+                                sortOrder: 0,
+                                dataElement: notes,
+                            },
+                            metadata.program.programStages[0]
+                                .programStageDataElements[0],
+                        ],
+                        // "notes" is deliberately NOT in any section, even
+                        // though its sortOrder (0) is lower than weight's.
+                    },
+                    metadata.program.programStages[1],
+                ],
+            },
+            dataElements: new Map([
+                ...metadata.dataElements,
+                ["notesuid001", notes],
+            ]),
+        } as unknown as AnalyticsMetadata;
+
+        const columns = buildColumnRegistry({
+            metadata: unsectionedMetadata,
+            mainStageId: "visit000001",
+            childStageSlotCounts: new Map(),
+        });
+
+        const weightIndex = columns.findIndex(
+            (c) => c.key === "parentEvent.dataValue.weightuid01",
+        );
+        const notesIndex = columns.findIndex(
+            (c) => c.key === "parentEvent.dataValue.notesuid001",
+        );
+        expect(weightIndex).toBeGreaterThanOrEqual(0);
+        expect(notesIndex).toBeGreaterThanOrEqual(0);
+        // Sectioned "weight" comes first even though unsectioned "notes"
+        // has a lower sortOrder.
+        expect(weightIndex).toBeLessThan(notesIndex);
+        expect(
+            columns.find((c) => c.key === "parentEvent.dataValue.notesuid001")
+                ?.groupPath,
+        ).toEqual(["Visit", "Ungrouped"]);
+    });
+
     it("prefers name over formName so colliding form names don't produce identical column labels", () => {
         const collidingMetadata = {
             ...metadata,

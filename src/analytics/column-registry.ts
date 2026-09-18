@@ -1,3 +1,4 @@
+import type { Program, ProgramStage } from "../schemas";
 import type { AnalyticsColumn, AnalyticsMetadata } from "./types";
 import { valueKindFromDhis2 } from "./value-format";
 
@@ -69,6 +70,71 @@ function bySortOrder<T extends { sortOrder?: number }>(items: T[]): T[] {
     });
 }
 
+/**
+ * Orders a stage's `programStageDataElements` by each data element's
+ * position within its `programStageSections` (walked in section
+ * `sortOrder`, matching how program-stage-capture.tsx/basic-form.tsx etc.
+ * already render sections/fields) instead of the stage-wide PSDE
+ * `sortOrder`, which can legitimately diverge from a section's own
+ * internal order. A data element in no section falls back to
+ * `bySortOrder`, appended after every sectioned element.
+ */
+function orderDataElementsBySection(
+    stage: ProgramStage,
+    psdes: ProgramStage["programStageDataElements"],
+): ProgramStage["programStageDataElements"] {
+    const byDataElementId = new Map(psdes.map((psde) => [psde.dataElement.id, psde]));
+    const ordered: ProgramStage["programStageDataElements"] = [];
+    const seen = new Set<string>();
+    for (const section of bySortOrder(stage.programStageSections ?? [])) {
+        for (const de of section.dataElements ?? []) {
+            const psde = byDataElementId.get(de.id);
+            if (psde && !seen.has(de.id)) {
+                ordered.push(psde);
+                seen.add(de.id);
+            }
+        }
+    }
+    for (const psde of bySortOrder(psdes)) {
+        if (!seen.has(psde.dataElement.id)) {
+            ordered.push(psde);
+            seen.add(psde.dataElement.id);
+        }
+    }
+    return ordered;
+}
+
+/**
+ * Same idea as `orderDataElementsBySection`, for the profile's
+ * `programTrackedEntityAttributes`/`programSections`.
+ */
+function orderAttributesBySection(
+    program: Program,
+    pteas: Program["programTrackedEntityAttributes"],
+): Program["programTrackedEntityAttributes"] {
+    const byAttributeId = new Map(
+        pteas.map((ptea) => [ptea.trackedEntityAttribute.id, ptea]),
+    );
+    const ordered: Program["programTrackedEntityAttributes"] = [];
+    const seen = new Set<string>();
+    for (const section of bySortOrder(program.programSections ?? [])) {
+        for (const attribute of section.trackedEntityAttributes ?? []) {
+            const ptea = byAttributeId.get(attribute.id);
+            if (ptea && !seen.has(attribute.id)) {
+                ordered.push(ptea);
+                seen.add(attribute.id);
+            }
+        }
+    }
+    for (const ptea of bySortOrder(pteas)) {
+        if (!seen.has(ptea.trackedEntityAttribute.id)) {
+            ordered.push(ptea);
+            seen.add(ptea.trackedEntityAttribute.id);
+        }
+    }
+    return ordered;
+}
+
 function column(
     input: Omit<AnalyticsColumn, "pivot" | "defaultVisible"> & {
         canMeasure?: boolean;
@@ -133,7 +199,8 @@ export function buildColumnRegistry({
         }
     }
 
-    for (const ptea of bySortOrder(
+    for (const ptea of orderAttributesBySection(
+        metadata.program,
         metadata.program.programTrackedEntityAttributes ?? [],
     )) {
         const tea =
@@ -162,7 +229,10 @@ export function buildColumnRegistry({
         );
     }
 
-    for (const psde of bySortOrder(mainStage.programStageDataElements ?? [])) {
+    for (const psde of orderDataElementsBySection(
+        mainStage,
+        mainStage.programStageDataElements ?? [],
+    )) {
         const de = metadata.dataElements.get(psde.dataElement.id) ?? psde.dataElement;
         const rawSection = findStageSection(mainStage, de.id);
         if (!sectionAllowed(rawSection)) continue;
@@ -199,7 +269,10 @@ export function buildColumnRegistry({
                 }),
             );
 
-            for (const psde of bySortOrder(stage.programStageDataElements ?? [])) {
+            for (const psde of orderDataElementsBySection(
+                stage,
+                stage.programStageDataElements ?? [],
+            )) {
                 const de =
                     metadata.dataElements.get(psde.dataElement.id) ??
                     psde.dataElement;
@@ -246,7 +319,10 @@ export function buildColumnRegistry({
             }),
         );
 
-        for (const psde of bySortOrder(stage.programStageDataElements ?? [])) {
+        for (const psde of orderDataElementsBySection(
+            stage,
+            stage.programStageDataElements ?? [],
+        )) {
             const de =
                 metadata.dataElements.get(psde.dataElement.id) ??
                 psde.dataElement;
