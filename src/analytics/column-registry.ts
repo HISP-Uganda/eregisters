@@ -291,11 +291,15 @@ export function buildColumnRegistry({
         metadata.program.programTrackedEntityAttributes ?? [],
         uiConfig,
     )) {
+        // For now, an attribute not in any programSection is simply
+        // omitted rather than falling into an "Ungrouped Attributes"
+        // bucket — revisit if/when there's a real place to put it.
+        if (sectionLabel === undefined) continue;
         const tea =
             metadata.trackedEntityAttributes.get(
                 ptea.trackedEntityAttribute.id,
             ) ?? ptea.trackedEntityAttribute;
-        const section = sectionLabel ?? "Ungrouped Attributes";
+        const section = sectionLabel;
         const valueKind = valueKindFromDhis2(tea.valueType);
         columns.push(
             column({
@@ -324,8 +328,11 @@ export function buildColumnRegistry({
         uiConfig,
     )) {
         const de = metadata.dataElements.get(psde.dataElement.id) ?? psde.dataElement;
+        // For now, a data element not in any programStageSection is simply
+        // omitted rather than falling into an "Ungrouped" bucket.
+        if (sectionLabel === undefined) continue;
         if (!sectionAllowed(sectionLabel)) continue;
-        const section = sectionLabel ?? "Ungrouped";
+        const section = sectionLabel;
         const valueKind = valueKindFromDhis2(de.valueType);
         columns.push(
             column({
@@ -368,8 +375,11 @@ export function buildColumnRegistry({
                 const de =
                     metadata.dataElements.get(psde.dataElement.id) ??
                     psde.dataElement;
+                // For now, a data element not in any programStageSection is
+                // simply omitted rather than falling into an "Ungrouped" bucket.
+                if (sectionLabel === undefined) continue;
                 if (!sectionAllowed(sectionLabel)) continue;
-                const section = sectionLabel ?? "Ungrouped";
+                const section = sectionLabel;
                 const valueKind = valueKindFromDhis2(de.valueType);
                 const deLabel = labelFrom(de.name, de.formName, de.id);
                 columns.push(
@@ -420,8 +430,11 @@ export function buildColumnRegistry({
             const de =
                 metadata.dataElements.get(psde.dataElement.id) ??
                 psde.dataElement;
+            // For now, a data element not in any programStageSection is
+            // simply omitted rather than falling into an "Ungrouped" bucket.
+            if (sectionLabel === undefined) continue;
             if (!sectionAllowed(sectionLabel)) continue;
-            const section = sectionLabel ?? "Ungrouped";
+            const section = sectionLabel;
             const valueKind = valueKindFromDhis2(de.valueType);
             const deLabel = labelFrom(de.name, de.formName, de.id);
             columns.push(

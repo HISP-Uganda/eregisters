@@ -234,7 +234,19 @@ describe("buildColumnRegistry", () => {
         expect(firstSystemIndex).toBeGreaterThan(lastDataIndex);
     });
 
-    it("orders data-element columns by DHIS2 sortOrder, not array order", () => {
+    it("within a section, orders attributes by the section's own array order even when that reverses programTrackedEntityAttributes' sortOrder", () => {
+        const lastName = {
+            id: "lastName001",
+            name: "Last name",
+            displayFormName: "Last name",
+            formName: "Last name",
+            valueType: "TEXT",
+            confidential: false,
+            unique: false,
+            generated: false,
+            pattern: "",
+            optionSetValue: false,
+        };
         const reorderedMetadata = {
             ...metadata,
             program: {
@@ -244,36 +256,28 @@ describe("buildColumnRegistry", () => {
                         ...metadata.program.programTrackedEntityAttributes[0],
                         id: "ptea0000002",
                         sortOrder: 2,
-                        trackedEntityAttribute: {
-                            ...metadata.program
-                                .programTrackedEntityAttributes[0]
-                                .trackedEntityAttribute,
-                            id: "lastName001",
-                        },
+                        trackedEntityAttribute: lastName,
                     },
                     {
                         ...metadata.program.programTrackedEntityAttributes[0],
                         sortOrder: 1,
                     },
                 ],
+                // Section lists lastName before firstName — the opposite of
+                // sortOrder (1 vs 2) — and section order should win.
+                programSections: [
+                    {
+                        ...metadata.program.programSections[0],
+                        trackedEntityAttributes: [
+                            { id: "lastName001" },
+                            { id: "firstName01" },
+                        ],
+                    },
+                ],
             },
             trackedEntityAttributes: new Map([
                 ...metadata.trackedEntityAttributes,
-                [
-                    "lastName001",
-                    {
-                        id: "lastName001",
-                        name: "Last name",
-                        displayFormName: "Last name",
-                        formName: "Last name",
-                        valueType: "TEXT",
-                        confidential: false,
-                        unique: false,
-                        generated: false,
-                        pattern: "",
-                        optionSetValue: false,
-                    },
-                ],
+                ["lastName001", lastName],
             ]),
         } as unknown as AnalyticsMetadata;
 
@@ -291,7 +295,7 @@ describe("buildColumnRegistry", () => {
         );
         expect(firstNameIndex).toBeGreaterThanOrEqual(0);
         expect(lastNameIndex).toBeGreaterThanOrEqual(0);
-        expect(firstNameIndex).toBeLessThan(lastNameIndex);
+        expect(lastNameIndex).toBeLessThan(firstNameIndex);
     });
 
     it("orders data-element columns by their position within their section, not the stage-wide PSDE sortOrder", () => {
@@ -362,7 +366,7 @@ describe("buildColumnRegistry", () => {
         expect(weightIndex).toBeLessThan(heightIndex);
     });
 
-    it("appends a data element in no section after every sectioned element, ordered by its own sortOrder", () => {
+    it("omits a data element that's in no section, instead of an 'Ungrouped' fallback group", () => {
         const notes = {
             id: "notesuid001",
             name: "Notes",
@@ -390,8 +394,7 @@ describe("buildColumnRegistry", () => {
                             metadata.program.programStages[0]
                                 .programStageDataElements[0],
                         ],
-                        // "notes" is deliberately NOT in any section, even
-                        // though its sortOrder (0) is lower than weight's.
+                        // "notes" is deliberately NOT in any section.
                     },
                     metadata.program.programStages[1],
                 ],
@@ -408,21 +411,59 @@ describe("buildColumnRegistry", () => {
             childStageSlotCounts: new Map(),
         });
 
-        const weightIndex = columns.findIndex(
-            (c) => c.key === "parentEvent.dataValue.weightuid01",
-        );
-        const notesIndex = columns.findIndex(
-            (c) => c.key === "parentEvent.dataValue.notesuid001",
-        );
-        expect(weightIndex).toBeGreaterThanOrEqual(0);
-        expect(notesIndex).toBeGreaterThanOrEqual(0);
-        // Sectioned "weight" comes first even though unsectioned "notes"
-        // has a lower sortOrder.
-        expect(weightIndex).toBeLessThan(notesIndex);
         expect(
-            columns.find((c) => c.key === "parentEvent.dataValue.notesuid001")
-                ?.groupPath,
-        ).toEqual(["Visit", "Ungrouped"]);
+            columns.some((c) => c.key === "parentEvent.dataValue.weightuid01"),
+        ).toBe(true);
+        expect(
+            columns.some((c) => c.key === "parentEvent.dataValue.notesuid001"),
+        ).toBe(false);
+    });
+
+    it("omits a tracked entity attribute that's in no programSection, instead of an 'Ungrouped Attributes' fallback group", () => {
+        const lastName = {
+            id: "lastName001",
+            name: "Last name",
+            displayFormName: "Last name",
+            formName: "Last name",
+            valueType: "TEXT",
+            confidential: false,
+            unique: false,
+            generated: false,
+            pattern: "",
+            optionSetValue: false,
+        };
+        const unsectionedMetadata = {
+            ...metadata,
+            program: {
+                ...metadata.program,
+                programTrackedEntityAttributes: [
+                    ...metadata.program.programTrackedEntityAttributes,
+                    {
+                        ...metadata.program.programTrackedEntityAttributes[0],
+                        id: "ptea0000002",
+                        trackedEntityAttribute: lastName,
+                        // "lastName001" deliberately not added to programSections.
+                    },
+                ],
+            },
+            trackedEntityAttributes: new Map([
+                ...metadata.trackedEntityAttributes,
+                ["lastName001", lastName],
+            ]),
+        } as unknown as AnalyticsMetadata;
+
+        const columns = buildColumnRegistry({
+            metadata: unsectionedMetadata,
+            mainStageId: "visit000001",
+            childStageSlotCounts: new Map(),
+        });
+
+        expect(
+            columns.some((c) => c.key === "te.attribute.firstName01"),
+        ).toBe(true);
+        expect(
+            columns.some((c) => c.key === "te.attribute.lastName001"),
+        ).toBe(false);
     });
 
     describe("subsection grouping (admin-configured uiConfig)", () => {
