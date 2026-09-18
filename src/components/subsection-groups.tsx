@@ -2,6 +2,7 @@ import { Card, Flex, Row } from "antd";
 import React, { ReactNode } from "react";
 import { FormLayoutItem, SubsectionConfig } from "../schemas";
 import { groupByLayout, groupBySubsections } from "../utils/subsection-grouping";
+import { FORM_ROW_GUTTER } from "../utils/utils";
 
 export { groupByLayout, groupBySubsections };
 
@@ -13,7 +14,7 @@ export function SubsectionGroups<T extends { id: string }>({
     renderElement,
     sectionKey,
     hiddenFields,
-    rowGutter = [16, 8],
+    rowGutter = FORM_ROW_GUTTER,
 }: {
     items: T[];
     subsections: SubsectionConfig[] | undefined;

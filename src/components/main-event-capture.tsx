@@ -34,6 +34,7 @@ import {
     createEmptyTrackedEntity,
     createGetValueProps,
     createNormalize,
+    FORM_ROW_GUTTER,
 } from "../utils/utils";
 import { useUIConfig } from "../hooks/useUIConfig";
 import { DataElementField } from "./data-element-field";
@@ -376,7 +377,7 @@ export default function MainEventCapture({
                                         hiddenFields={ruleResult.hiddenFields}
                                         getId={(de) => de.id}
                                         sectionKey={`${stage.id}-${section.id}`}
-                                        rowGutter={[16, 8]}
+                                        rowGutter={FORM_ROW_GUTTER}
                                         renderElement={(
                                             dataElement,
                                             groupLength,
@@ -425,7 +426,7 @@ export default function MainEventCapture({
     return (
         <Flex vertical gap={10} style={{ width: "100%" }}>
             <Card size="small" styles={{ body: { padding: 10, margin: 0 } }}>
-                <Row gutter={[16, 8]}>
+                <Row gutter={FORM_ROW_GUTTER}>
                     <DataElementField
                         dataElement={{
                             code: "occurredAt",

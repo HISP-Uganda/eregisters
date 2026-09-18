@@ -1145,6 +1145,13 @@ export function calculateColSpan(
     return Math.floor(GRID_TOTAL / actualCols);
 }
 
+/** Single source of truth for the vertical/horizontal gap between form
+ * field rows (antd `Row`'s `gutter` prop) — used by subsection-groups.tsx,
+ * main-event-capture.tsx, and tracker-registration.tsx so all capture
+ * forms stay visually consistent and the spacing only needs changing in
+ * one place. */
+export const FORM_ROW_GUTTER: [number, number] = [16, 8];
+
 export const spans = new Map<string, number>([
     ["XjgpfkoxffK", 5],
     ["W87HAtUHJjB", 5],

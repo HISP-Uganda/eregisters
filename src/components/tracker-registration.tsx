@@ -5,7 +5,7 @@ import { useMetadata } from "../hooks/useMetadata";
 import { useUIConfig } from "../hooks/useUIConfig";
 import { TrackedEntityContext } from "../machines";
 import { FlattenedTrackedEntity } from "../schemas";
-import { buildCurrentAttributes, spans } from "../utils/utils";
+import { buildCurrentAttributes, FORM_ROW_GUTTER, spans } from "../utils/utils";
 import { DataElementField } from "./data-element-field";
 import { DataElementRenderer } from "./data-element-renderer";
 import { SubsectionGroups } from "./subsection-groups";
@@ -65,7 +65,7 @@ export const TrackerRegistration: React.FC<TrackerRegistrationProps> = ({
                 style={{ borderRadius: 0 }}
                 size="small"
             >
-                <Row gutter={[16, 8]}>
+                <Row gutter={FORM_ROW_GUTTER}>
                     <DataElementField
                         dataElement={{
                             code: "enrolledAt",
