@@ -1,7 +1,7 @@
 ---
 title: Port the wa-sqlite driver adapter into eregisters' SqlDriver interface
 type: wayfinder:task
-status: open
+status: closed
 assignee: claude-session
 blocked_by: []
 ---

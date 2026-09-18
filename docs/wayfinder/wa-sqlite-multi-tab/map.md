@@ -103,6 +103,7 @@ either being redirected away.
   any real race eregisters' existing sync model doesn't already handle
   is a real open question, but a follow-up one — not this map's
   destination.
+- [Port the wa-sqlite driver adapter into eregisters' SqlDriver interface](tickets/001-port-wa-sqlite-driver-adapter.md) — built (commit `056b9ad`): `wa-sqlite-adapter.ts`/`wa-sqlite-worker.ts`/`wa-sqlite-worker-request.ts`/`wa-sqlite-protocol.ts`/`wa-sqlite-driver.ts`, sitting alongside `op-sqlite-driver.ts`, not yet wired into `App.tsx`. Reentrant `transaction()` matches `op-sqlite-driver.ts`'s shape; `begin`/`commit`/`rollback` message types (new, not in mohw-nas's own protocol) let a transaction span several `execute` round-trips, since eregisters' row-adapters call `tx.execute()` multiple times per transaction unlike mohw-nas's opaque-message transactions. Deliberately did NOT remove `single-tab-lock.ts` or touch `App.tsx` — op-sqlite is still the live driver, that swap belongs with ticket 002. Also fixed an unrelated `@tanstack/db` transitive-dependency regression (pinned via `pnpm.overrides`), and a real worker transaction-state bug `/code-review` caught (failing `COMMIT`/`ROLLBACK` wedged `inTransaction` permanently).
 
 ## Not yet specified
 
