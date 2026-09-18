@@ -28,8 +28,7 @@ import {
     Typography,
 } from "antd";
 import React, { useEffect, useMemo, useState } from "react";
-import { putConfigRow } from "../db/sqlite/config-rows";
-import { getSqlDriver } from "../db/sqlite/instance";
+import { useMetadataStore } from "../hooks/useMetadataStore";
 import { useMetadata } from "../hooks/useMetadata";
 import { useUIConfig } from "../hooks/useUIConfig";
 import { FormLayoutItem, SectionStyle, SubsectionConfig } from "../schemas";
@@ -70,6 +69,7 @@ function SectionLayout() {
     const { program, trackedEntityAttributes, dataElements } = useMetadata();
     const uiConfig = useUIConfig();
     const engine = useDataEngine();
+    const metadataStore = useMetadataStore();
     const [activeTab, setActiveTab] = useState<"stages" | "program">("stages");
     const [selectedSectionId, setSelectedSectionId] = useState<string | null>(
         null,
@@ -400,7 +400,7 @@ function SectionLayout() {
                     data: { key: "ui-config", value: updated },
                 });
             }
-            await putConfigRow(getSqlDriver(), "ui_config", {
+            await metadataStore.putRow("ui_config", {
                 id: "main",
                 config: updated,
             });

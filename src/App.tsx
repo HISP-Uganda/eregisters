@@ -15,15 +15,15 @@ import { initCollections } from "./db/collections";
 import { dexieMetadataStore } from "./db/dexie/metadata-store";
 import { realDexieMigrationTarget } from "./db/dexie/real-dexie-migration-target";
 import { runSqliteMigrationIfNeeded } from "./db/dexie/migrate-from-sqlite";
+import { getConfigRow } from "./db/sqlite/config-rows";
 import { realDexieMigrationSource } from "./db/sqlite/dexie-migration-source";
 import type { SqlDriver } from "./db/sqlite/driver-types";
-import { initSqlDriver, openStandaloneSqlDriver } from "./db/sqlite/instance";
+import { openStandaloneSqlDriver } from "./db/sqlite/instance";
 import { sqliteMetadataStore } from "./db/sqlite/metadata-store";
 import { runDexieMigrationIfNeeded } from "./db/sqlite/migrate-from-dexie";
-import {
-    notifyPrimaryTabToFocus,
-    requestPrimaryTab,
-} from "./db/sqlite/single-tab-lock";
+import { runWaSqliteMigrationIfNeeded } from "./db/sqlite/migrate-from-op-sqlite";
+import { publishMigrationProgress } from "./db/sqlite/migration-progress";
+import { createWaSqliteDriver } from "./db/sqlite/wa-sqlite-driver";
 import type { MetadataStore } from "./db/metadata-store";
 import { SyncContext } from "./machines/sync";
 import { router } from "./router";
@@ -39,46 +39,86 @@ const ME_QUERY = {
 } as const;
 
 /**
- * Reverse migration (SQLite -> Dexie), fire-and-forget on the Dexie
+ * Reverse migration (wa-sqlite -> Dexie), fire-and-forget on the Dexie
  * branch of bootstrap — wayfinder ticket "Wiring the reverse migration to
  * actually execute on a backend switch"
- * (`docs/wayfinder/opfs-dexie-dual-backend/tickets/006-wire-backend-switch-migration.md`).
+ * (`docs/wayfinder/opfs-dexie-dual-backend/tickets/006-wire-backend-switch-migration.md`),
+ * updated to read from wa-sqlite instead of op-sqlite once wa-sqlite
+ * became what "sqlite" means (wayfinder map "Replace op-sqlite with
+ * wa-sqlite for real multi-tab support").
  *
- * `resolveBackend()` never attempts `initSqlDriver` for a *forced*
- * setting, so a device that was just switched to Dexie has no `SqlDriver`
- * to read its old SQLite data from. `hasCompletedMigration()` is cheap
- * and Dexie-only, so it gates a separate, best-effort `initSqlDriver`
- * attempt made ONLY to feed this migration — that driver is discarded
- * afterwards, never wired into the app's live collections (those stay on
- * Dexie throughout). Deliberately has no `requestPrimaryTab()` duplicate-
- * tab lock (ticket 005: Dexie needs none for its own correctness) — any
- * `initSqlDriver` failure, a real multi-tab OPFS conflict included, is
- * treated the same as "can't migrate right now" and retried next reload,
- * reusing `runSqliteMigrationIfNeeded`'s own failure path rather than a
- * second blocking UI. Reuses `backend.ts`'s OPFS-failure cache so a
- * device that's structurally incapable of OPFS (the common reason it
- * resolved to Dexie in the first place) only pays the failed-attempt
- * cost once.
+ * `resolveBackend()` never attempts to open the SQL backend for a
+ * *forced* setting, so a device that was just switched to Dexie has no
+ * `SqlDriver` to read its old SQL data from. `hasCompletedMigration()` is
+ * cheap and Dexie-only, so it gates a separate, best-effort
+ * `createWaSqliteDriver` attempt made ONLY to feed this migration — that
+ * driver is discarded afterwards, never wired into the app's live
+ * collections (those stay on Dexie throughout). Deliberately spawns no
+ * duplicate-tab lock dance (ticket 005: Dexie needs none for its own
+ * correctness, and wa-sqlite's `OPFSCoopSyncVFS` supports multiple tabs
+ * natively anyway) — any driver-open failure is treated the same as
+ * "can't migrate right now" and retried next reload, reusing
+ * `runSqliteMigrationIfNeeded`'s own failure path rather than a second
+ * blocking UI. Reuses `backend.ts`'s OPFS-failure cache so a device
+ * that's structurally incapable of OPFS (the common reason it resolved
+ * to Dexie in the first place) only pays the failed-attempt cost once.
  *
- * Uses `openStandaloneSqlDriver`, NOT `initSqlDriver` — the latter
- * populates a module-level singleton `getSqlDriver()` returns from
- * anywhere, which would let this backend's several still-unconditional
- * `getSqlDriver()` call sites (admin routes, `useSqliteConfigRow.ts`)
- * silently start operating on a database that's mid-migration or already
- * dropped, instead of throwing their current "not initialized" error on a
- * device that's genuinely on Dexie. This driver is used once, here, and
- * discarded.
+ * Unlike the old op-sqlite-backed version of this function,
+ * `createWaSqliteDriver` has no module-level singleton to worry about
+ * polluting — each call spawns its own dedicated Worker and is fully
+ * self-contained.
  */
 async function attemptReverseMigrationIfNeeded(): Promise<void> {
     if (await realDexieMigrationTarget.hasCompletedMigration()) return;
     if (getCachedOpfsFailure()) return;
 
     try {
-        const driver = await openStandaloneSqlDriver("eregisters-metadata");
+        const driver = await createWaSqliteDriver("eregisters-metadata");
         clearCachedOpfsFailure();
         await runSqliteMigrationIfNeeded(driver, realDexieMigrationTarget);
     } catch {
         setCachedOpfsFailure();
+    }
+}
+
+/**
+ * Forward migration (op-sqlite -> wa-sqlite), fire-and-forget on the
+ * sqlite branch of bootstrap, sequenced after the Dexie->wa-sqlite
+ * migration below (not concurrent with it — both write into the same
+ * destination driver, and eregisters' current production reality is
+ * that most devices are migrating from Dexie, not op-sqlite, so this
+ * runs second) — wayfinder ticket "Design the op-sqlite -> wa-sqlite
+ * migration procedure"
+ * (`docs/wayfinder/wa-sqlite-multi-tab/tickets/002-migration-procedure-design.md`).
+ *
+ * Cheap "already migrated" check happens via `dest` (wa-sqlite) first,
+ * same shape as `attemptReverseMigrationIfNeeded` — only devices that
+ * genuinely have old op-sqlite data (or are checking for the first time)
+ * pay the cost of opening op-sqlite at all. `openStandaloneSqlDriver` is
+ * still correct here (not `initSqlDriver`) for the same reason it always
+ * was: this driver is a one-time migration source, never wired into live
+ * app state.
+ */
+async function attemptOpSqliteMigrationIfNeeded(
+    dest: SqlDriver,
+): Promise<void> {
+    const existing = await getConfigRow<{ id: string }>(
+        dest,
+        "migration_status",
+        "wa-sqlite-migration",
+    );
+    if (existing) return;
+
+    try {
+        const opSqliteDriver = await openStandaloneSqlDriver(
+            "eregisters-metadata",
+        );
+        await runWaSqliteMigrationIfNeeded(opSqliteDriver, dest);
+    } catch (error) {
+        publishMigrationProgress({
+            phase: "failed",
+            error: error instanceof Error ? error.message : String(error),
+        });
     }
 }
 
@@ -100,58 +140,44 @@ const FullApp: FC<{
     const [metadataStore, setMetadataStore] = useState<MetadataStore | null>(
         null,
     );
-    const [isDuplicateTab, setIsDuplicateTab] = useState(false);
     const [sqlDriverError, setSqlDriverError] = useState<Error | null>(null);
 
     useEffect(() => {
-        // OPFS access handles are exclusive per file — a second tab trying
-        // to open the same SQLite/OPFS database throws (wayfinder ticket
-        // "How Should the App Handle OPFS's Multi-Tab Access-Handle
-        // Conflict?"). Rather than catch that error after the fact, race
-        // every tab for a lock first: the losing (duplicate) tab never
-        // calls initSqlDriver at all, so the conflict never happens. Only
-        // relevant on the SQLite/OPFS path — the Dexie path has no
-        // access-handle exclusivity problem (wayfinder ticket 005 on the
-        // dual-backend map: "no lock needed"), so it skips this dance
-        // entirely and is resolved directly below.
+        // No duplicate-tab lock dance here (op-sqlite's single-connection
+        // constraint required one; wa-sqlite's OPFSCoopSyncVFS supports
+        // multiple tabs/windows of the same browser natively — wayfinder
+        // map "Replace op-sqlite with wa-sqlite for real multi-tab
+        // support"). `single-tab-lock.ts` and its "already open in
+        // another tab" screen are gone along with it.
         async function bootstrap() {
             const setting = getBackendSetting();
             let sqliteDriver: SqlDriver | undefined;
 
             const resolved = await resolveBackend(setting, async () => {
-                const isPrimary = await requestPrimaryTab();
-                if (!isPrimary) {
-                    notifyPrimaryTabToFocus();
-                    setIsDuplicateTab(true);
-                    // Never resolves — the duplicate tab shows its own
-                    // screen and never proceeds to initialize anything.
-                    await new Promise<never>(() => {});
-                }
-                // Requires cross-origin isolation (OPFS) — the COOP/COEP
-                // header-injection patch (wayfinder ticket 012) must
-                // actually be taking effect in this deployment for this to
-                // resolve. If it isn't (unverified/misconfigured
-                // environment, or the patch's pattern-matching failed
-                // against this build's service-worker.js), this rejects
-                // rather than hanging.
-                sqliteDriver = await initSqlDriver("eregisters-metadata");
+                sqliteDriver = await createWaSqliteDriver(
+                    "eregisters-metadata",
+                );
             });
 
             if (resolved === "sqlite" && sqliteDriver) {
                 initCollections("sqlite", sqliteDriver);
                 // Fire-and-forget (wayfinder ticket "Migration and Cutover
-                // Procedure Design" decision 4: non-blocking) — copying an
-                // existing device's Dexie data into SQLite runs in the
-                // background; the app renders immediately, and a banner
-                // (subscribed to migration-progress.ts) reports status
-                // independently. A fresh install resolves this instantly
-                // (nothing to copy). This never throws — failures are
-                // caught internally and published as progress, not
-                // rejected.
-                void runDexieMigrationIfNeeded(
-                    sqliteDriver,
-                    realDexieMigrationSource,
-                );
+                // Procedure Design" decision 4: non-blocking) — the app
+                // renders immediately, a banner (subscribed to
+                // migration-progress.ts) reports status independently.
+                // Sequenced, not concurrent: both migrations write into
+                // the same `sqliteDriver`, and eregisters' current
+                // production reality is that devices are migrating from
+                // Dexie (the still-live production backend), not
+                // op-sqlite (never actually shipped to production) — see
+                // attemptOpSqliteMigrationIfNeeded's own doc comment.
+                void (async () => {
+                    await runDexieMigrationIfNeeded(
+                        sqliteDriver!,
+                        realDexieMigrationSource,
+                    );
+                    await attemptOpSqliteMigrationIfNeeded(sqliteDriver!);
+                })();
                 setSqlDriver(sqliteDriver);
                 setMetadataStore(sqliteMetadataStore(sqliteDriver));
                 setBackend("sqlite");
@@ -172,20 +198,6 @@ const FullApp: FC<{
             );
         });
     }, []);
-
-    if (isDuplicateTab) {
-        return (
-            <Spinner
-                component={
-                    <Typography.Text>
-                        This app is already open in another tab. Look for
-                        the tab titled "🔴 Switch to this tab" and switch to
-                        it — you can close this one.
-                    </Typography.Text>
-                }
-            />
-        );
-    }
 
     if (sqlDriverError) {
         return (

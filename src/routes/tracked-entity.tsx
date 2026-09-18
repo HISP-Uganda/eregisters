@@ -37,13 +37,6 @@ import React, {
     useState,
 } from "react";
 import { z } from "zod";
-import { getSqlDriver } from "../db/sqlite/instance";
-import { findEnrollmentsByTrackedEntityIn } from "../db/sqlite/row-adapters/enrollments";
-import {
-    findEventsByParentEvent,
-    findEventsByTrackedEntityIn,
-} from "../db/sqlite/row-adapters/events";
-import { findTrackedEntitiesByParentEntity } from "../db/sqlite/row-adapters/tracked-entities";
 import {
     getEnrollmentsCollection,
     getEventsCollection,
@@ -704,12 +697,17 @@ function TrackedEntityComponent() {
                 enrollment={enrollment}
                 onSave={async ({ values }) => {
                     if (values && data && enrollment) {
-                        const sqlDriver = getSqlDriver();
-
+                        // Backend-agnostic local lookups — both backends'
+                        // collections already hold this device's full
+                        // local dataset in memory for their live queries,
+                        // so filtering `.toArray` here needs no SQL-only
+                        // row-adapter (same pattern as utils.ts's cascade-
+                        // delete/resend helpers).
                         const candidateTrackedEntities =
-                            await findTrackedEntitiesByParentEntity(
-                                sqlDriver,
-                                trackedEntity.trackedEntity,
+                            trackedEntitiesCollection.toArray.filter(
+                                (te) =>
+                                    te.parentEntity ===
+                                    trackedEntity.trackedEntity,
                             );
 
                         const candidateChildTrackedEntityIds =
@@ -717,17 +715,15 @@ function TrackedEntityComponent() {
                                 (te) => te.trackedEntity,
                             );
 
-                        const [eventsByParent, eventsByChildTE] =
-                            await Promise.all([
-                                findEventsByParentEvent(
-                                    sqlDriver,
-                                    data.event,
+                        const eventsByParent = eventsCollection.toArray.filter(
+                            (event) => event.parentEvent === data.event,
+                        );
+                        const eventsByChildTE = eventsCollection.toArray.filter(
+                            (event) =>
+                                candidateChildTrackedEntityIds.includes(
+                                    event.trackedEntity,
                                 ),
-                                findEventsByTrackedEntityIn(
-                                    sqlDriver,
-                                    candidateChildTrackedEntityIds,
-                                ),
-                            ]);
+                        );
                         const candidateEventsById = new Map(
                             [...eventsByParent, ...eventsByChildTE].map(
                                 (event) => [event.event, event],
@@ -738,9 +734,11 @@ function TrackedEntityComponent() {
                         ];
 
                         const candidateEnrollments =
-                            await findEnrollmentsByTrackedEntityIn(
-                                sqlDriver,
-                                candidateChildTrackedEntityIds,
+                            enrollmentsCollection.toArray.filter(
+                                (enrollmentRow) =>
+                                    candidateChildTrackedEntityIds.includes(
+                                        enrollmentRow.trackedEntity,
+                                    ),
                             );
 
                         const {

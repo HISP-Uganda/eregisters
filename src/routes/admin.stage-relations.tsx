@@ -2,8 +2,7 @@ import { useDataEngine } from "@dhis2/app-runtime";
 import { createRoute } from "@tanstack/react-router";
 import { Button, Flex, message, Select, Table, Typography } from "antd";
 import React, { useState } from "react";
-import { putConfigRow } from "../db/sqlite/config-rows";
-import { getSqlDriver } from "../db/sqlite/instance";
+import { useMetadataStore } from "../hooks/useMetadataStore";
 import { useMetadata } from "../hooks/useMetadata";
 import { useStageHierarchyConfig } from "../hooks/useStageHierarchyConfig";
 import type { StagePair } from "../schemas";
@@ -39,6 +38,7 @@ function isReverseOf(
 
 function StageRelations() {
     const engine = useDataEngine();
+    const metadataStore = useMetadataStore();
     const { program } = useMetadata();
     const savedConfig = useStageHierarchyConfig();
     const [pairs, setPairs] = useState<StagePair[]>(savedConfig);
@@ -82,7 +82,7 @@ function StageRelations() {
                     data: { key: "stage-hierarchy", value: pairs },
                 });
             }
-            await putConfigRow(getSqlDriver(), "stage_hierarchy", {
+            await metadataStore.putRow("stage_hierarchy", {
                 id: "main",
                 config: pairs,
             });
