@@ -65,7 +65,7 @@ export const TrackerRegistration: React.FC<TrackerRegistrationProps> = ({
                 style={{ borderRadius: 0 }}
                 size="small"
             >
-                <Row gutter={[16, 16]}>
+                <Row gutter={[16, 8]}>
                     <DataElementField
                         dataElement={{
                             code: "enrolledAt",

@@ -13,7 +13,7 @@ export function SubsectionGroups<T extends { id: string }>({
     renderElement,
     sectionKey,
     hiddenFields,
-    rowGutter = [16, 16],
+    rowGutter = [16, 8],
 }: {
     items: T[];
     subsections: SubsectionConfig[] | undefined;

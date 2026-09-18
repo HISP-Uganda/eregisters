@@ -376,7 +376,7 @@ export default function MainEventCapture({
                                         hiddenFields={ruleResult.hiddenFields}
                                         getId={(de) => de.id}
                                         sectionKey={`${stage.id}-${section.id}`}
-                                        rowGutter={[16, 32]}
+                                        rowGutter={[16, 8]}
                                         renderElement={(
                                             dataElement,
                                             groupLength,
@@ -425,7 +425,7 @@ export default function MainEventCapture({
     return (
         <Flex vertical gap={10} style={{ width: "100%" }}>
             <Card size="small" styles={{ body: { padding: 10, margin: 0 } }}>
-                <Row gutter={[16, 16]}>
+                <Row gutter={[16, 8]}>
                     <DataElementField
                         dataElement={{
                             code: "occurredAt",
