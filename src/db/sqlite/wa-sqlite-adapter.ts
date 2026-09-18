@@ -19,6 +19,20 @@ import { OPFSCoopSyncVFS } from "@journeyapps/wa-sqlite/src/examples/OPFSCoopSyn
  * The `64`-byte default max OPFS pathname is too short for this app's
  * database name — mohw-nas hit this first; inherited directly rather
  * than rediscovered (`vfs.mxPathname = 256` below).
+ *
+ * Deliberately does NOT enable `PRAGMA foreign_keys=ON` (mohw-nas's
+ * adapter does) — neither the former op-sqlite driver nor `schema.ts`
+ * ever enabled FK enforcement, despite `schema.ts` declaring real
+ * `REFERENCES` constraints throughout. Enabling it here (as this file
+ * originally did, ported unreflectively from mohw-nas) surfaced a real
+ * `FOREIGN KEY constraint failed` error during a normal data pull —
+ * not a wa-sqlite bug, but this app's existing pull/merge/write
+ * ordering never actually being FK-strict-safe, silently tolerated by
+ * SQLite's off-by-default enforcement for as long as this app has
+ * existed. Matching that existing behavior (not enforcing) is the
+ * correct fix here; auditing and fixing the underlying write-ordering
+ * gap so FK enforcement could safely be turned on is real, separate,
+ * far larger work this bug report didn't ask for.
  */
 
 export type WaSqliteValue = string | number | bigint | null | Uint8Array;
@@ -89,6 +103,6 @@ export async function openWaSqliteAdapter(
         };
     };
 
-    await execute("PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON;");
+    await execute("PRAGMA synchronous=FULL;");
     return { execute };
 }
