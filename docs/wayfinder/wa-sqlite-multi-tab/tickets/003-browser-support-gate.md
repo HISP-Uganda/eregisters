@@ -1,8 +1,8 @@
 ---
 title: Browser support gate — what happens on Safari/WebKit
 type: wayfinder:grilling
-status: open
-assignee: unassigned
+status: closed
+assignee: claude-session
 blocked_by: []
 ---
 
@@ -40,4 +40,21 @@ Use `/grilling` per this map's Notes.
 
 ## Answer
 
-(resolve via grilling)
+**A failed wa-sqlite init is treated exactly like a failed op-sqlite
+init today** — automatic fallback to the Dexie backend, cached via the
+existing `OPFS_FAILURE_CACHE_KEY`/`OPFS_PROBE_CACHE_VERSION` mechanism
+in `src/db/backend.ts`. No new `backend.ts` code: `resolveBackend`'s
+`attemptSqliteInit` callback just tries opening the wa-sqlite driver
+instead of the op-sqlite driver (part of ticket 002's migration-
+procedure wiring, not a separate change), and the rest of the dual-
+backend machinery (built earlier this session) handles the rest
+unmodified.
+
+**No real Safari/iOS users exist in eregisters' current user base** —
+confirmed directly with the user. Safari's `OPFSCoopSyncVFS` failure
+(mohw-nas's own empirical finding) is therefore not a user-visible
+consequence to flag or mitigate right now; it's a latent gap that would
+only matter if/when Safari/iOS devices are actually deployed. Not
+tracked as further fog on this map — if that changes, it's a fresh
+question for whoever notices real Safari users appearing, not something
+this map needs to anticipate today.

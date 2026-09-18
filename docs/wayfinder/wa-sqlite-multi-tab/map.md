@@ -115,6 +115,7 @@ either being redirected away.
   destination.
 - [Port the wa-sqlite driver adapter into eregisters' SqlDriver interface](tickets/001-port-wa-sqlite-driver-adapter.md) — built (commit `056b9ad`): `wa-sqlite-adapter.ts`/`wa-sqlite-worker.ts`/`wa-sqlite-worker-request.ts`/`wa-sqlite-protocol.ts`/`wa-sqlite-driver.ts`, sitting alongside `op-sqlite-driver.ts`, not yet wired into `App.tsx`. Reentrant `transaction()` matches `op-sqlite-driver.ts`'s shape; `begin`/`commit`/`rollback` message types (new, not in mohw-nas's own protocol) let a transaction span several `execute` round-trips, since eregisters' row-adapters call `tx.execute()` multiple times per transaction unlike mohw-nas's opaque-message transactions. Deliberately did NOT remove `single-tab-lock.ts` or touch `App.tsx` — op-sqlite is still the live driver, that swap belongs with ticket 002. Also fixed an unrelated `@tanstack/db` transitive-dependency regression (pinned via `pnpm.overrides`), and a real worker transaction-state bug `/code-review` caught (failing `COMMIT`/`ROLLBACK` wedged `inTransaction` permanently).
 - [Design the op-sqlite -> wa-sqlite migration procedure](tickets/002-migration-procedure-design.md) — mirrors `migrate-from-dexie.ts`/`migrate-from-sqlite.ts` exactly, no divergence: completion flag on the destination (wa-sqlite) side, fire-and-forget on first boot reusing the existing `migration-progress.ts` banner, retry-from-scratch on failure, drop the old op-sqlite data immediately on success, no staged/canary rollout. Corrected this map's stated premise in the process: **op-sqlite has not actually shipped to production yet — the live production backend today is still Dexie.js** — so this migration carries the same risk profile the original Dexie→SQLite migration took, not a harder one (see the Destination/Notes correction above).
+- [Browser support gate — what happens on Safari/WebKit](tickets/003-browser-support-gate.md) — a failed wa-sqlite init is treated exactly like a failed op-sqlite init today (automatic fallback to Dexie, cached via the existing `OPFS_FAILURE_CACHE_KEY` mechanism, zero new `backend.ts` code). No real Safari/iOS users exist in eregisters' current user base, confirmed directly — Safari's `OPFSCoopSyncVFS` failure isn't a consequence to flag or mitigate right now.
 
 ## Not yet specified
 
@@ -136,8 +137,11 @@ either being redirected away.
 
 ## Out of scope
 
-- mohw-nas's fresh-start/no-legacy-import approach — does not apply;
-  eregisters has real production data.
+- mohw-nas's fresh-start/no-legacy-import approach — does not apply
+  cleanly; even though op-sqlite has no real production data yet either
+  (see ticket 002's correction), eregisters keeps its copy-and-verify
+  migration machinery regardless, to protect whatever real op-sqlite
+  data exists by the time this actually ships.
 - mohw-nas's broader coordination architecture (generation tokens,
   mutation-ID reconciliation, coordinated reset, visibility-poll
   refresh) — a different, much larger destination than this map's.
