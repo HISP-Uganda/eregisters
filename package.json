@@ -17,8 +17,6 @@
         "@ant-design/icons": "^6.3.4",
         "@dhis2/app-runtime": "^3.17.4",
         "@journeyapps/wa-sqlite": "2.0.4",
-        "@op-engineering/op-sqlite": "^18.2.0",
-        "@sqlite.org/sqlite-wasm": "3.53.0-build1",
         "@tanstack/db": "^0.8.7",
         "@tanstack/react-db": "^0.3.7",
         "@tanstack/react-router": "^1.170.33",

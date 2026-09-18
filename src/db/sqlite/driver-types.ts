@@ -1,10 +1,13 @@
 /**
- * Storage-agnostic SQL driver contract. Production code talks to op-sqlite's
- * web/OPFS backend (see op-sqlite-driver.ts); tests talk to Node's built-in
- * node:sqlite module (see test-support/node-sqlite-driver.ts) — both satisfy
- * this same interface, so schema/query/merge logic is exercised against real
- * SQL semantics in either environment (wayfinder ticket "Testing Strategy for
- * OPFS/SQLite in CI and Pre-deploy QA").
+ * Storage-agnostic SQL driver contract. Production code talks to
+ * wa-sqlite's OPFSCoopSyncVFS backend (see wa-sqlite-driver.ts); tests
+ * talk to Node's built-in node:sqlite module (see
+ * test-support/node-sqlite-driver.ts) — both satisfy this same interface,
+ * so schema/query/merge logic is exercised against real SQL semantics in
+ * either environment (wayfinder ticket "Testing Strategy for OPFS/SQLite
+ * in CI and Pre-deploy QA"). Previously op-sqlite (single-connection-only)
+ * — replaced by wa-sqlite for real multi-tab support (wayfinder map
+ * "Replace op-sqlite with wa-sqlite for real multi-tab support").
  */
 export interface SqlExecuteResult<TRow = Record<string, unknown>> {
     rows: TRow[];

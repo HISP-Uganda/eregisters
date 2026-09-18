@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { wrapWaSqliteWorker, type WaSqliteWorkerLike } from "../wa-sqlite-driver";
+import {
+    createWaSqliteDriver,
+    wrapWaSqliteWorker,
+    type WaSqliteWorkerLike,
+} from "../wa-sqlite-driver";
 import type { WaSqliteRequest, WaSqliteResponse } from "../wa-sqlite-protocol";
+import { ALL_SCHEMA_STATEMENTS } from "../schema";
 
 /**
  * Tests the request/response protocol and reentrant-transaction wrapper
@@ -176,4 +181,27 @@ describe("wa-sqlite-driver", () => {
 
         await expect(promise).rejects.toThrow("worker crashed");
     });
+
+    it(
+        "createWaSqliteDriver bootstraps the schema before returning " +
+            "(regression: the former op-sqlite driver did this via " +
+            "initSqlDriver; wa-sqlite has no equivalent built-in, so " +
+            "nothing called createSchema at all until this was added)",
+        async () => {
+            const worker = new FakeWorker();
+            const driverPromise = createWaSqliteDriver("test-db", () => worker);
+
+            // createSchema awaits each statement sequentially.
+            for (let i = 0; i < ALL_SCHEMA_STATEMENTS.length; i++) {
+                await tick();
+                worker.respondToLast();
+            }
+
+            await driverPromise;
+            expect(worker.sent).toHaveLength(ALL_SCHEMA_STATEMENTS.length);
+            expect(
+                worker.sent.every((m) => m.request.type === "execute"),
+            ).toBe(true);
+        },
+    );
 });

@@ -89,7 +89,8 @@ export function clearCachedOpfsFailure(): void {
  * browsers with no real init attempt at all. Not sufficient on its own:
  * per wayfinder ticket "OPFS support detection strategy"
  * (`docs/wayfinder/opfs-dexie-dual-backend/tickets/002-opfs-detection-strategy.md`),
- * op-sqlite exposes no capability-detection API beyond this, and the
+ * wa-sqlite (like op-sqlite before it) exposes no capability-detection
+ * API beyond this, and the
  * failure modes that actually matter (COOP/COEP misconfiguration, Safari
  * private-browsing, incognito quota caps, multi-tab access-handle
  * conflicts) only surface on a real init attempt.
@@ -104,14 +105,14 @@ export function hasOpfsCapability(): boolean {
 /**
  * Resolves which backend this device should actually use, given its
  * setting. `attemptSqliteInit` is injected (rather than calling
- * `initSqlDriver` directly) so this decision logic is unit-testable
+ * `createWaSqliteDriver` directly) so this decision logic is unit-testable
  * without a real OPFS-capable environment — production wiring is
  * `App.tsx`.
  *
  * - "sqlite"/"dexie" (forced): used as-is. A forced "sqlite" that fails to
  *   init is NOT silently downgraded to Dexie — the user explicitly asked
  *   for SQLite, so the failure surfaces (matching this app's existing
- *   "surface initSqlDriver failures instead of crashing silently"
+ *   "surface SQL driver init failures instead of crashing silently"
  *   precedent) rather than overriding their choice.
  * - "auto": `hasOpfsCapability()` fast-fails ancient browsers with no
  *   init attempt. Otherwise, a cached-and-still-valid negative result

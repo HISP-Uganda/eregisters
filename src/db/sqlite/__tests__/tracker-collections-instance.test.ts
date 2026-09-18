@@ -8,7 +8,7 @@ import {
     initTrackerCollections,
 } from ".././tracker-collections-instance";
 
-// Module-level singleton state, like instance.ts's SqlDriver singleton —
+// Module-level singleton state, like the singleton pattern the old op-sqlite driver module used —
 // these tests are ordered (throw-before-init, then init, then
 // singleton-identity-after-init) rather than independent.
 describe("tracker-collections-instance", () => {
@@ -34,7 +34,7 @@ describe("tracker-collections-instance", () => {
         expect(evt).toBeDefined();
 
         // A second driver's worth of init should be a no-op (same pattern
-        // as instance.ts's getSqlDriver singleton) — the getters keep
+        // as that same historical singleton pattern) — the getters keep
         // returning the FIRST collections created, not new ones.
         const { driver: otherDriver } = createNodeSqliteDriver();
         await createSchema(otherDriver);

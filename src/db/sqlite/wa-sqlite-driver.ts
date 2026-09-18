@@ -1,4 +1,5 @@
 import type { SqlDriver, SqlExecuteResult } from "./driver-types";
+import { createSchema } from "./schema";
 import type {
     WaSqliteRequest,
     WaSqliteRequestBody,
@@ -10,15 +11,16 @@ import type {
  * OPFSCoopSyncVFS (wayfinder ticket "Port the wa-sqlite driver adapter
  * into eregisters' SqlDriver interface",
  * `docs/wayfinder/wa-sqlite-multi-tab/tickets/001-port-wa-sqlite-driver-adapter.md`)
- * — sits alongside `op-sqlite-driver.ts` for now; nothing in `App.tsx`
- * calls this yet (that's ticket 002's migration-procedure scope).
+ * — the app's SQL driver (`src/App.tsx`'s bootstrap calls
+ * `createWaSqliteDriver` for the live sqlite backend); the former
+ * op-sqlite driver this replaced is gone.
  *
  * The actual wa-sqlite/OPFS connection lives in a dedicated per-tab
  * Worker (`wa-sqlite-worker.ts`) — every `execute` is a postMessage
- * round-trip. `transaction(fn)` mirrors `op-sqlite-driver.ts`'s
- * reentrant shape exactly (a `.transaction()` call already running
- * inside a tx-scoped driver reuses itself rather than nesting a real
- * `BEGIN`), but unlike op-sqlite — which manages this inside its own
+ * round-trip. `transaction(fn)` mirrors this repo's former op-sqlite
+ * driver's reentrant shape exactly (a `.transaction()` call already
+ * running inside a tx-scoped driver reuses itself rather than nesting a
+ * real `BEGIN`), but unlike op-sqlite — which managed this inside its own
  * opaque worker transparently — here the worker-protocol `begin`/
  * `commit`/`rollback` messages (`wa-sqlite-protocol.ts`) make that
  * explicit, since this driver owns the Worker itself.
@@ -99,7 +101,7 @@ function makeTxDriver(client: WaSqliteWorkerClient): SqlDriver {
         ) => client.request({ type: "execute", sql, params }) as Promise<
             SqlExecuteResult<TRow>
         >,
-        // Reentrant, matching op-sqlite-driver.ts: a .transaction() call
+        // Reentrant, matching this repo's former op-sqlite driver: a .transaction() call
         // already running inside a tx-scoped driver just reuses itself.
         transaction: async (fn) => fn(txDriver),
     };
@@ -136,5 +138,12 @@ export async function createWaSqliteDriver(
     name: string,
     workerFactory: () => WaSqliteWorkerLike = defaultWorkerFactory,
 ): Promise<SqlDriver> {
-    return wrapWaSqliteWorker(name, workerFactory());
+    const driver = wrapWaSqliteWorker(name, workerFactory());
+    // The former op-sqlite driver's initSqlDriver() did this on the app's
+    // behalf; wa-sqlite has no equivalent built-in schema bootstrap, so
+    // this driver must call it itself. CREATE TABLE IF NOT EXISTS
+    // throughout schema.ts makes this idempotent — safe on every call,
+    // not just first-ever open.
+    await createSchema(driver);
+    return driver;
 }

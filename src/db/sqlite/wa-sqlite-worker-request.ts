@@ -66,9 +66,9 @@ export async function handleWaSqliteRequest(
     } catch (error) {
         // A failed plain `execute` inside an open transaction leaves it
         // open — the driver is responsible for sending `rollback`
-        // (mirrors op-sqlite-driver.ts's own transaction() shape: the
-        // caller's try/catch decides commit vs rollback, this worker
-        // just executes whichever it's told). But a FAILED begin/commit/
+        // (mirrors this repo's former op-sqlite driver's transaction()
+        // shape: the caller's try/catch decides commit vs rollback, this
+        // worker just executes whichever it's told). But a FAILED begin/commit/
         // rollback itself must still clear `inTransaction` — otherwise a
         // commit/rollback that throws (e.g. a constraint violation
         // surfacing only at COMMIT) leaves this worker permanently

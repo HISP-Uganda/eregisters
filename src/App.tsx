@@ -15,14 +15,10 @@ import { initCollections } from "./db/collections";
 import { dexieMetadataStore } from "./db/dexie/metadata-store";
 import { realDexieMigrationTarget } from "./db/dexie/real-dexie-migration-target";
 import { runSqliteMigrationIfNeeded } from "./db/dexie/migrate-from-sqlite";
-import { getConfigRow } from "./db/sqlite/config-rows";
 import { realDexieMigrationSource } from "./db/sqlite/dexie-migration-source";
 import type { SqlDriver } from "./db/sqlite/driver-types";
-import { openStandaloneSqlDriver } from "./db/sqlite/instance";
 import { sqliteMetadataStore } from "./db/sqlite/metadata-store";
 import { runDexieMigrationIfNeeded } from "./db/sqlite/migrate-from-dexie";
-import { runWaSqliteMigrationIfNeeded } from "./db/sqlite/migrate-from-op-sqlite";
-import { publishMigrationProgress } from "./db/sqlite/migration-progress";
 import { createWaSqliteDriver } from "./db/sqlite/wa-sqlite-driver";
 import type { MetadataStore } from "./db/metadata-store";
 import { SyncContext } from "./machines/sync";
@@ -81,47 +77,6 @@ async function attemptReverseMigrationIfNeeded(): Promise<void> {
     }
 }
 
-/**
- * Forward migration (op-sqlite -> wa-sqlite), fire-and-forget on the
- * sqlite branch of bootstrap, sequenced after the Dexie->wa-sqlite
- * migration below (not concurrent with it — both write into the same
- * destination driver, and eregisters' current production reality is
- * that most devices are migrating from Dexie, not op-sqlite, so this
- * runs second) — wayfinder ticket "Design the op-sqlite -> wa-sqlite
- * migration procedure"
- * (`docs/wayfinder/wa-sqlite-multi-tab/tickets/002-migration-procedure-design.md`).
- *
- * Cheap "already migrated" check happens via `dest` (wa-sqlite) first,
- * same shape as `attemptReverseMigrationIfNeeded` — only devices that
- * genuinely have old op-sqlite data (or are checking for the first time)
- * pay the cost of opening op-sqlite at all. `openStandaloneSqlDriver` is
- * still correct here (not `initSqlDriver`) for the same reason it always
- * was: this driver is a one-time migration source, never wired into live
- * app state.
- */
-async function attemptOpSqliteMigrationIfNeeded(
-    dest: SqlDriver,
-): Promise<void> {
-    const existing = await getConfigRow<{ id: string }>(
-        dest,
-        "migration_status",
-        "wa-sqlite-migration",
-    );
-    if (existing) return;
-
-    try {
-        const opSqliteDriver = await openStandaloneSqlDriver(
-            "eregisters-metadata",
-        );
-        await runWaSqliteMigrationIfNeeded(opSqliteDriver, dest);
-    } catch (error) {
-        publishMigrationProgress({
-            phase: "failed",
-            error: error instanceof Error ? error.message : String(error),
-        });
-    }
-}
-
 const Main = () => {
     const syncActor = SyncContext.useActorRef();
     const engine = useDataEngine();
@@ -162,22 +117,18 @@ const FullApp: FC<{
             if (resolved === "sqlite" && sqliteDriver) {
                 initCollections("sqlite", sqliteDriver);
                 // Fire-and-forget (wayfinder ticket "Migration and Cutover
-                // Procedure Design" decision 4: non-blocking) — the app
-                // renders immediately, a banner (subscribed to
-                // migration-progress.ts) reports status independently.
-                // Sequenced, not concurrent: both migrations write into
-                // the same `sqliteDriver`, and eregisters' current
-                // production reality is that devices are migrating from
-                // Dexie (the still-live production backend), not
-                // op-sqlite (never actually shipped to production) — see
-                // attemptOpSqliteMigrationIfNeeded's own doc comment.
-                void (async () => {
-                    await runDexieMigrationIfNeeded(
-                        sqliteDriver!,
-                        realDexieMigrationSource,
-                    );
-                    await attemptOpSqliteMigrationIfNeeded(sqliteDriver!);
-                })();
+                // Procedure Design" decision 4: non-blocking) — copying an
+                // existing device's Dexie data into wa-sqlite runs in the
+                // background; the app renders immediately, and a banner
+                // (subscribed to migration-progress.ts) reports status
+                // independently. A fresh install resolves this instantly
+                // (nothing to copy). This never throws — failures are
+                // caught internally and published as progress, not
+                // rejected.
+                void runDexieMigrationIfNeeded(
+                    sqliteDriver,
+                    realDexieMigrationSource,
+                );
                 setSqlDriver(sqliteDriver);
                 setMetadataStore(sqliteMetadataStore(sqliteDriver));
                 setBackend("sqlite");

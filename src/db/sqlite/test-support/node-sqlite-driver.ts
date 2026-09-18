@@ -3,8 +3,8 @@ import type { SqlDriver, SqlExecuteResult } from "../driver-types";
 
 /**
  * Test-only SqlDriver backed by Node's built-in node:sqlite (real, in-process
- * SQL execution — not a mock). Production code uses op-sqlite's web/OPFS
- * backend (op-sqlite-driver.ts); this exists purely so schema/query/merge
+ * SQL execution — not a mock). Production code uses wa-sqlite's OPFS
+ * backend (wa-sqlite-driver.ts); this exists purely so schema/query/merge
  * logic can be exercised fast, synchronously, with zero new dependencies,
  * under Vitest's existing `environment: "node"` (wayfinder ticket "Testing
  * Strategy for OPFS/SQLite in CI and Pre-deploy QA").

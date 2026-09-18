@@ -6,20 +6,19 @@ import {
 import type { SqlDriver } from "./driver-types";
 
 /**
- * Module-level singletons for the three tracker collections, mirroring
- * `instance.ts`'s `SqlDriver` singleton pattern — necessary because
- * `createXSqliteCollection(db)` (`collections.ts`) is a factory, not a
- * ready-made value: it needs an already-created `SqlDriver`, which only
- * exists after `App.tsx`'s async `initSqlDriver()` resolves. Unlike the
- * Dexie-backed `src/collections/*.ts` exports these replace (synchronous
- * module singletons, importable anywhere at load time), every consumer of
- * these three collections must go through the `getX Collection()` getters
- * below rather than a plain import.
+ * Module-level singletons for the three tracker collections — necessary
+ * because `createXSqliteCollection(db)` (`collections.ts`) is a factory,
+ * not a ready-made value: it needs an already-created `SqlDriver`, which
+ * only exists after `App.tsx`'s async `createWaSqliteDriver()` resolves.
+ * Unlike the Dexie-backed `src/collections/*.ts` exports these replace
+ * (synchronous module singletons, importable anywhere at load time),
+ * every consumer of these three collections must go through the
+ * `getX Collection()` getters below rather than a plain import.
  *
- * All three share the SAME `SqlDriver`/database as the metadata tables
- * (`instance.ts`'s `getSqlDriver()`) — `schema.ts`'s `createSchema` already
- * creates both the tracker and metadata tables in one pass, so there is
- * only ever one SQLite database for this app, not two.
+ * All three share the SAME `SqlDriver`/database as the metadata tables —
+ * `schema.ts`'s `createSchema` (called once, inside `createWaSqliteDriver`
+ * itself) creates both the tracker and metadata tables in one pass, so
+ * there is only ever one SQL database for this app, not two.
  */
 
 type TrackedEntitiesCollection = ReturnType<
