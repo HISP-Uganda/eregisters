@@ -41,6 +41,68 @@ const commonCSS: CSSProperties = { width: "100%" };
 const zeroParser = (displayValue: string | undefined) =>
     Number(displayValue?.replace(/[^0-9]/g, "")) || 0;
 
+// Option-set Selects (single and MULTI_TEXT/multiple) default to ellipsis
+// on both the selected value and each dropdown row — long DHIS2 option
+// labels then become indistinguishable from one another. Wraps instead,
+// same approach as program-stage-capture.tsx's SELECT_WRAP_CSS (covers
+// both ant-select-single's one selection-item and ant-select-multiple's
+// per-tag selection-items).
+const OPTION_SELECT_WRAP_CLASS = "eregisters-option-select-wrap";
+const OPTION_SELECT_WRAP_POPUP_CLASS = `${OPTION_SELECT_WRAP_CLASS}-dropdown`;
+const OPTION_SELECT_WRAP_CSS = `
+.${OPTION_SELECT_WRAP_CLASS} .ant-select-selector {
+    height: auto !important;
+    min-height: 32px;
+}
+.${OPTION_SELECT_WRAP_CLASS}.ant-select-single .ant-select-selector .ant-select-selection-item,
+.${OPTION_SELECT_WRAP_CLASS}.ant-select-multiple .ant-select-selection-item-content {
+    white-space: normal !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+    line-height: 1.3 !important;
+    word-break: break-word !important;
+}
+.${OPTION_SELECT_WRAP_POPUP_CLASS} .ant-select-item-option-content {
+    white-space: normal !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+    line-height: 1.35 !important;
+    word-break: break-word !important;
+}
+`;
+
+// antd v6's Select renders the SINGLE-mode selected value inside a plain
+// <input> (read-only, for search) rather than the old div-based
+// .ant-select-selector/.ant-select-selection-item structure — CSS alone
+// can't wrap text inside an <input>. labelRender/optionRender (used the
+// same way in program-stage-capture.tsx's EditableCell) sidestep that by
+// substituting custom JSX for the selected-value display and each dropdown
+// row, independent of the Select's internal DOM.
+const optionSelectLabelRender = (labelProps: { label?: React.ReactNode }) => (
+    <span
+        style={{
+            whiteSpace: "normal",
+            wordBreak: "break-word",
+            lineHeight: 1.3,
+            display: "inline-block",
+        }}
+    >
+        {labelProps.label}
+    </span>
+);
+const optionSelectOptionRender = (option: { label?: React.ReactNode }) => (
+    <span
+        style={{
+            whiteSpace: "normal",
+            wordBreak: "break-word",
+            lineHeight: 1.35,
+            display: "block",
+        }}
+    >
+        {option.label}
+    </span>
+);
+
 export const DataElementField = React.memo<{
     dataElement: DataElement | TrackedEntityAttribute;
     hidden: boolean;
@@ -91,6 +153,12 @@ export const DataElementField = React.memo<{
                 option.code.toLowerCase().includes(input.toLowerCase())
             );
         }, []);
+
+        // Tracks whether `element` ended up as one of the option-set
+        // Selects below, so the wrap CSS can be rendered as a sibling of
+        // Form.Item (which clones its single child to inject value/onChange
+        // — a second child inside `element` itself would break that).
+        let isOptionSelect = false;
 
         let element: React.ReactNode = (
             <Input
@@ -177,9 +245,12 @@ export const DataElementField = React.memo<{
             dataElement.optionSet &&
             dataElement.valueType === "MULTI_TEXT"
         ) {
+            isOptionSelect = true;
             element = (
                 <Select
                     disabled={isDisabled}
+                    className={OPTION_SELECT_WRAP_CLASS}
+                    popupClassName={OPTION_SELECT_WRAP_POPUP_CLASS}
                     style={{ width: "100%" }}
                     options={finalOptions}
                     fieldNames={{
@@ -195,6 +266,8 @@ export const DataElementField = React.memo<{
                     menuItemSelectedIcon={(props) => (
                         <Checkbox checked={props.isSelected} />
                     )}
+                    labelRender={optionSelectLabelRender}
+                    optionRender={optionSelectOptionRender}
                 />
             );
         } else if (
@@ -241,9 +314,12 @@ export const DataElementField = React.memo<{
                 </Radio.Group>
             );
         } else if (dataElement.optionSetValue && dataElement.optionSet) {
+            isOptionSelect = true;
             element = (
                 <Select
                     disabled={isDisabled}
+                    className={OPTION_SELECT_WRAP_CLASS}
+                    popupClassName={OPTION_SELECT_WRAP_POPUP_CLASS}
                     style={{ width: "100%" }}
                     options={finalOptions}
                     fieldNames={{
@@ -255,6 +331,8 @@ export const DataElementField = React.memo<{
                         onFieldChange(dataElement.id, value);
                     }}
                     showSearch={{ filterOption }}
+                    labelRender={optionSelectLabelRender}
+                    optionRender={optionSelectOptionRender}
                 />
             );
         } else if (dataElement.valueType === "BOOLEAN") {
@@ -426,6 +504,7 @@ export const DataElementField = React.memo<{
                 xs={{ span: xs }}
                 xl={{ span: xl }}
             >
+                {isOptionSelect && <style>{OPTION_SELECT_WRAP_CSS}</style>}
                 <Form.Item
                     key={dataElement.id}
                     label={
