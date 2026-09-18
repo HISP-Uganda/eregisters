@@ -368,12 +368,23 @@ async function insertDataValues(
     dataValues: Record<string, unknown>,
     source: "local" | "server",
 ): Promise<void> {
-    for (const [dataElement, value] of Object.entries(dataValues)) {
-        await db.execute(
-            `INSERT INTO event_data_values
-                (event, data_element, value, source)
-             VALUES (?, ?, ?, ?)`,
-            [event, dataElement, value == null ? null : String(value), source],
-        );
-    }
+    const entries = Object.entries(dataValues);
+    if (entries.length === 0) return;
+    // Single multi-row INSERT instead of N serial round-trips — each
+    // execute() is a postMessage round-trip to the wa-sqlite Worker, so
+    // saving an event with many data elements one row at a time was a
+    // real, visible chunk of "why is a local-only save slow".
+    const placeholders = entries.map(() => "(?, ?, ?, ?)").join(", ");
+    const params = entries.flatMap(([dataElement, value]) => [
+        event,
+        dataElement,
+        value == null ? null : String(value),
+        source,
+    ]);
+    await db.execute(
+        `INSERT INTO event_data_values
+            (event, data_element, value, source)
+         VALUES ${placeholders}`,
+        params,
+    );
 }

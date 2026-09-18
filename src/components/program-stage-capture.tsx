@@ -340,6 +340,22 @@ const InlineEventEditor: React.FC<{
             onDone();
         } catch (err) {
             console.error("Inline save failed:", err);
+            // A rejected validateFields() can point at a field that isn't
+            // currently visible (e.g. one a program rule just hid/unhid),
+            // in which case antd shows no on-screen indicator at all — the
+            // save just silently does nothing without this. That was the
+            // "have to click Save twice" report: the first click's
+            // validation ran against a stale set of required/hidden
+            // fields while the previous field's write was still
+            // persisting; this at least tells the user something failed
+            // instead of leaving them to guess.
+            if (err && typeof err === "object" && "errorFields" in err) {
+                message.error(
+                    "Some required fields are missing — please check the form and try again.",
+                );
+            } else {
+                message.error(`Failed to save ${programStage.name}`);
+            }
         } finally {
             setSaving(false);
         }
