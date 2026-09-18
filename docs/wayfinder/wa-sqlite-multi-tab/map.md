@@ -117,8 +117,40 @@ either being redirected away.
 - [Design the op-sqlite -> wa-sqlite migration procedure](tickets/002-migration-procedure-design.md) — mirrors `migrate-from-dexie.ts`/`migrate-from-sqlite.ts` exactly, no divergence: completion flag on the destination (wa-sqlite) side, fire-and-forget on first boot reusing the existing `migration-progress.ts` banner, retry-from-scratch on failure, drop the old op-sqlite data immediately on success, no staged/canary rollout. Corrected this map's stated premise in the process: **op-sqlite has not actually shipped to production yet — the live production backend today is still Dexie.js** — so this migration carries the same risk profile the original Dexie→SQLite migration took, not a harder one (see the Destination/Notes correction above).
 - [Browser support gate — what happens on Safari/WebKit](tickets/003-browser-support-gate.md) — a failed wa-sqlite init is treated exactly like a failed op-sqlite init today (automatic fallback to Dexie, cached via the existing `OPFS_FAILURE_CACHE_KEY` mechanism, zero new `backend.ts` code). No real Safari/iOS users exist in eregisters' current user base, confirmed directly — Safari's `OPFSCoopSyncVFS` failure isn't a consequence to flag or mitigate right now.
 
+## Implementation progress
+
+All three tickets' decisions are now fully wired and built (commit
+`fbfceed`, `main`), matching this map's "Done means" criteria: `App.tsx`
+calls `createWaSqliteDriver` for the live sqlite backend path (no
+`initSqlDriver`/op-sqlite), `single-tab-lock.ts` and its duplicate-tab UI
+are deleted, and a device with existing op-sqlite data upgrades cleanly
+via the new `migrate-from-op-sqlite.ts` (sequenced after the still-live
+Dexie→SQL migration, not concurrent with it, since both write into the
+same destination). The reverse migration (used when a device switches to
+Dexie) now reads from wa-sqlite too, for consistency.
+
+Also fixed along the way: a real regression the driver swap itself
+introduced — three admin/route files called `getSqlDriver()` directly,
+which only worked because `initSqlDriver()` populated a module-level
+singleton on the old live sqlite path; once that path stopped calling
+it, those call sites would have thrown on both backends. Fixed by
+routing them through the existing `useMetadataStore()`/live-collections
+abstractions. `/code-review`'s two-axis review came back clean on both
+axes.
+
 ## Not yet specified
 
+- **Cross-tab config reactivity gap, newly real now that multi-tab
+  actually works**: `src/db/reactive-config.ts`'s same-tab-only pub/sub
+  (backing `useConfigRow.ts`, e.g. `ui_config`/`stage_hierarchy`) means a
+  config change made in one tab isn't live-reflected in another tab's UI
+  until that tab independently re-reads it — previously an accepted,
+  largely-theoretical limitation (op-sqlite's `single-tab-lock.ts` made
+  genuine multi-tab rare), now a real, observable gap on both backends.
+  Not yet sharp enough to ticket (does it need real cross-tab
+  `BroadcastChannel`-based reactivity, or is periodic/visibility-based
+  re-checking — the same pattern `__root.tsx`'s `reloadSignal` polling
+  already uses — good enough?).
 - Whether eregisters' `wa-sqlite`-backed file needs any workspace/user
   scoping in its naming the way mohw-nas's did (multi-tenant across
   DHIS2 servers within one browser profile) — eregisters' current
