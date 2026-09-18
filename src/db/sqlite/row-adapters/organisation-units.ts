@@ -21,7 +21,7 @@ type SqlRow = {
     data: string;
 };
 
-function toOrgUnit(row: SqlRow): OrgUnitRow {
+function toOrgUnit(row: SqlRow): OrgUnitRow {	
     const extra = JSON.parse(row.data) as Omit<OrgUnitRow, "id" | "name" | "path">;
     return { id: row.id, name: row.name, path: row.path, ...extra };
 }
