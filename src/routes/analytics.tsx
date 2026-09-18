@@ -417,7 +417,7 @@ function AnalyticsPage() {
                 justify="center"
                 style={{ height: "100%", minHeight: 0 }}
             >
-                <Empty description="Pick a program stage and a period above to load data" />
+                <Empty description="Pick a program stage and a period above or load saved lists to load data" />
             </Flex>
         ) : (
             <Flex

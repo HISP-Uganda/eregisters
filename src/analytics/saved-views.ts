@@ -12,6 +12,9 @@ export interface SavedLineListView {
     programId: string;
     name: string;
     createdAt: string;
+    /** Set when the view is overwritten with a fresh snapshot via the
+     * "Update" action, keeping the original `createdAt`/`id`/`name`. */
+    updatedAt?: string;
     filters: AnalyticsFilters;
     visibleColumnKeys: string[];
     tableState: LineListTableState;

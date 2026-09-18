@@ -2,6 +2,7 @@ import {
     DeleteOutlined,
     FolderOpenOutlined,
     PlusOutlined,
+    SyncOutlined,
 } from "@ant-design/icons";
 import { Alert, Button, Empty, Flex, Input, Modal, Typography } from "antd";
 import React, { useState } from "react";
@@ -65,6 +66,17 @@ export function SavedViewsModal({
         onLoad(view);
         setOpen(false);
     };
+    // Overwrites this view's filters/columns/table state with whatever is
+    // currently on screen, keeping its id/name/createdAt — the way to
+    // "update a saved view with the current selections and filters"
+    // without creating a duplicate entry.
+    const update = (view: SavedLineListView) => {
+        onSave({
+            ...view,
+            ...buildSnapshot(),
+            updatedAt: new Date().toISOString(),
+        });
+    };
 
     return (
         <>
@@ -76,11 +88,11 @@ export function SavedViewsModal({
                     setError(null);
                 }}
             >
-                Saved views
+                Saved lists
                 {views.length > 0 ? ` (${views.length})` : ""}
             </Button>
             <Modal
-                title="Saved views"
+                title="Saved lists"
                 open={open}
                 onCancel={() => setOpen(false)}
                 footer={null}
@@ -133,26 +145,36 @@ export function SavedViewsModal({
                                                 }}
                                                 onClick={() => load(view)}
                                             >
-                                                <Text strong>
-                                                    {view.name}
-                                                </Text>
+                                                <Text strong>{view.name}</Text>
                                                 <Text
                                                     type="secondary"
                                                     style={{ fontSize: 12 }}
                                                 >
-                                                    {new Date(
-                                                        view.createdAt,
-                                                    ).toLocaleString()}
+                                                    {view.updatedAt
+                                                        ? `Updated ${new Date(view.updatedAt).toLocaleString()}`
+                                                        : new Date(
+                                                              view.createdAt,
+                                                          ).toLocaleString()}
                                                 </Text>
                                             </Flex>
-                                            <Button
-                                                danger
-                                                type="text"
-                                                icon={<DeleteOutlined />}
-                                                onClick={() =>
-                                                    onDelete(view.id)
-                                                }
-                                            />
+                                            <Flex gap={4}>
+                                                <Button
+                                                    type="text"
+                                                    icon={<SyncOutlined />}
+                                                    title="Update this view with the current selections and filters"
+                                                    onClick={() =>
+                                                        update(view)
+                                                    }
+                                                />
+                                                <Button
+                                                    danger
+                                                    type="text"
+                                                    icon={<DeleteOutlined />}
+                                                    onClick={() =>
+                                                        onDelete(view.id)
+                                                    }
+                                                />
+                                            </Flex>
                                         </Flex>
                                     ))}
                                 </Flex>
