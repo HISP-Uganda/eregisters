@@ -120,13 +120,11 @@ export async function getEventById(
 ): Promise<FlattenedEvent | undefined> {
     const [parent, dataValueRows, usersByUid] = await Promise.all([
         db.execute<EventParentRow>(
-            `SELECT ${PARENT_COLUMNS}
-             FROM events WHERE event = ?`,
+            `SELECT ${PARENT_COLUMNS} FROM events WHERE event = ?`,
             [event],
         ),
         db.execute<DataValueRow>(
-            `SELECT ${DATA_VALUE_COLUMNS}
-             FROM event_data_values WHERE event = ?`,
+            `SELECT ${DATA_VALUE_COLUMNS} FROM event_data_values WHERE event = ?`,
             [event],
         ),
         loadUsersByUid(db),
@@ -145,7 +143,9 @@ async function loadMany(
             `SELECT ${PARENT_COLUMNS} FROM events WHERE ${whereClause}`,
             params,
         ),
-        db.execute<DataValueRow>(`SELECT ${DATA_VALUE_COLUMNS} FROM event_data_values`),
+        db.execute<DataValueRow>(
+            `SELECT ${DATA_VALUE_COLUMNS} FROM event_data_values`,
+        ),
         loadUsersByUid(db),
     ]);
     const dataValuesByEvent = new Map<string, DataValueRow[]>();
@@ -155,7 +155,11 @@ async function loadMany(
         dataValuesByEvent.set(dv.event, bucket);
     }
     return parents.rows.map((parent) =>
-        reassemble(parent, dataValuesByEvent.get(parent.event) ?? [], usersByUid),
+        reassemble(
+            parent,
+            dataValuesByEvent.get(parent.event) ?? [],
+            usersByUid,
+        ),
     );
 }
 
@@ -190,7 +194,11 @@ export function findEventsByTrackedEntityIn(
 ): Promise<FlattenedEvent[]> {
     if (trackedEntityIds.length === 0) return Promise.resolve([]);
     const placeholders = trackedEntityIds.map(() => "?").join(", ");
-    return loadMany(db, `tracked_entity IN (${placeholders})`, trackedEntityIds);
+    return loadMany(
+        db,
+        `tracked_entity IN (${placeholders})`,
+        trackedEntityIds,
+    );
 }
 
 /** Backs sync.ts's pending/failed/deleted scans (`processBatchSync`). */
@@ -294,7 +302,7 @@ export const eventsRowAdapter: RowAdapter<FlattenedEvent, string> = {
                     completed_at = ?, created_by_uid = ?, updated_by_uid = ?,
                     notes = ?, last_synced = ?, sync_error = ?, version = ?,
                     sync_status = ?
-                 WHERE event = ?`,
+                WHERE event = ?`,
                 [
                     row.status,
                     row.program,
@@ -322,10 +330,9 @@ export const eventsRowAdapter: RowAdapter<FlattenedEvent, string> = {
                     row.event,
                 ],
             );
-            await tx.execute(
-                "DELETE FROM event_data_values WHERE event = ?",
-                [row.event],
-            );
+            await tx.execute("DELETE FROM event_data_values WHERE event = ?", [
+                row.event,
+            ]);
             await insertDataValues(
                 tx,
                 row.event,
@@ -337,10 +344,9 @@ export const eventsRowAdapter: RowAdapter<FlattenedEvent, string> = {
 
     deleteRow: async (db, key) => {
         await db.transaction(async (tx) => {
-            await tx.execute(
-                "DELETE FROM event_data_values WHERE event = ?",
-                [key],
-            );
+            await tx.execute("DELETE FROM event_data_values WHERE event = ?", [
+                key,
+            ]);
             // indicator_evaluations is a separate computed-cache table
             // (Dexie's equivalent: db.indicatorEvaluations.where("eventId")
             // .equals(id).delete()) keyed 1:1 to an event — deleting it here,
@@ -382,9 +388,7 @@ async function insertDataValues(
         source,
     ]);
     await db.execute(
-        `INSERT INTO event_data_values
-            (event, data_element, value, source)
-         VALUES ${placeholders}`,
+        `INSERT INTO event_data_values (event, data_element, value, source) VALUES ${placeholders}`,
         params,
     );
 }

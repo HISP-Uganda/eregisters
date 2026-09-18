@@ -17,7 +17,7 @@ import type { SqlDriver } from "./driver-types";
  * created here.
  */
 
-export const TRACKER_SCHEMA_STATEMENTS: readonly string[] = [
+const TRACKER_SCHEMA_STATEMENTS: readonly string[] = [
     `CREATE TABLE IF NOT EXISTS users (
         uid TEXT PRIMARY KEY,
         username TEXT,
@@ -172,7 +172,7 @@ export const UNIFORM_METADATA_TABLES: readonly string[] = [
     "migration_status",
 ];
 
-export const METADATA_SCHEMA_STATEMENTS: readonly string[] = [
+const METADATA_SCHEMA_STATEMENTS: readonly string[] = [
     ...UNIFORM_METADATA_TABLES.map(
         (table) =>
             `CREATE TABLE IF NOT EXISTS ${table} (id TEXT PRIMARY KEY, data TEXT NOT NULL)`,

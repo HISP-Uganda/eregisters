@@ -91,13 +91,11 @@ export async function getTrackedEntityById(
 ): Promise<FlattenedTrackedEntity | undefined> {
     const [parent, attributeRows, usersByUid] = await Promise.all([
         db.execute<TrackedEntityParentRow>(
-            `SELECT ${PARENT_COLUMNS}
-             FROM tracked_entities WHERE tracked_entity = ?`,
+            `SELECT ${PARENT_COLUMNS} FROM tracked_entities WHERE tracked_entity = ?`,
             [trackedEntity],
         ),
         db.execute<AttributeRow>(
-            `SELECT ${ATTRIBUTE_COLUMNS}
-             FROM tracked_entity_attributes WHERE tracked_entity = ?`,
+            `SELECT ${ATTRIBUTE_COLUMNS} FROM tracked_entity_attributes WHERE tracked_entity = ?`,
             [trackedEntity],
         ),
         loadUsersByUid(db),
@@ -116,7 +114,9 @@ async function loadMany(
             `SELECT ${PARENT_COLUMNS} FROM tracked_entities WHERE ${whereClause}`,
             params,
         ),
-        db.execute<AttributeRow>(`SELECT ${ATTRIBUTE_COLUMNS} FROM tracked_entity_attributes`),
+        db.execute<AttributeRow>(
+            `SELECT ${ATTRIBUTE_COLUMNS} FROM tracked_entity_attributes`,
+        ),
         loadUsersByUid(db),
     ]);
     const attributesByEntity = new Map<string, AttributeRow[]>();
@@ -200,7 +200,7 @@ export const trackedEntitiesRowAdapter: RowAdapter<
                     updated_at, created_by_uid, updated_by_uid, inactive,
                     deleted, potential_duplicate, parent_entity, last_synced,
                     sync_error, version, sync_status
-                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                 [
                     row.trackedEntity,
                     row.trackedEntityType,
@@ -299,7 +299,7 @@ async function insertAttributes(
         await db.execute(
             `INSERT INTO tracked_entity_attributes
                 (tracked_entity, attribute, value, source)
-             VALUES (?, ?, ?, ?)`,
+            VALUES (?, ?, ?, ?)`,
             [
                 trackedEntity,
                 attribute,

@@ -86,8 +86,7 @@ export async function getEnrollmentById(
 ): Promise<FlattenedEnrollment | undefined> {
     const [parent, attributeRows, usersByUid] = await Promise.all([
         db.execute<EnrollmentParentRow>(
-            `SELECT ${PARENT_COLUMNS}
-             FROM enrollments WHERE enrollment = ?`,
+            `SELECT ${PARENT_COLUMNS} FROM enrollments WHERE enrollment = ?`,
             [enrollment],
         ),
         db.execute<AttributeRow>(
@@ -110,7 +109,9 @@ async function loadMany(
             `SELECT ${PARENT_COLUMNS} FROM enrollments WHERE ${whereClause}`,
             params,
         ),
-        db.execute<AttributeRow>(`SELECT ${ATTRIBUTE_COLUMNS} FROM enrollment_attributes`),
+        db.execute<AttributeRow>(
+            `SELECT ${ATTRIBUTE_COLUMNS} FROM enrollment_attributes`,
+        ),
         loadUsersByUid(db),
     ]);
     const attributesByEnrollment = new Map<string, AttributeRow[]>();
@@ -143,7 +144,11 @@ export function findEnrollmentsByTrackedEntityIn(
 ): Promise<FlattenedEnrollment[]> {
     if (trackedEntityIds.length === 0) return Promise.resolve([]);
     const placeholders = trackedEntityIds.map(() => "?").join(", ");
-    return loadMany(db, `tracked_entity IN (${placeholders})`, trackedEntityIds);
+    return loadMany(
+        db,
+        `tracked_entity IN (${placeholders})`,
+        trackedEntityIds,
+    );
 }
 
 /** Backs sync.ts's pending/failed/deleted scans (`processBatchSync`). */
@@ -299,7 +304,12 @@ async function insertAttributes(
             `INSERT INTO enrollment_attributes
                 (enrollment, attribute, value, source)
              VALUES (?, ?, ?, ?)`,
-            [enrollment, attribute, value == null ? null : String(value), source],
+            [
+                enrollment,
+                attribute,
+                value == null ? null : String(value),
+                source,
+            ],
         );
     }
 }
