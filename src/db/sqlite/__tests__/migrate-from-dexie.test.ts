@@ -10,6 +10,7 @@ import type { SyncState } from "../../index";
 import { createNodeSqliteDriver } from ".././test-support/node-sqlite-driver";
 import { createSchema } from ".././schema";
 import { getConfigRow } from ".././config-rows";
+import { sqliteMetadataStore } from ".././metadata-store";
 import {
     initTrackerCollections,
     resetTrackerCollectionsForTests,
@@ -127,6 +128,7 @@ class FakeDexieMigrationSource implements DexieMigrationSource {
             hmisDrafts?: HmisDraft[];
             syncState?: SyncState;
             metadataVersion?: MetadataVersion;
+            metadataTables?: Record<string, unknown[]>;
             present?: boolean;
             failReadEvents?: boolean;
         } = {},
@@ -155,6 +157,9 @@ class FakeDexieMigrationSource implements DexieMigrationSource {
     }
     async readMetadataVersion(): Promise<MetadataVersion | undefined> {
         return this.data.metadataVersion;
+    }
+    async readMetadataTables(): Promise<Record<string, unknown[]>> {
+        return this.data.metadataTables ?? {};
     }
     async dropAll(): Promise<void> {
         this.dropAllCalls++;
@@ -275,6 +280,47 @@ describe("runDexieMigrationIfNeeded", () => {
             expect(storedMetadataVersion?.lastSync).toBe(
                 "2026-01-03T00:00:00Z",
             );
+        } finally {
+            close();
+        }
+    });
+
+    it("copies generic metadata tables (uniform id+data and composite-key tables) into sqlite", async () => {
+        const { driver, close } = await setUp();
+        try {
+            const source = new FakeDexieMigrationSource({
+                trackedEntities: [makeTrackedEntity()],
+                metadataTables: {
+                    programs: [
+                        { id: "prog-1", name: "Program 1", programType: "WITH_REGISTRATION" },
+                    ],
+                    organisation_units: [
+                        { id: "ou-1", name: "OU 1", path: "/ou-1" },
+                    ],
+                    option_sets: [
+                        { id: "os-row-1", optionSet: "optset-1", name: "opt" },
+                    ],
+                },
+            });
+
+            await runDexieMigrationIfNeeded(driver, source);
+
+            const store = sqliteMetadataStore(driver);
+            const programs = await store.listRows<{ id: string }>("programs");
+            expect(programs).toHaveLength(1);
+            expect(programs[0]?.id).toBe("prog-1");
+
+            const orgUnits = await store.listRows<{ id: string }>(
+                "organisation_units",
+            );
+            expect(orgUnits).toHaveLength(1);
+            expect(orgUnits[0]?.id).toBe("ou-1");
+
+            const optionSets = await store.listRows<{ id: string }>(
+                "option_sets",
+            );
+            expect(optionSets).toHaveLength(1);
+            expect(optionSets[0]?.id).toBe("os-row-1");
         } finally {
             close();
         }

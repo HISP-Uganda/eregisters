@@ -12,13 +12,15 @@ import type { DexieMigrationSource } from "./migrate-from-dexie";
 /**
  * `dexieMetadataStore()`'s own database (`src/db/dexie/metadata-store.ts`)
  * — a single `rows` table keyed by `[table+id]`, holding `sync_state`,
- * `metadata_versions`, `ui_config`, `stage_hierarchy`, etc. Not in
- * `DEXIE_DATABASE_NAMES`/`dropAll()` below: only `sync_state` and
- * `metadata_versions` are read out of it here (this app's re-derivable
- * metadata, like `ui_config`, is deliberately left for the ordinary
- * sync flow to repopulate, not copied) — dropping the whole database
- * would need the same "copy everything relevant first" discipline the
- * other 5 databases get, which this migration doesn't attempt.
+ * `metadata_versions`, `programs`, `data_elements`, `ui_config`,
+ * `stage_hierarchy`, etc. `readMetadataTables()` (below) copies all of
+ * it into sqlite (via `migrate-from-dexie.ts`'s `GENERIC_METADATA_TABLES`/
+ * `COMPOSITE_METADATA_TABLE_KEYS`) so a device doesn't start on wa-sqlite
+ * with empty metadata tables. This database is still deliberately NOT in
+ * `DEXIE_DATABASE_NAMES`/`dropAll()` below, though: unlike the 5 databases
+ * that are dropped, nothing here verifies row counts after copying (it's
+ * re-derivable from DHIS2 either way), so leaving the Dexie copy in place
+ * is the safer failure mode if a row was silently missed.
  */
 async function readMetadataRow<T>(
     table: string,
@@ -126,6 +128,27 @@ export const realDexieMigrationSource: DexieMigrationSource = {
             "metadata_versions",
             "metadata-version",
         );
+    },
+
+    async readMetadataTables(): Promise<Record<string, unknown[]>> {
+        if (!(await Dexie.exists("MOHRegister_Metadata"))) return {};
+        const handle = new Dexie("MOHRegister_Metadata");
+        try {
+            await handle.open();
+            const allRows = await handle
+                .table<
+                    { table: string; id: string; data: unknown },
+                    [string, string]
+                >("rows")
+                .toArray();
+            const byTable: Record<string, unknown[]> = {};
+            for (const row of allRows) {
+                (byTable[row.table] ??= []).push(row.data);
+            }
+            return byTable;
+        } finally {
+            handle.close();
+        }
     },
 
     async dropAll(): Promise<void> {

@@ -2,6 +2,8 @@ import type { HmisDraft } from "../hmis-drafts";
 import type {
     FlattenedEnrollment,
     FlattenedEvent,
+    FlattenedOptionGroup,
+    FlattenedOptionSet,
     FlattenedTrackedEntity,
     MetadataVersion,
 } from "../../schemas";
@@ -13,13 +15,50 @@ import {
     deleteTrackedEntityCascade,
 } from "./delete-cascade";
 import type { SqlDriver } from "./driver-types";
+import { sqliteMetadataStore } from "./metadata-store";
 import { publishMigrationProgress } from "./migration-progress";
+import { optionGroupKey } from "./row-adapters/option-groups";
+import { optionSetKey } from "./row-adapters/option-sets";
 import { saveMetadataTable } from "./save-metadata";
 import {
     getEnrollmentsCollection,
     getEventsCollection,
     getTrackedEntitiesCollection,
 } from "./tracker-collections-instance";
+
+/**
+ * Every other live DHIS2-metadata table in `MOHRegister_Metadata`, beyond
+ * `sync_state`/`metadata_versions` (handled separately above — single
+ * config rows, not lists) and `hmis_drafts`/`migration_status` (handled
+ * elsewhere / sqlite-only). Mirrors the table list
+ * `resetMetadataDatabaseGeneric` (`../metadata-operations.ts`) treats as
+ * "all metadata" for the uniform id+data tables, plus the real-column
+ * `organisation_units` table — all reachable via `MetadataStore.putRow`,
+ * so `sqliteMetadataStore` is reused here rather than hand-rolling SQL.
+ * This is device-independent, re-derivable-from-DHIS2 data (unlike
+ * tracker rows/hmisDrafts), so — like sync_state/metadata_versions — it's
+ * copied best-effort with no per-row verification: a gap here just means
+ * the next ordinary metadata sync fills it in.
+ */
+const GENERIC_METADATA_TABLES = [
+    "programs",
+    "data_elements",
+    "tracked_entity_attribute_definitions",
+    "program_indicators",
+    "program_rules",
+    "program_rule_variables",
+    "category_option_combos",
+    "data_sets",
+    "organisation_units",
+    "ui_config",
+    "stage_hierarchy",
+] as const;
+
+/** The two composite-primary-key tables — see `../metadata-store.ts`'s doc comment. */
+const COMPOSITE_METADATA_TABLE_KEYS: Record<string, (row: never) => string> = {
+    option_sets: (row) => optionSetKey(row as FlattenedOptionSet),
+    option_groups: (row) => optionGroupKey(row as FlattenedOptionGroup),
+};
 
 /**
  * One-time copy of a device's EXISTING local Dexie data into the SQLite
@@ -47,6 +86,12 @@ export interface DexieMigrationSource {
     readSyncState(): Promise<SyncState | undefined>;
     /** `metadata_versions`/id `"metadata-version"` — carries `lastSync` (lastMetadataPull). */
     readMetadataVersion(): Promise<MetadataVersion | undefined>;
+    /**
+     * Every row of every other live metadata table in `MOHRegister_Metadata`
+     * (see `GENERIC_METADATA_TABLES`/`COMPOSITE_METADATA_TABLE_KEYS`),
+     * grouped by table name. Empty object when the database doesn't exist.
+     */
+    readMetadataTables(): Promise<Record<string, unknown[]>>;
     /** Drops all 5 old Dexie databases, including the always-empty RuleResults one. */
     dropAll(): Promise<void>;
 }
@@ -263,6 +308,28 @@ export async function runDexieMigrationIfNeeded(
         }
         if (metadataVersion) {
             await putConfigRow(db, "metadata_versions", metadataVersion);
+        }
+
+        const metadataTables = await source.readMetadataTables();
+        const sqliteMetadata = sqliteMetadataStore(db);
+        for (const table of GENERIC_METADATA_TABLES) {
+            for (const row of metadataTables[table] ?? []) {
+                await sqliteMetadata.putRow(
+                    table,
+                    row as { id: string },
+                );
+            }
+        }
+        for (const [table, keyOf] of Object.entries(
+            COMPOSITE_METADATA_TABLE_KEYS,
+        )) {
+            for (const row of metadataTables[table] ?? []) {
+                await sqliteMetadata.putRow(
+                    table,
+                    row as { id: string },
+                    keyOf(row as never),
+                );
+            }
         }
 
         publishMigrationProgress({ phase: "verifying" });
