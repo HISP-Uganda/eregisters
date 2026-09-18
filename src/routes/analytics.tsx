@@ -503,52 +503,61 @@ function AnalyticsPage() {
                                 />
                             </Flex>
                         ),
-                        children:
-                            datasetState.status !== "ready" ? (
-                                datasetPlaceholder
-                            ) : (
-                                <Flex
-                                    vertical
-                                    gap="middle"
-                                    style={{ height: "100%", minHeight: 0 }}
-                                >
-                                    <Flex gap="middle" wrap justify="flex-end">
-                                        <ColumnChooser
-                                            columns={columnsWithComputed}
-                                            visibleColumnKeys={
-                                                effectiveVisibleColumnKeys
-                                            }
-                                            onChange={setVisibleColumnKeys}
-                                        />
-                                        <ComputedColumnModal
-                                            programId={filters.programId}
-                                            numericColumns={numericSourceColumns}
-                                            definitions={computedColumnDefinitions}
-                                            onSave={handleSaveComputedColumn}
-                                            onDelete={removeComputedColumn}
-                                        />
-                                        <SavedViewsModal
-                                            views={savedViews}
-                                            onSave={saveView}
-                                            onLoad={loadSavedView}
-                                            onDelete={removeSavedView}
-                                            buildSnapshot={buildSavedViewSnapshot}
-                                        />
-                                        <Button
-                                            icon={<DownloadOutlined />}
-                                            onClick={() =>
-                                                writeWorkbookFile(
-                                                    exportLineListWorkbook({
-                                                        columns: exportableVisibleColumns,
-                                                        rows: filteredRows,
-                                                    }),
-                                                    "analytics-line-list.xlsx",
-                                                )
-                                            }
-                                        >
-                                            Export
-                                        </Button>
-                                    </Flex>
+                        // Only the actual table (and its Export, which reads
+                        // straight off the loaded rows) needs a dataset —
+                        // Columns/Computed columns/Saved views all operate on
+                        // state that already exists before any period is
+                        // picked (an empty column list, this program's saved
+                        // computed-column/view definitions), so they stay
+                        // usable the whole time, e.g. to reopen a saved view
+                        // that itself sets the period.
+                        children: (
+                            <Flex
+                                vertical
+                                gap="middle"
+                                style={{ height: "100%", minHeight: 0 }}
+                            >
+                                <Flex gap="middle" wrap justify="flex-end">
+                                    <ColumnChooser
+                                        columns={columnsWithComputed}
+                                        visibleColumnKeys={
+                                            effectiveVisibleColumnKeys
+                                        }
+                                        onChange={setVisibleColumnKeys}
+                                    />
+                                    <ComputedColumnModal
+                                        programId={filters.programId}
+                                        numericColumns={numericSourceColumns}
+                                        definitions={computedColumnDefinitions}
+                                        onSave={handleSaveComputedColumn}
+                                        onDelete={removeComputedColumn}
+                                    />
+                                    <SavedViewsModal
+                                        views={savedViews}
+                                        onSave={saveView}
+                                        onLoad={loadSavedView}
+                                        onDelete={removeSavedView}
+                                        buildSnapshot={buildSavedViewSnapshot}
+                                    />
+                                    <Button
+                                        icon={<DownloadOutlined />}
+                                        disabled={datasetState.status !== "ready"}
+                                        onClick={() =>
+                                            writeWorkbookFile(
+                                                exportLineListWorkbook({
+                                                    columns: exportableVisibleColumns,
+                                                    rows: filteredRows,
+                                                }),
+                                                "analytics-line-list.xlsx",
+                                            )
+                                        }
+                                    >
+                                        Export
+                                    </Button>
+                                </Flex>
+                                {datasetState.status !== "ready" ? (
+                                    datasetPlaceholder
+                                ) : (
                                     <LineListTable
                                         columns={columnsWithComputed}
                                         rows={computedRows}
@@ -562,8 +571,9 @@ function AnalyticsPage() {
                                         onOpenTrackedEntity={openTrackedEntity}
                                         onOpenEvent={openEvent}
                                     />
-                                </Flex>
-                            ),
+                                )}
+                            </Flex>
+                        ),
                     },
                     {
                         key: "pivot",
