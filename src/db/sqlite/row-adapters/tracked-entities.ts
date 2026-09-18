@@ -157,11 +157,51 @@ export function findTrackedEntitiesBySyncStatusIn(
     return loadMany(db, `sync_status IN (${placeholders})`, statuses);
 }
 
+/**
+ * Backs `collection-adapter.ts`'s scoped reloadAndDiff — unlike `loadMany`
+ * (whose attribute-table read is always unfiltered), this filters BOTH
+ * tables by the given keys, so a single-row write reloads O(1) rows
+ * instead of the whole collection.
+ */
+async function loadByKeys(
+    db: SqlDriver,
+    keys: readonly string[],
+): Promise<FlattenedTrackedEntity[]> {
+    if (keys.length === 0) return [];
+    const placeholders = keys.map(() => "?").join(", ");
+    const [parents, attributeRows, usersByUid] = await Promise.all([
+        db.execute<TrackedEntityParentRow>(
+            `SELECT ${PARENT_COLUMNS} FROM tracked_entities WHERE tracked_entity IN (${placeholders})`,
+            keys,
+        ),
+        db.execute<AttributeRow>(
+            `SELECT ${ATTRIBUTE_COLUMNS} FROM tracked_entity_attributes WHERE tracked_entity IN (${placeholders})`,
+            keys,
+        ),
+        loadUsersByUid(db),
+    ]);
+    const attributesByEntity = new Map<string, AttributeRow[]>();
+    for (const attr of attributeRows.rows) {
+        const bucket = attributesByEntity.get(attr.tracked_entity) ?? [];
+        bucket.push(attr);
+        attributesByEntity.set(attr.tracked_entity, bucket);
+    }
+    return parents.rows.map((parent) =>
+        reassemble(
+            parent,
+            attributesByEntity.get(parent.tracked_entity) ?? [],
+            usersByUid,
+        ),
+    );
+}
+
 export const trackedEntitiesRowAdapter: RowAdapter<
     FlattenedTrackedEntity,
     string
 > = {
     rowVersion: (row) => row.updatedAt,
+
+    loadByKeys,
 
     loadAll: async (db) => {
         const [parents, attributeRows, usersByUid] = await Promise.all([

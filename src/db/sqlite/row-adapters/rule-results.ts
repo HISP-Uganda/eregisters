@@ -65,6 +65,20 @@ function serializedValues(row: RuleResult): unknown[] {
 export const ruleResultsRowAdapter: RowAdapter<RuleResult, string> = {
     rowVersion: () => "",
 
+    loadByKeys: async (db, keys) => {
+        if (keys.length === 0) return [];
+        const placeholders = keys.map(() => "?").join(", ");
+        const result = await db.execute<RuleResultRow>(
+            `SELECT id, assignments, hidden_fields, shown_fields,
+                    hidden_sections, shown_sections, mandatory_fields,
+                    hidden_options, shown_options, hidden_option_groups,
+                    shown_option_groups, errors, warnings, messages
+             FROM rule_results WHERE id IN (${placeholders})`,
+            keys,
+        );
+        return result.rows.map(toRuleResult);
+    },
+
     loadAll: async (db) => {
         const result = await db.execute<RuleResultRow>(
             `SELECT id, assignments, hidden_fields, shown_fields,

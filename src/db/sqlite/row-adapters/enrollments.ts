@@ -160,8 +160,48 @@ export function findEnrollmentsBySyncStatusIn(
     return loadMany(db, `sync_status IN (${placeholders})`, statuses);
 }
 
+/**
+ * Backs `collection-adapter.ts`'s scoped reloadAndDiff — unlike `loadMany`
+ * (whose attribute-table read is always unfiltered), this filters BOTH
+ * tables by the given keys, so a single-row write reloads O(1) rows
+ * instead of the whole collection.
+ */
+async function loadByKeys(
+    db: SqlDriver,
+    keys: readonly string[],
+): Promise<FlattenedEnrollment[]> {
+    if (keys.length === 0) return [];
+    const placeholders = keys.map(() => "?").join(", ");
+    const [parents, attributeRows, usersByUid] = await Promise.all([
+        db.execute<EnrollmentParentRow>(
+            `SELECT ${PARENT_COLUMNS} FROM enrollments WHERE enrollment IN (${placeholders})`,
+            keys,
+        ),
+        db.execute<AttributeRow>(
+            `SELECT ${ATTRIBUTE_COLUMNS} FROM enrollment_attributes WHERE enrollment IN (${placeholders})`,
+            keys,
+        ),
+        loadUsersByUid(db),
+    ]);
+    const attributesByEnrollment = new Map<string, AttributeRow[]>();
+    for (const attr of attributeRows.rows) {
+        const bucket = attributesByEnrollment.get(attr.enrollment) ?? [];
+        bucket.push(attr);
+        attributesByEnrollment.set(attr.enrollment, bucket);
+    }
+    return parents.rows.map((parent) =>
+        reassemble(
+            parent,
+            attributesByEnrollment.get(parent.enrollment) ?? [],
+            usersByUid,
+        ),
+    );
+}
+
 export const enrollmentsRowAdapter: RowAdapter<FlattenedEnrollment, string> = {
     rowVersion: (row) => row.updatedAt,
+
+    loadByKeys,
 
     loadAll: async (db) => {
         const [parents, attributeRows, usersByUid] = await Promise.all([

@@ -398,4 +398,111 @@ describe("sqliteCollectionOptions", () => {
             { id: "a", label: "written directly", version: 1 },
         ]);
     });
+
+    describe("scoped reload (row adapter implements loadByKeys)", () => {
+        function scopedRowAdapter(): RowAdapter<SimpleRow, string> & {
+            loadAllCalls: number;
+            loadByKeysCalls: string[][];
+        } {
+            const base = simpleRowAdapter();
+            const tracked = {
+                ...base,
+                loadAllCalls: 0,
+                loadByKeysCalls: [] as string[][],
+                loadAll: async (db: Parameters<typeof base.loadAll>[0]) => {
+                    tracked.loadAllCalls++;
+                    return base.loadAll(db);
+                },
+                loadByKeys: async (
+                    db: Parameters<typeof base.loadAll>[0],
+                    keys: readonly string[],
+                ) => {
+                    tracked.loadByKeysCalls.push([...keys]);
+                    if (keys.length === 0) return [];
+                    const placeholders = keys.map(() => "?").join(", ");
+                    const result = await db.execute<SimpleRow>(
+                        `SELECT id, label, version FROM simple_rows WHERE id IN (${placeholders})`,
+                        keys,
+                    );
+                    return result.rows;
+                },
+            };
+            return tracked;
+        }
+
+        it("ordinary insert/update/delete only reload the affected key, not the whole table", async () => {
+            const { driver, close: c } = await setUp();
+            close = c;
+
+            const rowAdapter = scopedRowAdapter();
+            const collection = createCollection(
+                sqliteCollectionOptions<SimpleRow, string>({
+                    id: "test-scoped-crud",
+                    db: driver,
+                    getKey: (row) => row.id,
+                    row: rowAdapter,
+                }),
+            );
+            await collection.toArrayWhenReady();
+            // Initial sync() always does one full loadAll.
+            expect(rowAdapter.loadAllCalls).toBe(1);
+
+            const insertTx = collection.insert({
+                id: "a",
+                label: "one",
+                version: 1,
+            });
+            await insertTx.isPersisted.promise;
+            expect(plain(collection.toArray)).toEqual([
+                { id: "a", label: "one", version: 1 },
+            ]);
+            expect(rowAdapter.loadAllCalls).toBe(1);
+            expect(rowAdapter.loadByKeysCalls.at(-1)).toEqual(["a"]);
+
+            const updateTx = collection.update("a", (draft) => {
+                draft.label = "two";
+            });
+            await updateTx.isPersisted.promise;
+            expect(plain(collection.toArray)).toEqual([
+                { id: "a", label: "two", version: 1 },
+            ]);
+            expect(rowAdapter.loadAllCalls).toBe(1);
+
+            const deleteTx = collection.delete("a");
+            await deleteTx.isPersisted.promise;
+            expect(plain(collection.toArray)).toEqual([]);
+            expect(rowAdapter.loadAllCalls).toBe(1);
+            expect(rowAdapter.loadByKeysCalls.at(-1)).toEqual(["a"]);
+        });
+
+        it("utils.refresh() still does a full reload (unknown write scope)", async () => {
+            const { driver, close: c } = await setUp();
+            close = c;
+
+            const rowAdapter = scopedRowAdapter();
+            const collection = createCollection(
+                sqliteCollectionOptions<SimpleRow, string>({
+                    id: "test-scoped-refresh",
+                    db: driver,
+                    getKey: (row) => row.id,
+                    row: rowAdapter,
+                }),
+            );
+            await collection.toArrayWhenReady();
+
+            await driver.execute(
+                "INSERT INTO simple_rows (id, label, version) VALUES (?, ?, ?)",
+                ["a", "written directly", 1],
+            );
+            const utils = collection.utils as unknown as {
+                refresh: () => Promise<void>;
+            };
+            await utils.refresh();
+
+            expect(plain(collection.toArray)).toEqual([
+                { id: "a", label: "written directly", version: 1 },
+            ]);
+            expect(rowAdapter.loadAllCalls).toBe(2);
+        });
+    });
 });

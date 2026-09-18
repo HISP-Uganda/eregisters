@@ -11,6 +11,13 @@ export type { RowWriteOptions };
  */
 export interface RowAdapter<TRow extends object, TKey extends string | number> {
     loadAll: (db: SqlDriver) => Promise<TRow[]>;
+    /**
+     * Loads just the given keys' rows (whichever of them still exist), for
+     * `collection-adapter.ts`'s reloadAndDiff to reconcile a write without
+     * re-scanning the whole table. Optional: an adapter that doesn't
+     * implement it just falls back to `loadAll`'s full-table behavior.
+     */
+    loadByKeys?: (db: SqlDriver, keys: readonly TKey[]) => Promise<TRow[]>;
     rowVersion: (row: TRow) => string;
     insertRow: (
         db: SqlDriver,

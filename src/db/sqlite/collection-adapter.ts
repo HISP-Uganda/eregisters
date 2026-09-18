@@ -50,8 +50,57 @@ export function sqliteCollectionOptions<
     let syncParams: Parameters<SyncConfig<TRow, TKey>["sync"]>[0] | null =
         null;
 
-    async function reloadAndDiff(): Promise<void> {
+    function diffOne(nextRow: TRow | undefined, key: TKey): void {
+        const prev = previousSnapshot.get(key);
+        if (nextRow) {
+            if (!prev) {
+                syncParams!.write({ type: "insert", value: nextRow });
+            } else if (
+                row.rowVersion(prev) !== row.rowVersion(nextRow) ||
+                JSON.stringify(prev) !== JSON.stringify(nextRow)
+            ) {
+                syncParams!.write({
+                    type: "update",
+                    value: nextRow,
+                    previousValue: prev,
+                });
+            }
+            previousSnapshot.set(key, nextRow);
+        } else if (prev) {
+            syncParams!.write({ type: "delete", key });
+            previousSnapshot.delete(key);
+        }
+    }
+
+    /**
+     * Reconciles just `affectedKeys` (the rows a write actually touched)
+     * instead of re-reading and diffing the whole table — the fix for
+     * every local write costing an unfiltered full-table reload+diff
+     * (wayfinder-tracked as the shared root cause behind slow/flaky local
+     * saves, e.g. the inline event editor's double-click bug). Only takes
+     * this path when the row adapter implements `loadByKeys`; otherwise
+     * falls back to the original full-table behavior below.
+     */
+    async function reloadAndDiffScoped(
+        affectedKeys: readonly TKey[],
+    ): Promise<void> {
         if (!syncParams) return;
+        const rows = await row.loadByKeys!(db, affectedKeys);
+        const foundByKey = new Map<TKey, TRow>();
+        for (const r of rows) foundByKey.set(getKey(r), r);
+        syncParams.begin();
+        for (const key of affectedKeys) {
+            diffOne(foundByKey.get(key), key);
+        }
+        syncParams.commit();
+    }
+
+    async function reloadAndDiff(affectedKeys?: readonly TKey[]): Promise<void> {
+        if (!syncParams) return;
+        if (affectedKeys && row.loadByKeys) {
+            await reloadAndDiffScoped(affectedKeys);
+            return;
+        }
         const rows = await row.loadAll(db);
         const nextSnapshot = new Map<TKey, TRow>();
         syncParams.begin();
@@ -115,7 +164,7 @@ export function sqliteCollectionOptions<
                 }
             }
         });
-        await reloadAndDiff();
+        await reloadAndDiff(rows.map(getKey));
     }
 
     // Matches tanstack-dexie-db-collection's real two-name API: callers that
@@ -138,7 +187,7 @@ export function sqliteCollectionOptions<
                 await row.updateRow(tx, r, options);
             }
         });
-        await reloadAndDiff();
+        await reloadAndDiff(rows.map(getKey));
     }
 
     async function deleteLocally(keys: TKey[]): Promise<void> {
@@ -147,7 +196,7 @@ export function sqliteCollectionOptions<
                 await row.deleteRow(tx, key);
             }
         });
-        await reloadAndDiff();
+        await reloadAndDiff(keys);
     }
 
     // For callers that write directly against the SqlDriver, bypassing this

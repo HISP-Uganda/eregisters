@@ -210,8 +210,48 @@ export function findEventsBySyncStatusIn(
     return loadMany(db, `sync_status IN (${placeholders})`, statuses);
 }
 
+/**
+ * Backs `collection-adapter.ts`'s scoped reloadAndDiff — unlike `loadMany`
+ * (whose data-value-table read is always unfiltered), this filters BOTH
+ * tables by the given keys, so a single-row write reloads O(1) rows
+ * instead of the whole collection.
+ */
+async function loadByKeys(
+    db: SqlDriver,
+    keys: readonly string[],
+): Promise<FlattenedEvent[]> {
+    if (keys.length === 0) return [];
+    const placeholders = keys.map(() => "?").join(", ");
+    const [parents, dataValueRows, usersByUid] = await Promise.all([
+        db.execute<EventParentRow>(
+            `SELECT ${PARENT_COLUMNS} FROM events WHERE event IN (${placeholders})`,
+            keys,
+        ),
+        db.execute<DataValueRow>(
+            `SELECT ${DATA_VALUE_COLUMNS} FROM event_data_values WHERE event IN (${placeholders})`,
+            keys,
+        ),
+        loadUsersByUid(db),
+    ]);
+    const dataValuesByEvent = new Map<string, DataValueRow[]>();
+    for (const dv of dataValueRows.rows) {
+        const bucket = dataValuesByEvent.get(dv.event) ?? [];
+        bucket.push(dv);
+        dataValuesByEvent.set(dv.event, bucket);
+    }
+    return parents.rows.map((parent) =>
+        reassemble(
+            parent,
+            dataValuesByEvent.get(parent.event) ?? [],
+            usersByUid,
+        ),
+    );
+}
+
 export const eventsRowAdapter: RowAdapter<FlattenedEvent, string> = {
     rowVersion: (row) => row.updatedAt,
+
+    loadByKeys,
 
     loadAll: async (db) => {
         const [parents, dataValueRows, usersByUid] = await Promise.all([
