@@ -1,12 +1,43 @@
 import Dexie from "dexie";
 import type { HmisDraft } from "../hmis-drafts";
-import { db as mohRegisterDb } from "../index";
+import { db as mohRegisterDb, type SyncState } from "../index";
 import type {
     FlattenedEnrollment,
     FlattenedEvent,
     FlattenedTrackedEntity,
+    MetadataVersion,
 } from "../../schemas";
 import type { DexieMigrationSource } from "./migrate-from-dexie";
+
+/**
+ * `dexieMetadataStore()`'s own database (`src/db/dexie/metadata-store.ts`)
+ * — a single `rows` table keyed by `[table+id]`, holding `sync_state`,
+ * `metadata_versions`, `ui_config`, `stage_hierarchy`, etc. Not in
+ * `DEXIE_DATABASE_NAMES`/`dropAll()` below: only `sync_state` and
+ * `metadata_versions` are read out of it here (this app's re-derivable
+ * metadata, like `ui_config`, is deliberately left for the ordinary
+ * sync flow to repopulate, not copied) — dropping the whole database
+ * would need the same "copy everything relevant first" discipline the
+ * other 5 databases get, which this migration doesn't attempt.
+ */
+async function readMetadataRow<T>(
+    table: string,
+    id: string,
+): Promise<T | undefined> {
+    if (!(await Dexie.exists("MOHRegister_Metadata"))) return undefined;
+    const handle = new Dexie("MOHRegister_Metadata");
+    try {
+        await handle.open();
+        const row = await handle
+            .table<{ table: string; id: string; data: T }, [string, string]>(
+                "rows",
+            )
+            .get([table, id]);
+        return row?.data;
+    } finally {
+        handle.close();
+    }
+}
 
 /**
  * Real, browser-only `DexieMigrationSource` implementation. Untestable
@@ -84,6 +115,17 @@ export const realDexieMigrationSource: DexieMigrationSource = {
         // not be the ones to trigger that on a device that never had it.
         if (!(await Dexie.exists("MOHRegisterDB"))) return [];
         return mohRegisterDb.hmisDrafts.toArray();
+    },
+
+    readSyncState(): Promise<SyncState | undefined> {
+        return readMetadataRow<SyncState>("sync_state", "current");
+    },
+
+    readMetadataVersion(): Promise<MetadataVersion | undefined> {
+        return readMetadataRow<MetadataVersion>(
+            "metadata_versions",
+            "metadata-version",
+        );
     },
 
     async dropAll(): Promise<void> {

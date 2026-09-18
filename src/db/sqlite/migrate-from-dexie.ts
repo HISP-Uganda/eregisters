@@ -3,7 +3,9 @@ import type {
     FlattenedEnrollment,
     FlattenedEvent,
     FlattenedTrackedEntity,
+    MetadataVersion,
 } from "../../schemas";
+import type { SyncState } from "../index";
 import { getConfigRow, putConfigRow } from "./config-rows";
 import {
     deleteEnrollmentCascade,
@@ -41,6 +43,10 @@ export interface DexieMigrationSource {
     readEnrollments(): Promise<FlattenedEnrollment[]>;
     readEvents(): Promise<FlattenedEvent[]>;
     readHmisDrafts(): Promise<HmisDraft[]>;
+    /** `sync_state`/id `"current"` — carries `lastPullAt`/`lastPushAt` (lastDataPull/lastDataPush). */
+    readSyncState(): Promise<SyncState | undefined>;
+    /** `metadata_versions`/id `"metadata-version"` — carries `lastSync` (lastMetadataPull). */
+    readMetadataVersion(): Promise<MetadataVersion | undefined>;
     /** Drops all 5 old Dexie databases, including the always-empty RuleResults one. */
     dropAll(): Promise<void>;
 }
@@ -242,6 +248,22 @@ export async function runDexieMigrationIfNeeded(
             write: (rows) => saveMetadataTable(db, "hmis_drafts", rows, (r) => r.id),
             idOf: (r) => r.id,
         });
+
+        // Single-row config, not tracker data: no verification-count step
+        // needed (one row per table), and nothing to roll back on failure
+        // elsewhere in this function's catch block — a missing/stale
+        // sync-state row just means the app re-derives it from the next
+        // sync cycle, same as a fresh install.
+        const [syncState, metadataVersion] = await Promise.all([
+            source.readSyncState(),
+            source.readMetadataVersion(),
+        ]);
+        if (syncState) {
+            await putConfigRow(db, "sync_state", syncState);
+        }
+        if (metadataVersion) {
+            await putConfigRow(db, "metadata_versions", metadataVersion);
+        }
 
         publishMigrationProgress({ phase: "verifying" });
         const [teCount, enrCount, evtCount, draftCount] = await Promise.all([

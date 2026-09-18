@@ -4,7 +4,9 @@ import type {
     FlattenedEnrollment,
     FlattenedEvent,
     FlattenedTrackedEntity,
+    MetadataVersion,
 } from "../../../schemas";
+import type { SyncState } from "../../index";
 import { createNodeSqliteDriver } from ".././test-support/node-sqlite-driver";
 import { createSchema } from ".././schema";
 import { getConfigRow } from ".././config-rows";
@@ -123,6 +125,8 @@ class FakeDexieMigrationSource implements DexieMigrationSource {
             enrollments?: FlattenedEnrollment[];
             events?: FlattenedEvent[];
             hmisDrafts?: HmisDraft[];
+            syncState?: SyncState;
+            metadataVersion?: MetadataVersion;
             present?: boolean;
             failReadEvents?: boolean;
         } = {},
@@ -145,6 +149,12 @@ class FakeDexieMigrationSource implements DexieMigrationSource {
     }
     async readHmisDrafts(): Promise<HmisDraft[]> {
         return this.data.hmisDrafts ?? [];
+    }
+    async readSyncState(): Promise<SyncState | undefined> {
+        return this.data.syncState;
+    }
+    async readMetadataVersion(): Promise<MetadataVersion | undefined> {
+        return this.data.metadataVersion;
     }
     async dropAll(): Promise<void> {
         this.dropAllCalls++;
@@ -218,6 +228,73 @@ describe("runDexieMigrationIfNeeded", () => {
 
             const rows = await trackedEntitiesRowAdapter.loadAll(driver);
             expect(rows[0]?.syncStatus).toBe("deleted");
+        } finally {
+            close();
+        }
+    });
+
+    it("copies sync_state (lastDataPull/lastDataPush) and metadata_versions (lastMetadataPull) when present", async () => {
+        const { driver, close } = await setUp();
+        try {
+            const syncState: SyncState = {
+                id: "current",
+                status: "idle",
+                isOnline: true,
+                isSyncing: false,
+                lastPullAt: "2026-01-02T00:00:00Z",
+                lastPushAt: "2026-01-01T12:00:00Z",
+                pendingCount: 0,
+                updatedAt: "2026-01-02T00:00:00Z",
+            };
+            const metadataVersion: MetadataVersion = {
+                id: "metadata-version",
+                lastSync: "2026-01-03T00:00:00Z",
+                versions: {},
+            };
+            const source = new FakeDexieMigrationSource({
+                trackedEntities: [makeTrackedEntity()],
+                syncState,
+                metadataVersion,
+            });
+
+            await runDexieMigrationIfNeeded(driver, source);
+
+            const storedSyncState = await getConfigRow<SyncState>(
+                driver,
+                "sync_state",
+                "current",
+            );
+            expect(storedSyncState?.lastPullAt).toBe("2026-01-02T00:00:00Z");
+            expect(storedSyncState?.lastPushAt).toBe("2026-01-01T12:00:00Z");
+
+            const storedMetadataVersion = await getConfigRow<MetadataVersion>(
+                driver,
+                "metadata_versions",
+                "metadata-version",
+            );
+            expect(storedMetadataVersion?.lastSync).toBe(
+                "2026-01-03T00:00:00Z",
+            );
+        } finally {
+            close();
+        }
+    });
+
+    it("skips sync_state/metadata_versions copy without failing when neither is present", async () => {
+        const { driver, close } = await setUp();
+        try {
+            const source = new FakeDexieMigrationSource({
+                trackedEntities: [makeTrackedEntity()],
+            });
+
+            await runDexieMigrationIfNeeded(driver, source);
+
+            expect(
+                await getConfigRow(driver, "sync_state", "current"),
+            ).toBeUndefined();
+            expect(
+                await getConfigRow(driver, "metadata_versions", "metadata-version"),
+            ).toBeUndefined();
         } finally {
             close();
         }
