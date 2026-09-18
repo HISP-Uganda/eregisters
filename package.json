@@ -16,6 +16,7 @@
     "dependencies": {
         "@ant-design/icons": "^6.3.4",
         "@dhis2/app-runtime": "^3.17.4",
+        "@journeyapps/wa-sqlite": "2.0.4",
         "@op-engineering/op-sqlite": "^18.2.0",
         "@sqlite.org/sqlite-wasm": "3.53.0-build1",
         "@tanstack/db": "^0.8.7",
@@ -43,5 +44,10 @@
         "typescript": "^7.0.2",
         "vite": "^8.2.2",
         "vitest": "^5.0.0"
+    },
+    "pnpm": {
+        "overrides": {
+            "@tanstack/db": "^0.8.7"
+        }
     }
 }

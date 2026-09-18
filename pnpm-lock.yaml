@@ -4,6 +4,9 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+overrides:
+  '@tanstack/db': ^0.8.7
+
 importers:
 
   .:
@@ -14,6 +17,9 @@ importers:
       '@dhis2/app-runtime':
         specifier: ^3.17.4
         version: 3.17.4(react-dom@19.2.8(react@19.2.8))(react-native@0.87.1(@babel/core@7.29.7)(@types/react@19.2.18)(react@19.2.8))(react@19.2.8)
+      '@journeyapps/wa-sqlite':
+        specifier: 2.0.4
+        version: 2.0.4
       '@op-engineering/op-sqlite':
         specifier: ^18.2.0
         version: 18.2.0(@sqlite.org/sqlite-wasm@3.53.0-build1)(react-native@0.87.1(@babel/core@7.29.7)(@types/react@19.2.18)(react@19.2.8))(react@19.2.8)
@@ -1502,6 +1508,9 @@ packages:
   '@jest/types@30.5.1':
     resolution: {integrity: sha512-LvVYn83nnXPl+Rg98nvcFgjx6nRMTArhSn6RAX/w3ELn54S8A42TYZvsCMdGUqTM8S0wyXbtlQdU6Hi6dykj9g==}
     engines: {node: ^18.14.0 || ^20.0.0 || ^22.0.0 || >=24.0.0}
+
+  '@journeyapps/wa-sqlite@2.0.4':
+    resolution: {integrity: sha512-c5WE1UPOgDVy8+v63NRRhWsQqvWgkhS1TZKBxEYW/MS7bJE4ndbOfofz9covF7N2KElQVVRZ0qd+XjiS4zt63g==}
 
   '@jridgewell/gen-mapping@0.3.13':
     resolution: {integrity: sha512-2kkt/7niJ6MgEPxF0bYdQ6etZaA+fQvDcLKckhy1yIQOzaoKjBBjSj63/aLVjYE3qhRt5dvM+uUyfCg6UKCBbA==}
@@ -8931,6 +8940,8 @@ snapshots:
       '@types/node': 26.4.1
       '@types/yargs': 17.0.35
       chalk: 4.1.2
+
+  '@journeyapps/wa-sqlite@2.0.4': {}
 
   '@jridgewell/gen-mapping@0.3.13':
     dependencies:

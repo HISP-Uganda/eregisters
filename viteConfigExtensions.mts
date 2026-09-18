@@ -11,7 +11,11 @@ const viteConfig = defineConfig(async (configEnv: ConfigEnv) => {
         plugins: [],
         clearScreen: mode !== "development",
         optimizeDeps: {
-            exclude: ["@op-engineering/op-sqlite", "@sqlite.org/sqlite-wasm"],
+            exclude: [
+                "@op-engineering/op-sqlite",
+                "@sqlite.org/sqlite-wasm",
+                "@journeyapps/wa-sqlite",
+            ],
         },
         resolve: { alias: { "@": path.resolve(__dirname, "src") } },
         server: {
