@@ -15,12 +15,14 @@ of them read live data, and concurrent writes are safely serialized (not
 lost, not corrupted, not requiring a raw `SQLITE_BUSY` retry loop in app
 code) rather than locking every tab but one out entirely.
 `single-tab-lock.ts` and its "this app is already open in another tab"
-screen are removed once this lands. Real production op-sqlite/OPFS data
-already on devices today must survive the swap — this is NOT a fresh-
-install-only change.
+screen are removed once this lands. A real device that already has
+op-sqlite data (once op-sqlite itself has actually shipped to
+production — see the correction in Notes below) must not lose it on the
+swap; a copy-and-verify migration exists for that case regardless of how
+much real op-sqlite data is actually out there at the time this ships.
 
 Done means: `SqlDriver`'s existing interface (`src/db/sqlite/driver-types.ts`)
-is satisfied by a new wa-sqlite-backed implementation, a real device with
+is satisfied by a new wa-sqlite-backed implementation, a device with
 existing op-sqlite data upgrades cleanly with nothing lost, and two tabs
 of the same browser can both be open against the same device without
 either being redirected away.
@@ -35,11 +37,19 @@ either being redirected away.
   (`ticket-08-storage-prototype.md`/`prototype-results.md`, 14/14 checks
   passed Chrome+Firefox, Safari fails outright), the real driver code
   (`src/features/sync/sqlite-adapter.ts`, 58 lines + `worker.ts`, 49
-  lines), and its `launch-spec.md`. **Critical divergence**: mohw-nas had
-  no production deployment and explicitly chose "no legacy import, fresh
-  start" (ticket-07/`legacy-ownership-proposal.md`, closed out of scope)
-  — that decision does NOT transfer here; eregisters has real user data
-  today and this map's tickets account for that difference directly.
+  lines), and its `launch-spec.md`. mohw-nas had no production
+  deployment and explicitly chose "no legacy import, fresh start"
+  (ticket-07/`legacy-ownership-proposal.md`, closed out of scope).
+  **Correction (from ticket 002's resolution)**: this map originally
+  treated that as a divergence that does NOT transfer to eregisters,
+  assuming real production op-sqlite data already exists today. It
+  doesn't — **op-sqlite has not actually been rolled out to production
+  yet; the live production backend today is still Dexie.js**. So this
+  migration currently carries the same risk profile mohw-nas's fresh
+  start did, not a harder one — copy-and-verify machinery still exists
+  (protecting whatever real op-sqlite data accumulates between now and
+  whenever this ships), but no extra caution (grace periods, staged
+  rollout) beyond what the existing Dexie↔SQLite migrations already do.
 - Domain: `src/db/sqlite/*` (current op-sqlite driver + row-adapters,
   unchanged in shape — only the driver underneath `SqlDriver` swaps),
   `src/db/sqlite/single-tab-lock.ts` (removed), `src/App.tsx` (bootstrap
@@ -104,6 +114,7 @@ either being redirected away.
   is a real open question, but a follow-up one — not this map's
   destination.
 - [Port the wa-sqlite driver adapter into eregisters' SqlDriver interface](tickets/001-port-wa-sqlite-driver-adapter.md) — built (commit `056b9ad`): `wa-sqlite-adapter.ts`/`wa-sqlite-worker.ts`/`wa-sqlite-worker-request.ts`/`wa-sqlite-protocol.ts`/`wa-sqlite-driver.ts`, sitting alongside `op-sqlite-driver.ts`, not yet wired into `App.tsx`. Reentrant `transaction()` matches `op-sqlite-driver.ts`'s shape; `begin`/`commit`/`rollback` message types (new, not in mohw-nas's own protocol) let a transaction span several `execute` round-trips, since eregisters' row-adapters call `tx.execute()` multiple times per transaction unlike mohw-nas's opaque-message transactions. Deliberately did NOT remove `single-tab-lock.ts` or touch `App.tsx` — op-sqlite is still the live driver, that swap belongs with ticket 002. Also fixed an unrelated `@tanstack/db` transitive-dependency regression (pinned via `pnpm.overrides`), and a real worker transaction-state bug `/code-review` caught (failing `COMMIT`/`ROLLBACK` wedged `inTransaction` permanently).
+- [Design the op-sqlite -> wa-sqlite migration procedure](tickets/002-migration-procedure-design.md) — mirrors `migrate-from-dexie.ts`/`migrate-from-sqlite.ts` exactly, no divergence: completion flag on the destination (wa-sqlite) side, fire-and-forget on first boot reusing the existing `migration-progress.ts` banner, retry-from-scratch on failure, drop the old op-sqlite data immediately on success, no staged/canary rollout. Corrected this map's stated premise in the process: **op-sqlite has not actually shipped to production yet — the live production backend today is still Dexie.js** — so this migration carries the same risk profile the original Dexie→SQLite migration took, not a harder one (see the Destination/Notes correction above).
 
 ## Not yet specified
 

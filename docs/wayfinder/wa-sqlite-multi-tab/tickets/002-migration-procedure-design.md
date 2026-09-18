@@ -1,8 +1,8 @@
 ---
 title: Design the op-sqlite -> wa-sqlite migration procedure
 type: wayfinder:grilling
-status: open
-assignee: unassigned
+status: closed
+assignee: claude-session
 blocked_by: [001-port-wa-sqlite-driver-adapter]
 ---
 
@@ -48,4 +48,37 @@ wa-sqlite genuinely differs.
 
 ## Answer
 
-(resolve via grilling)
+Mirrors `migrate-from-dexie.ts`/`migrate-from-sqlite.ts` exactly, with no
+divergence — every one of this ticket's open questions resolved to "same
+shape as the existing two migrations":
+
+- **Completion flag**: recorded on the destination side (wa-sqlite), a
+  `migration_status`-style row in the new wa-sqlite database, matching
+  both existing migrations' "flag lives on the destination" pattern.
+- **Timing**: fire-and-forget on first boot with the new driver code,
+  reporting via the existing `migration-progress.ts` pub/sub banner —
+  same pattern this repo just built for the SQLite↔Dexie reverse
+  migration (wayfinder ticket "Wiring the reverse migration to actually
+  execute on a backend switch"). No blocking startup latency.
+- **Failure handling**: retry from scratch next boot, no partial-resume
+  logic, no completion flag written on failure — identical to both
+  existing migrations.
+- **Drop-old-on-success**: drop immediately, matching both existing
+  migrations' destructive-on-success decisions exactly. **Correction to
+  this map's stated premise**: grilling initially treated this as a
+  harder call than the existing migrations took, reasoning that
+  op-sqlite is production-proven while wa-sqlite is new and unproven —
+  that reasoning assumed real production data already lives in
+  op-sqlite today. It doesn't: **op-sqlite has not actually been rolled
+  out to production yet — the live production backend today is still
+  Dexie.js**, the pre-migration legacy system. With no real op-sqlite
+  production data at stake, this migration carries the same risk
+  profile as the original Dexie→SQLite migration, not a harder one — no
+  grace period, no rollback-path retention needed. (This map's
+  Destination/Notes sections said "Real production op-sqlite/OPFS data
+  already on devices today must survive the swap" — that statement is
+  corrected here; see the map's own Decisions so far for the pointer.)
+- **Trigger/staging**: confirmed — every device already on the sqlite
+  backend attempts this automatically on first boot with the new driver
+  code, no canary staging needed, for the same reason (no real
+  production data currently at risk on the op-sqlite side).
