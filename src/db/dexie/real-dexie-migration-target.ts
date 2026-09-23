@@ -1,5 +1,6 @@
 import type { SyncState } from "../index";
 import type { HmisDraft } from "../hmis-drafts";
+import { replaceMetadataTables } from "../metadata-operations";
 import { dexieMetadataStore } from "./metadata-store";
 import { countDexieRowsByIds } from "./dexie-verification";
 import type { DexieMigrationTarget } from "./migrate-from-sqlite";
@@ -14,6 +15,36 @@ const MIGRATION_STATUS_TABLE = "migration_status";
 const MIGRATION_STATUS_ID = "sqlite-migration";
 
 type MigrationStatusRow = { id: string; completedAt: string };
+
+/**
+ * Records that Dexie is the live store as of now — called on every Dexie
+ * boot (`App.tsx`). The forward (Dexie->SQLite) migration compares this
+ * with its own completion time, so data written to Dexie after the last
+ * copy is copied again on the next SQLite boot. Read back by
+ * `../sqlite/dexie-migration-source.ts`'s `readDexieLastLiveAt` (same
+ * `migration_status`/`dexie-live` row).
+ */
+export async function markDexieLive(): Promise<void> {
+    await dexieMetadataStore().putRow(MIGRATION_STATUS_TABLE, {
+        id: "dexie-live",
+        liveAt: new Date().toISOString(),
+    });
+}
+
+/**
+ * Clears the SQLite->Dexie completion flag. Called on every boot where
+ * SQLite is the live store (`App.tsx`): new data lands in SQLite from then
+ * on, so a later switch to Dexie must copy it again. This flag lives in
+ * `MOHRegister_Metadata`, which no migration ever drops, so without this
+ * it stayed set forever after the first Dexie boot and every later switch
+ * to Dexie skipped the copy.
+ */
+export async function clearSqliteMigrationFlag(): Promise<void> {
+    await dexieMetadataStore().deleteRow(
+        MIGRATION_STATUS_TABLE,
+        MIGRATION_STATUS_ID,
+    );
+}
 
 /**
  * Real, browser-only `DexieMigrationTarget` implementation — untestable
@@ -74,6 +105,18 @@ export const realDexieMigrationTarget: DexieMigrationTarget = {
     async writeSyncState(row: SyncState | undefined): Promise<void> {
         if (!row) return;
         await dexieMetadataStore().putRow("sync_state", row);
+    },
+
+    async writeMetadataVersion(row): Promise<void> {
+        if (!row) return;
+        await dexieMetadataStore().putRow(
+            "metadata_versions",
+            row as typeof row & { id: string },
+        );
+    },
+
+    async replaceMetadataTables(tables): Promise<void> {
+        await replaceMetadataTables(dexieMetadataStore(), tables);
     },
 
     countTrackedEntities(ids: string[]): Promise<number> {

@@ -3,11 +3,15 @@ import type {
     FlattenedEnrollment,
     FlattenedEvent,
     FlattenedTrackedEntity,
+    MetadataVersion,
 } from "../../schemas";
+import { MIGRATED_METADATA_TABLES } from "../metadata-operations";
+import { sqliteMetadataStore } from "../sqlite/metadata-store";
 import type { HmisDraft } from "../hmis-drafts";
 import { dropAllSqliteData } from "../sqlite/drop-all-data";
 import type { SqlDriver } from "../sqlite/driver-types";
 import { getConfigRow } from "../sqlite/config-rows";
+import { clearDexieMigrationFlag } from "../sqlite/migrate-from-dexie";
 import { getAllRows } from "../sqlite/metadata-info";
 import {
     publishMigrationProgress,
@@ -43,6 +47,10 @@ export interface DexieMigrationTarget {
     writeEvents(rows: FlattenedEvent[]): Promise<void>;
     writeHmisDrafts(rows: HmisDraft[]): Promise<void>;
     writeSyncState(row: SyncState | undefined): Promise<void>;
+    /** `metadata_versions`/`metadata-version` — carries `lastSync` (lastMetadataPull). */
+    writeMetadataVersion(row: MetadataVersion | undefined): Promise<void>;
+    /** Replaces Dexie's copy of every `MIGRATED_METADATA_TABLES` table. */
+    replaceMetadataTables(tables: Record<string, unknown[]>): Promise<void>;
     countTrackedEntities(ids: string[]): Promise<number>;
     countEnrollments(ids: string[]): Promise<number>;
     countEvents(ids: string[]): Promise<number>;
@@ -64,18 +72,38 @@ export interface DexieMigrationTarget {
  * fixes.
  */
 async function hasAnySqliteDataToMigrate(db: SqlDriver): Promise<boolean> {
-    const [tes, enrollments, events, hmisDrafts] = await Promise.all([
-        trackedEntitiesRowAdapter.loadAll(db),
-        enrollmentsRowAdapter.loadAll(db),
-        eventsRowAdapter.loadAll(db),
-        getAllRows(db, "hmis_drafts"),
-    ]);
+    const [tes, enrollments, events, hmisDrafts, metadataVersion] =
+        await Promise.all([
+            trackedEntitiesRowAdapter.loadAll(db),
+            enrollmentsRowAdapter.loadAll(db),
+            eventsRowAdapter.loadAll(db),
+            getAllRows(db, "hmis_drafts"),
+            getConfigRow(db, "metadata_versions", METADATA_VERSION_ID),
+        ]);
+    // A metadata sync on SQLite counts too: a device that pulled metadata
+    // but has no tracker data yet must still carry that metadata (and its
+    // lastMetadataPull) across, instead of taking the fresh-install
+    // shortcut.
     return (
         tes.length > 0 ||
         enrollments.length > 0 ||
         events.length > 0 ||
-        hmisDrafts.length > 0
+        hmisDrafts.length > 0 ||
+        metadataVersion !== undefined
     );
+}
+
+const METADATA_VERSION_ID = "metadata-version";
+
+async function readSqliteMetadataTables(
+    db: SqlDriver,
+): Promise<Record<string, unknown[]>> {
+    const store = sqliteMetadataStore(db);
+    const tables: Record<string, unknown[]> = {};
+    for (const table of MIGRATED_METADATA_TABLES) {
+        tables[table] = await store.listRows(table);
+    }
+    return tables;
 }
 
 type WrittenKeys = {
@@ -139,7 +167,13 @@ export async function runSqliteMigrationIfNeeded(
         // Device was set/detected to Dexie with no prior SQL data ever
         // written (e.g. a fresh install) — nothing to copy, don't scan
         // for it again next boot. Mirrors existsAnyDexieData()'s
-        // fresh-install shortcut in the forward direction.
+        // fresh-install shortcut in the forward direction. Dexie is now
+        // the live store, so SQLite's own Dexie->SQLite flag must go too
+        // — otherwise a later switch back to SQLite would skip copying
+        // whatever gets written to Dexie from here on. (The copy path
+        // below needs no equivalent: dropAllSqliteData drops the flag's
+        // whole table.)
+        await clearDexieMigrationFlag(db);
         await target.markMigrationComplete();
         publishMigrationProgress({ phase: "done" });
         return;
@@ -186,6 +220,17 @@ export async function runSqliteMigrationIfNeeded(
         // 2), no separate copy-progress/verification entry needed.
         const syncState = await getConfigRow<SyncState>(db, "sync_state", "current");
         await target.writeSyncState(syncState);
+        // lastMetadataPull and the metadata itself — without these Dexie
+        // kept whatever it had from before (empty, or stale rows paired
+        // with a stale lastMetadataPull) next to SQLite's newer lastDataPull.
+        await target.writeMetadataVersion(
+            await getConfigRow<MetadataVersion>(
+                db,
+                "metadata_versions",
+                METADATA_VERSION_ID,
+            ),
+        );
+        await target.replaceMetadataTables(await readSqliteMetadataTables(db));
 
         publishMigrationProgress({ phase: "verifying" });
         const [teCount, enrCount, evtCount, draftCount] = await Promise.all([

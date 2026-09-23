@@ -71,17 +71,39 @@ describe("backend", () => {
     });
 
     describe("resolveBackend", () => {
-        it("returns a forced backend as-is without attempting init", async () => {
+        it("returns forced dexie as-is without attempting init", async () => {
             const { resolveBackend } = await import("../backend");
             const attemptSqliteInit = vi.fn().mockResolvedValue(undefined);
 
             expect(
                 await resolveBackend("dexie", attemptSqliteInit),
             ).toBe("dexie");
+            expect(attemptSqliteInit).not.toHaveBeenCalled();
+        });
+
+        it("forced sqlite: attempts init (so the caller gets a driver) and ignores a cached failure", async () => {
+            const { resolveBackend, setCachedOpfsFailure } = await import(
+                "../backend"
+            );
+            setCachedOpfsFailure();
+            const attemptSqliteInit = vi.fn().mockResolvedValue(undefined);
+
             expect(
                 await resolveBackend("sqlite", attemptSqliteInit),
             ).toBe("sqlite");
-            expect(attemptSqliteInit).not.toHaveBeenCalled();
+            expect(attemptSqliteInit).toHaveBeenCalledTimes(1);
+            expect(localStorage.getItem("eregisters.opfsInitFailed")).toBeNull();
+        });
+
+        it("forced sqlite: surfaces an init failure instead of downgrading to dexie", async () => {
+            const { resolveBackend } = await import("../backend");
+            const attemptSqliteInit = vi
+                .fn()
+                .mockRejectedValue(new Error("OPFS unavailable"));
+
+            await expect(
+                resolveBackend("sqlite", attemptSqliteInit),
+            ).rejects.toThrow("OPFS unavailable");
         });
 
         it("auto: skips init and goes straight to dexie when OPFS capability is absent", async () => {

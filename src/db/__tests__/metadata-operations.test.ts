@@ -10,6 +10,7 @@ import {
     checkMetadataInfoGeneric,
     deleteMetadataForResyncGeneric,
     queryMetadataGeneric,
+    replaceMetadataTables,
     resetMetadataDatabaseGeneric,
     saveMetadataGeneric,
 } from "../metadata-operations";
@@ -247,5 +248,36 @@ describe.each([
         expect(await store.listRows("option_sets")).toHaveLength(0);
         expect(await store.listRows("option_groups")).toHaveLength(0);
         expect(await store.listRows("organisation_units")).toHaveLength(0);
+    });
+});
+
+describe("replaceMetadataTables", () => {
+    it("replaces each table's rows, dropping stale ones, including composite-key tables", async () => {
+        const store = inMemoryMetadataStore();
+        await store.putRow("programs", { id: "stale" });
+        await store.putRow(
+            "option_sets",
+            { id: "o-stale", optionSet: "os1" },
+            "o-stale::os1",
+        );
+
+        await replaceMetadataTables(store, {
+            programs: [{ id: "p1" }],
+            option_sets: [{ id: "o1", optionSet: "os1" }],
+        });
+
+        expect(await store.listRows("programs")).toEqual([{ id: "p1" }]);
+        expect(await store.listRows("option_sets")).toEqual([
+            { id: "o1", optionSet: "os1" },
+        ]);
+    });
+
+    it("never wipes the target when the source holds no metadata at all", async () => {
+        const store = inMemoryMetadataStore();
+        await store.putRow("programs", { id: "p1" });
+
+        await replaceMetadataTables(store, {});
+
+        expect(await store.listRows("programs")).toEqual([{ id: "p1" }]);
     });
 });

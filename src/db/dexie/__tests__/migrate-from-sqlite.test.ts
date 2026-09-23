@@ -5,10 +5,12 @@ import type {
     FlattenedEnrollment,
     FlattenedEvent,
     FlattenedTrackedEntity,
+    MetadataVersion,
 } from "../../../schemas";
+import { sqliteMetadataStore } from "../../sqlite/metadata-store";
 import { createNodeSqliteDriver } from "../../sqlite/test-support/node-sqlite-driver";
 import { createSchema } from "../../sqlite/schema";
-import { putConfigRow } from "../../sqlite/config-rows";
+import { getConfigRow, putConfigRow } from "../../sqlite/config-rows";
 import { enrollmentsRowAdapter } from "../../sqlite/row-adapters/enrollments";
 import { eventsRowAdapter } from "../../sqlite/row-adapters/events";
 import { trackedEntitiesRowAdapter } from "../../sqlite/row-adapters/tracked-entities";
@@ -115,6 +117,8 @@ class FakeDexieMigrationTarget implements DexieMigrationTarget {
     events = new Map<string, FlattenedEvent>();
     hmisDrafts = new Map<string, HmisDraft>();
     syncState: SyncState | undefined;
+    metadataVersion: MetadataVersion | undefined;
+    metadataTables: Record<string, unknown[]> | undefined;
     failWriteEvents = false;
 
     async hasCompletedMigration(): Promise<boolean> {
@@ -140,6 +144,16 @@ class FakeDexieMigrationTarget implements DexieMigrationTarget {
     }
     async writeSyncState(row: SyncState | undefined): Promise<void> {
         this.syncState = row;
+    }
+    async writeMetadataVersion(
+        row: MetadataVersion | undefined,
+    ): Promise<void> {
+        this.metadataVersion = row;
+    }
+    async replaceMetadataTables(
+        tables: Record<string, unknown[]>,
+    ): Promise<void> {
+        this.metadataTables = tables;
     }
     async countTrackedEntities(ids: string[]): Promise<number> {
         return ids.filter((id) => this.trackedEntities.has(id)).length;
@@ -178,6 +192,29 @@ describe("runSqliteMigrationIfNeeded", () => {
             expect(target.completed).toBe(true);
             expect(target.trackedEntities.size).toBe(0);
             expect(getMigrationProgress()).toEqual({ phase: "done" });
+        } finally {
+            close();
+        }
+    });
+
+    it("clears SQLite's own Dexie->SQLite completion flag on the fresh-install shortcut, so a later switch back to SQLite copies the Dexie data", async () => {
+        const { driver, close } = await setUp();
+        try {
+            // A device that ran on SQLite before (flag set) but never
+            // wrote tracker data there.
+            await putConfigRow(driver, "migration_status", {
+                id: "dexie-migration",
+                completedAt: "2026-01-01T00:00:00.000Z",
+            });
+
+            await runSqliteMigrationIfNeeded(
+                driver,
+                new FakeDexieMigrationTarget(),
+            );
+
+            expect(
+                await getConfigRow(driver, "migration_status", "dexie-migration"),
+            ).toBeUndefined();
         } finally {
             close();
         }
@@ -235,6 +272,72 @@ describe("runSqliteMigrationIfNeeded", () => {
             await expect(
                 driver.execute("SELECT * FROM tracked_entities"),
             ).rejects.toThrow();
+        } finally {
+            close();
+        }
+    });
+
+    it("copies all metadata tables and metadata_versions (lastMetadataPull) alongside sync_state (lastDataPull)", async () => {
+        const { driver, close } = await setUp();
+        try {
+            await trackedEntitiesRowAdapter.insertRow(driver, makeTrackedEntity());
+            const store = sqliteMetadataStore(driver);
+            await store.putRow("programs", { id: "p1", name: "ANC" });
+            await store.putRow(
+                "option_sets",
+                { id: "o1", optionSet: "os1", name: "Yes" },
+                "o1::os1",
+            );
+            await store.putRow("ui_config", { id: "main", config: {} });
+            await putConfigRow(driver, "metadata_versions", {
+                id: "metadata-version",
+                lastSync: "2026-01-02T00:00:00.000",
+            } as unknown as MetadataVersion & { id: string });
+            await putConfigRow<SyncState>(driver, "sync_state", {
+                id: "current",
+                lastPullAt: "2026-01-03T00:00:00.000",
+            } as SyncState);
+
+            const target = new FakeDexieMigrationTarget();
+            await runSqliteMigrationIfNeeded(driver, target);
+
+            expect(target.metadataVersion).toMatchObject({
+                lastSync: "2026-01-02T00:00:00.000",
+            });
+            expect(target.syncState).toMatchObject({
+                lastPullAt: "2026-01-03T00:00:00.000",
+            });
+            expect(target.metadataTables?.programs).toEqual([
+                { id: "p1", name: "ANC" },
+            ]);
+            expect(target.metadataTables?.option_sets).toEqual([
+                { id: "o1", optionSet: "os1", name: "Yes" },
+            ]);
+            expect(target.metadataTables?.ui_config).toEqual([
+                { id: "main", config: {} },
+            ]);
+            expect(target.completed).toBe(true);
+        } finally {
+            close();
+        }
+    });
+
+    it("copies metadata even when SQLite holds no tracker data yet", async () => {
+        const { driver, close } = await setUp();
+        try {
+            await sqliteMetadataStore(driver).putRow("programs", { id: "p1" });
+            await putConfigRow(driver, "metadata_versions", {
+                id: "metadata-version",
+                lastSync: "2026-01-02T00:00:00.000",
+            } as unknown as MetadataVersion & { id: string });
+
+            const target = new FakeDexieMigrationTarget();
+            await runSqliteMigrationIfNeeded(driver, target);
+
+            expect(target.metadataTables?.programs).toEqual([{ id: "p1" }]);
+            expect(target.metadataVersion).toMatchObject({
+                lastSync: "2026-01-02T00:00:00.000",
+            });
         } finally {
             close();
         }

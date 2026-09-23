@@ -63,6 +63,52 @@ async function clearTable(store: MetadataStore, table: string): Promise<void> {
     }
 }
 
+/**
+ * Every metadata table a backend switch carries across (both directions:
+ * `sqlite/migrate-from-dexie.ts` and `dexie/migrate-from-sqlite.ts`) —
+ * everything the app writes through `MetadataStore` except `sync_state`/
+ * `metadata_versions` (single rows, copied separately), `hmis_drafts`
+ * (lives in Dexie's MOHRegisterDB on both backends) and `migration_status`
+ * (per-backend bookkeeping).
+ */
+export const MIGRATED_METADATA_TABLES = [
+    "programs",
+    "data_elements",
+    "tracked_entity_attribute_definitions",
+    "program_indicators",
+    "program_rules",
+    "program_rule_variables",
+    "category_option_combos",
+    "data_sets",
+    "organisation_units",
+    "option_sets",
+    "option_groups",
+    "ui_config",
+    "stage_hierarchy",
+] as const;
+
+/**
+ * Makes `store`'s migrated metadata tables equal to `tables` (clear, then
+ * write), so rows left over from an earlier stay on that backend don't
+ * linger. No-op when `tables` holds no metadata at all — an empty source
+ * must never wipe the target's metadata.
+ */
+export async function replaceMetadataTables(
+    store: MetadataStore,
+    tables: Record<string, unknown[]>,
+): Promise<void> {
+    const hasAny = MIGRATED_METADATA_TABLES.some(
+        (table) => (tables[table]?.length ?? 0) > 0,
+    );
+    if (!hasAny) return;
+    for (const table of MIGRATED_METADATA_TABLES) {
+        await clearTable(store, table);
+        for (const row of (tables[table] ?? []) as { id: string }[]) {
+            await store.putRow(table, row, keyForRow(table, row));
+        }
+    }
+}
+
 export type CheckMetadataInfoResult = {
     needsSyncing: boolean;
     hasEmptyTables: boolean;

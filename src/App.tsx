@@ -2,18 +2,24 @@ import { useDataEngine, useDataQuery } from "@dhis2/app-runtime";
 import { RouterProvider } from "@tanstack/react-router";
 import { App, ConfigProvider, Typography } from "antd";
 import React, { FC, useEffect, useState } from "react";
+import { MigrationProgressBanner } from "./components/migration-progress-banner";
 import { Spinner } from "./components/spinner";
 import {
     clearCachedOpfsFailure,
     getBackendSetting,
     getCachedOpfsFailure,
+    hasOpfsCapability,
     resolveBackend,
     setCachedOpfsFailure,
     type StorageBackend,
 } from "./db/backend";
 import { initCollections } from "./db/collections";
 import { dexieMetadataStore } from "./db/dexie/metadata-store";
-import { realDexieMigrationTarget } from "./db/dexie/real-dexie-migration-target";
+import {
+    clearSqliteMigrationFlag,
+    markDexieLive,
+    realDexieMigrationTarget,
+} from "./db/dexie/real-dexie-migration-target";
 import { runSqliteMigrationIfNeeded } from "./db/dexie/migrate-from-sqlite";
 import { realDexieMigrationSource } from "./db/sqlite/dexie-migration-source";
 import type { SqlDriver } from "./db/sqlite/driver-types";
@@ -35,8 +41,8 @@ const ME_QUERY = {
 } as const;
 
 /**
- * Reverse migration (wa-sqlite -> Dexie), fire-and-forget on the Dexie
- * branch of bootstrap — wayfinder ticket "Wiring the reverse migration to
+ * Reverse migration (wa-sqlite -> Dexie), awaited on the Dexie branch of
+ * bootstrap — wayfinder ticket "Wiring the reverse migration to
  * actually execute on a backend switch"
  * (`docs/wayfinder/opfs-dexie-dual-backend/tickets/006-wire-backend-switch-migration.md`),
  * updated to read from wa-sqlite instead of op-sqlite once wa-sqlite
@@ -44,7 +50,7 @@ const ME_QUERY = {
  * wa-sqlite for real multi-tab support").
  *
  * `resolveBackend()` never attempts to open the SQL backend for a
- * *forced* setting, so a device that was just switched to Dexie has no
+ * forced "dexie" setting, so a device that was just switched to Dexie has no
  * `SqlDriver` to read its old SQL data from. `hasCompletedMigration()` is
  * cheap and Dexie-only, so it gates a separate, best-effort
  * `createWaSqliteDriver` attempt made ONLY to feed this migration — that
@@ -59,14 +65,23 @@ const ME_QUERY = {
  * that's structurally incapable of OPFS (the common reason it resolved
  * to Dexie in the first place) only pays the failed-attempt cost once.
  *
+ * `forced` (the user explicitly chose Dexie) skips that cache: a device
+ * whose SQLite once failed to open may still hold real SQLite data, and
+ * an explicit switch must at least try to bring it across. Costs one
+ * failed Worker init per boot on a device where OPFS truly doesn't work,
+ * until a copy succeeds.
+ *
  * Unlike the old op-sqlite-backed version of this function,
  * `createWaSqliteDriver` has no module-level singleton to worry about
  * polluting — each call spawns its own dedicated Worker and is fully
  * self-contained.
  */
-async function attemptReverseMigrationIfNeeded(): Promise<void> {
+async function attemptReverseMigrationIfNeeded(
+    forced: boolean,
+): Promise<void> {
     if (await realDexieMigrationTarget.hasCompletedMigration()) return;
-    if (getCachedOpfsFailure()) return;
+    if (!hasOpfsCapability()) return;
+    if (!forced && getCachedOpfsFailure()) return;
 
     try {
         const driver = await createWaSqliteDriver("eregisters-metadata");
@@ -114,32 +129,47 @@ const FullApp: FC<{
                 );
             });
 
-            if (resolved === "sqlite" && sqliteDriver) {
+            if (resolved === "sqlite") {
+                // Never fall through to the Dexie branch here — that
+                // silently ignored a forced "sqlite" setting before.
+                if (!sqliteDriver) {
+                    throw new Error(
+                        "SQLite backend resolved but no driver was opened",
+                    );
+                }
                 initCollections("sqlite", sqliteDriver);
-                // Fire-and-forget (wayfinder ticket "Migration and Cutover
-                // Procedure Design" decision 4: non-blocking) — copying an
-                // existing device's Dexie data into wa-sqlite runs in the
-                // background; the app renders immediately, and a banner
-                // (subscribed to migration-progress.ts) reports status
-                // independently. A fresh install resolves this instantly
-                // (nothing to copy). This never throws — failures are
-                // caught internally and published as progress, not
-                // rejected.
-                void runDexieMigrationIfNeeded(
+                // Awaited, not fire-and-forget: the sync machine must not
+                // start until the copy is done, or its first (full) pull
+                // into the still-empty SQLite tables races the migration
+                // and older Dexie rows can overwrite freshly-pulled ones.
+                // The loading screen shows progress meanwhile. A fresh
+                // install resolves this instantly (nothing to copy). This
+                // never throws for a failed copy — that's caught
+                // internally and published as progress, and the app
+                // proceeds so the copy retries next reload.
+                await runDexieMigrationIfNeeded(
                     sqliteDriver,
                     realDexieMigrationSource,
                 );
+                // SQLite is the live store now, so a later switch to Dexie
+                // must copy its data back — see the function's doc
+                // comment. Best-effort: never block boot on it.
+                await clearSqliteMigrationFlag().catch(() => undefined);
                 setSqlDriver(sqliteDriver);
                 setMetadataStore(sqliteMetadataStore(sqliteDriver));
                 setBackend("sqlite");
             } else {
                 initCollections("dexie");
+                // Awaited for the same reason as the forward direction
+                // above — see attemptReverseMigrationIfNeeded's own doc
+                // comment. Never throws.
+                await attemptReverseMigrationIfNeeded(setting === "dexie");
+                // Lets the next SQLite boot see that Dexie data may be
+                // newer than its last copy — see markDexieLive's doc
+                // comment. Best-effort: never block boot on it.
+                await markDexieLive().catch(() => undefined);
                 setMetadataStore(dexieMetadataStore());
                 setBackend("dexie");
-                // Fire-and-forget, same non-blocking shape as the forward
-                // direction above — see attemptReverseMigrationIfNeeded's
-                // own doc comment.
-                void attemptReverseMigrationIfNeeded();
             }
         }
 
@@ -169,7 +199,10 @@ const FullApp: FC<{
         return (
             <Spinner
                 component={
-                    <Typography.Text>Preparing local storage…</Typography.Text>
+                    <>
+                        <Typography.Text>Preparing local storage…</Typography.Text>
+                        <MigrationProgressBanner />
+                    </>
                 }
             />
         );

@@ -109,11 +109,13 @@ export function hasOpfsCapability(): boolean {
  * without a real OPFS-capable environment — production wiring is
  * `App.tsx`.
  *
- * - "sqlite"/"dexie" (forced): used as-is. A forced "sqlite" that fails to
- *   init is NOT silently downgraded to Dexie — the user explicitly asked
- *   for SQLite, so the failure surfaces (matching this app's existing
- *   "surface SQL driver init failures instead of crashing silently"
- *   precedent) rather than overriding their choice.
+ * - "dexie" (forced): used as-is, no init attempt.
+ * - "sqlite" (forced): init is still attempted — the caller needs the
+ *   driver it produces — but a cached OPFS failure is ignored. A forced
+ *   "sqlite" that fails to init is NOT silently downgraded to Dexie — the
+ *   user explicitly asked for SQLite, so the failure propagates (matching
+ *   this app's existing "surface SQL driver init failures instead of
+ *   crashing silently" precedent) rather than overriding their choice.
  * - "auto": `hasOpfsCapability()` fast-fails ancient browsers with no
  *   init attempt. Otherwise, a cached-and-still-valid negative result
  *   (see `OPFS_PROBE_CACHE_VERSION`) skips straight to Dexie. Otherwise,
@@ -124,7 +126,12 @@ export async function resolveBackend(
     setting: BackendSetting,
     attemptSqliteInit: () => Promise<void>,
 ): Promise<StorageBackend> {
-    if (setting === "sqlite" || setting === "dexie") return setting;
+    if (setting === "dexie") return "dexie";
+    if (setting === "sqlite") {
+        await attemptSqliteInit();
+        clearCachedOpfsFailure();
+        return "sqlite";
+    }
 
     if (!hasOpfsCapability()) return "dexie";
     if (getCachedOpfsFailure()) return "dexie";

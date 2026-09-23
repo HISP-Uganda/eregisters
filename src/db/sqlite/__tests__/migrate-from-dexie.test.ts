@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import type { HmisDraft } from "../../hmis-drafts";
 import type {
     FlattenedEnrollment,
     FlattenedEvent,
@@ -9,7 +8,7 @@ import type {
 import type { SyncState } from "../../index";
 import { createNodeSqliteDriver } from ".././test-support/node-sqlite-driver";
 import { createSchema } from ".././schema";
-import { getConfigRow } from ".././config-rows";
+import { getConfigRow, putConfigRow } from ".././config-rows";
 import { sqliteMetadataStore } from ".././metadata-store";
 import {
     initTrackerCollections,
@@ -101,23 +100,6 @@ function makeEvent(overrides: Partial<FlattenedEvent> = {}): FlattenedEvent {
     };
 }
 
-function makeHmisDraft(
-    overrides: Partial<HmisDraft> = {},
-): HmisDraft {
-    return {
-        id: "draft-1",
-        dataSet: "ds-1",
-        period: "202601",
-        orgUnit: "ou-1",
-        attributeOptionCombo: "default",
-        values: { de1: "10" },
-        isVerified: false,
-        updatedAt: Date.now(),
-        syncStatus: "draft",
-        ...overrides,
-    };
-}
-
 class FakeDexieMigrationSource implements DexieMigrationSource {
     dropAllCalls = 0;
     constructor(
@@ -125,15 +107,18 @@ class FakeDexieMigrationSource implements DexieMigrationSource {
             trackedEntities?: FlattenedTrackedEntity[];
             enrollments?: FlattenedEnrollment[];
             events?: FlattenedEvent[];
-            hmisDrafts?: HmisDraft[];
             syncState?: SyncState;
             metadataVersion?: MetadataVersion;
             metadataTables?: Record<string, unknown[]>;
             present?: boolean;
             failReadEvents?: boolean;
+            dexieLastLiveAt?: string;
         } = {},
     ) {}
 
+    async readDexieLastLiveAt(): Promise<string | undefined> {
+        return this.data.dexieLastLiveAt;
+    }
     async existsAnyDexieData(): Promise<boolean> {
         return this.data.present ?? true;
     }
@@ -148,9 +133,6 @@ class FakeDexieMigrationSource implements DexieMigrationSource {
             throw new Error("simulated Dexie read failure");
         }
         return this.data.events ?? [];
-    }
-    async readHmisDrafts(): Promise<HmisDraft[]> {
-        return this.data.hmisDrafts ?? [];
     }
     async readSyncState(): Promise<SyncState | undefined> {
         return this.data.syncState;
@@ -187,14 +169,13 @@ describe("runDexieMigrationIfNeeded", () => {
         }
     });
 
-    it("copies tracked entities, enrollments, events, and hmisDrafts, verifies, marks complete, and drops the Dexie databases", async () => {
+    it("copies tracked entities, enrollments, and events, verifies, marks complete, and drops the Dexie databases", async () => {
         const { driver, close } = await setUp();
         try {
             const source = new FakeDexieMigrationSource({
                 trackedEntities: [makeTrackedEntity()],
                 enrollments: [makeEnrollment()],
                 events: [makeEvent()],
-                hmisDrafts: [makeHmisDraft()],
             });
 
             await runDexieMigrationIfNeeded(driver, source);
@@ -202,10 +183,10 @@ describe("runDexieMigrationIfNeeded", () => {
             expect(await trackedEntitiesRowAdapter.loadAll(driver)).toHaveLength(1);
             expect(await enrollmentsRowAdapter.loadAll(driver)).toHaveLength(1);
             expect(await eventsRowAdapter.loadAll(driver)).toHaveLength(1);
-            const draftRow = await driver.execute(
-                "SELECT * FROM hmis_drafts WHERE id = 'draft-1'",
-            );
-            expect(draftRow.rows).toHaveLength(1);
+            // HMIS drafts stay in Dexie's MOHRegisterDB, where
+            // hmis-drafts.ts reads them on both backends.
+            const draftRows = await driver.execute("SELECT * FROM hmis_drafts");
+            expect(draftRows.rows).toHaveLength(0);
 
             const status = await getConfigRow<{ completedAt: string }>(
                 driver,
@@ -341,6 +322,48 @@ describe("runDexieMigrationIfNeeded", () => {
             expect(
                 await getConfigRow(driver, "metadata_versions", "metadata-version"),
             ).toBeUndefined();
+        } finally {
+            close();
+        }
+    });
+
+    it("copies again when Dexie was the live store after the last completed copy", async () => {
+        const { driver, close } = await setUp();
+        try {
+            await putConfigRow(driver, "migration_status", {
+                id: "dexie-migration",
+                completedAt: "2026-01-01T00:00:00.000Z",
+            });
+            const source = new FakeDexieMigrationSource({
+                trackedEntities: [makeTrackedEntity()],
+                dexieLastLiveAt: "2026-02-01T00:00:00.000Z",
+            });
+
+            await runDexieMigrationIfNeeded(driver, source);
+
+            expect(await trackedEntitiesRowAdapter.loadAll(driver)).toHaveLength(1);
+            expect(source.dropAllCalls).toBe(1);
+        } finally {
+            close();
+        }
+    });
+
+    it("stays a no-op when Dexie was last live before the completed copy", async () => {
+        const { driver, close } = await setUp();
+        try {
+            await putConfigRow(driver, "migration_status", {
+                id: "dexie-migration",
+                completedAt: "2026-02-01T00:00:00.000Z",
+            });
+            const source = new FakeDexieMigrationSource({
+                trackedEntities: [makeTrackedEntity()],
+                dexieLastLiveAt: "2026-01-01T00:00:00.000Z",
+            });
+
+            await runDexieMigrationIfNeeded(driver, source);
+
+            expect(await trackedEntitiesRowAdapter.loadAll(driver)).toEqual([]);
+            expect(source.dropAllCalls).toBe(0);
         } finally {
             close();
         }
