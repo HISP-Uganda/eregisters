@@ -1253,6 +1253,27 @@ const syncMachine = setup({
                     },
                 },
                 waiting: {
+                    // Background refresh of ui-config on every boot, not
+                    // only after a metadata sync: otherwise an ordinary
+                    // reload (local metadata present, no sync needed) keeps
+                    // showing the active backend's stale local copy — e.g.
+                    // the storage-backend policy an admin just changed, or
+                    // the other backend's copy after a backend switch. Not
+                    // a blocking step, so a slow/offline network never
+                    // delays reaching `waiting` (RootRoute's loader waits
+                    // on it).
+                    invoke: {
+                        src: "pullUIConfig",
+                        input: ({ context: { metadataStore, engine } }) => ({
+                            metadataStore,
+                            engine,
+                        }),
+                        onDone: {
+                            actions: assign(({ event }) => ({
+                                uiConfig: event.output,
+                            })),
+                        },
+                    },
                     on: {
                         START_METADATA_SYNC: {
                             target: "syncing",

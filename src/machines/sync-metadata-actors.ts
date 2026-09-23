@@ -102,6 +102,13 @@ export async function pullUiConfig(
         });
         return result.uiConfig;
     } catch {
+        // Runs on every boot (sync.ts's metadataSync `waiting` state), so
+        // offline must not wipe the last config pulled while online.
+        const existing = await store.getRow<{ id: string; config: UIConfig }>(
+            "ui_config",
+            "main",
+        );
+        if (existing) return existing.config;
         await store.putRow("ui_config", {
             id: "main",
             config: emptyUIConfig,

@@ -50,7 +50,34 @@ describe("sync-metadata-actors", () => {
             });
         });
 
-        it("falls back to emptyUIConfig and persists it when the fetch fails", async () => {
+        it("keeps the existing local config (does not wipe it) when the fetch fails", async () => {
+            const { driver, close: c } = createNodeSqliteDriver();
+            close = c;
+            await createSchema(driver);
+            const store = sqliteMetadataStore(driver);
+            await pullUiConfig(
+                store,
+                fakeEngine(
+                    vi.fn().mockResolvedValue({
+                        uiConfig: { dataPullPageSize: 42 },
+                    }),
+                ),
+            );
+
+            const result = await pullUiConfig(
+                store,
+                fakeEngine(vi.fn().mockRejectedValue(new Error("offline"))),
+            );
+
+            expect(result).toEqual({ dataPullPageSize: 42 });
+            const row = await store.getRow<{ config: unknown }>(
+                "ui_config",
+                "main",
+            );
+            expect(row?.config).toEqual({ dataPullPageSize: 42 });
+        });
+
+        it("falls back to emptyUIConfig and persists it when the fetch fails and nothing is stored yet", async () => {
             const { driver, close: c } = createNodeSqliteDriver();
             close = c;
             await createSchema(driver);
