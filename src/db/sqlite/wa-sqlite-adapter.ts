@@ -2,6 +2,7 @@ import SQLiteESMFactory from "@journeyapps/wa-sqlite/dist/wa-sqlite.mjs";
 import wasmUrl from "@journeyapps/wa-sqlite/dist/wa-sqlite.wasm?url";
 import { Factory, SQLITE_ROW } from "@journeyapps/wa-sqlite";
 import { OPFSCoopSyncVFS } from "@journeyapps/wa-sqlite/src/examples/OPFSCoopSyncVFS.js";
+import { instantiateWasmFromUrl } from "./wasm-loader";
 
 /**
  * Low-level wa-sqlite + OPFSCoopSyncVFS wrapper — runs ONLY inside
@@ -63,11 +64,38 @@ function checkCapabilities(): void {
     }
 }
 
+/**
+ * Boots the wa-sqlite Emscripten module through `instantiateWasmFromUrl`
+ * (see its doc comment for why) via Emscripten's `instantiateWasm` hook.
+ * The hook's callback takes `(instance, module)`. Emscripten never rejects
+ * its own promise when the hook fails, so a load failure is surfaced
+ * through this wrapper's `reject` instead of hanging startup forever.
+ */
+function loadSqliteModule(): Promise<unknown> {
+    return new Promise((resolve, reject) => {
+        SQLiteESMFactory({
+            instantiateWasm(
+                imports: WebAssembly.Imports,
+                onInstance: (
+                    instance: WebAssembly.Instance,
+                    module: WebAssembly.Module,
+                ) => void,
+            ) {
+                instantiateWasmFromUrl(wasmUrl, imports).then(
+                    ({ instance, module }) => onInstance(instance, module),
+                    reject,
+                );
+                return {};
+            },
+        }).then(resolve, reject);
+    });
+}
+
 export async function openWaSqliteAdapter(
     name: string,
 ): Promise<WaSqliteAdapter> {
     checkCapabilities();
-    const module = await SQLiteESMFactory({ locateFile: () => wasmUrl });
+    const module = await loadSqliteModule();
     const sqlite = Factory(module);
     const vfs = await OPFSCoopSyncVFS.create("eregisters-cooperative-opfs", module);
     vfs.mxPathname = 256;
