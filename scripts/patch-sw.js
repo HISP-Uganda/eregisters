@@ -86,6 +86,10 @@ if (!sw.includes(NAV_SENTINEL)) {
 // every plugin's fetchDidFail instead — which also fixes
 // dhis2ConnectionStatusPlugin's "reports connected for a 5xx" bug as a side
 // effect, since it never sees the bad response as a success.
+// Deliberately 5xx ONLY: an earlier `!response.ok` check also threw on 4xx,
+// so any legitimate 404 (e.g. the DHIS2 app-adapter's probe of the usually
+// absent `dataStore/custom-translations/controller` key) fell back to an
+// empty cache and surfaced as an uncaught "no-response" error.
 const THROW_5XX_SENTINEL = '__patch_5xx_throw__'
 
 // Confirmed against a real build (as of this writing) that every one of the
@@ -99,7 +103,7 @@ if (!sw.includes(THROW_5XX_SENTINEL)) {
     const pluginsPattern = /plugins:\[(\w+)\]/g
     const occurrences = (sw.match(pluginsPattern) || []).length
     if (occurrences > 0) {
-        const definition = `// ${THROW_5XX_SENTINEL}\n// Thrown from fetchDidSucceed on a non-ok response so Workbox treats a 5xx the same as a rejected fetch (cache fallback + fetchDidFail on every plugin, incl. dhis2ConnectionStatusPlugin).\nconst __patch5xxPlugin={fetchDidSucceed:async({response})=>{if(!response.ok){throw new Error('${THROW_5XX_SENTINEL}:'+response.status)}return response;}};\n`
+        const definition = `// ${THROW_5XX_SENTINEL}\n// Thrown from fetchDidSucceed on a 5xx response (never a 4xx — a 404/403 is a real answer from a reachable server, and treating it as a failure turns it into a Workbox "no-response" rejection) so Workbox treats a 5xx the same as a rejected fetch (cache fallback + fetchDidFail on every plugin, incl. dhis2ConnectionStatusPlugin).\nconst __patch5xxPlugin={fetchDidSucceed:async({response})=>{if(response.status>=500){throw new Error('${THROW_5XX_SENTINEL}:'+response.status)}return response;}};\n`
         sw = definition + sw
         sw = sw.replace(pluginsPattern, (match, pluginVar) =>
             `plugins:[__patch5xxPlugin,${pluginVar}]`
