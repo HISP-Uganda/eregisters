@@ -8,7 +8,7 @@
     "scripts": {
         "build": "d2-app-scripts build",
         "postbuild": "node scripts/patch-sw.js",
-        "start": "d2-app-scripts start --proxy https://customization.health.go.ug/eregistry",
+        "start": "d2-app-scripts start --proxy https://eregisters.health.go.ug",
         "test": "d2-app-scripts test",
         "test:vitest": "vitest run",
         "deploy": "d2-app-scripts deploy"
