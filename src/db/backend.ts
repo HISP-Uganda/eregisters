@@ -16,6 +16,7 @@ export type BackendSetting = "auto" | StorageBackend;
 
 const SETTING_KEY = "eregisters.storageBackend";
 const OPFS_FAILURE_CACHE_KEY = "eregisters.opfsInitFailed";
+const SQLITE_USED_KEY = "eregisters.sqliteUsed";
 
 /**
  * Bump this whenever a fix ships that could change whether OPFS init
@@ -82,6 +83,45 @@ export function clearCachedOpfsFailure(): void {
     } catch {
         // Best-effort.
     }
+}
+
+/**
+ * Records that SQLite has been the live store on this device, so its data
+ * may still be there after a later fallback to Dexie. Set on every SQLite
+ * boot (`App.tsx`); never cleared — it's only used to decide whether the
+ * SQLite->Dexie copy is worth attempting.
+ */
+export function markSqliteUsed(): void {
+    try {
+        localStorage.setItem(SQLITE_USED_KEY, "1");
+    } catch {
+        // Best-effort — see setBackendSetting's comment.
+    }
+}
+
+function hasUsedSqlite(): boolean {
+    try {
+        return localStorage.getItem(SQLITE_USED_KEY) === "1";
+    } catch {
+        return false;
+    }
+}
+
+/**
+ * Whether a Dexie boot should try opening SQLite to copy its data across.
+ * Never without OPFS (SQLite can't be read at all). Otherwise always,
+ * unless on "auto" with a cached OPFS failure on a device that has never
+ * run on SQLite — only then is there provably nothing to copy, and the
+ * cache spares that device a failed Worker init on every boot. A device
+ * that HAS used SQLite still tries: its failure may have been transient,
+ * and skipping would strand its SQLite data.
+ */
+export function shouldAttemptSqliteToDexieCopy(
+    setting: BackendSetting,
+): boolean {
+    if (!hasOpfsCapability()) return false;
+    if (setting === "dexie") return true;
+    return !getCachedOpfsFailure() || hasUsedSqlite();
 }
 
 /**

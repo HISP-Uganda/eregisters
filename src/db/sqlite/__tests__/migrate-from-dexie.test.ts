@@ -369,6 +369,31 @@ describe("runDexieMigrationIfNeeded", () => {
         }
     });
 
+    it("copies Dexie metadata (and lastMetadataPull) even when no Dexie tracker database exists", async () => {
+        const { driver, close } = await setUp();
+        try {
+            const source = new FakeDexieMigrationSource({
+                present: false,
+                metadataVersion: {
+                    id: "metadata-version",
+                    lastSync: "2026-01-02T00:00:00.000",
+                } as unknown as MetadataVersion,
+                metadataTables: { programs: [{ id: "p1" }] },
+            });
+
+            await runDexieMigrationIfNeeded(driver, source);
+
+            expect(
+                await sqliteMetadataStore(driver).listRows("programs"),
+            ).toEqual([{ id: "p1" }]);
+            expect(
+                await getConfigRow(driver, "metadata_versions", "metadata-version"),
+            ).toMatchObject({ lastSync: "2026-01-02T00:00:00.000" });
+        } finally {
+            close();
+        }
+    });
+
     it("is idempotent: a second call is a no-op once the flag is set", async () => {
         const { driver, close } = await setUp();
         try {

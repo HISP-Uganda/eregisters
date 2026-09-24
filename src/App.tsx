@@ -7,10 +7,11 @@ import { Spinner } from "./components/spinner";
 import {
     clearCachedOpfsFailure,
     getBackendSetting,
-    getCachedOpfsFailure,
-    hasOpfsCapability,
+    markSqliteUsed,
     resolveBackend,
     setCachedOpfsFailure,
+    shouldAttemptSqliteToDexieCopy,
+    type BackendSetting,
     type StorageBackend,
 } from "./db/backend";
 import { initCollections } from "./db/collections";
@@ -65,11 +66,9 @@ const ME_QUERY = {
  * that's structurally incapable of OPFS (the common reason it resolved
  * to Dexie in the first place) only pays the failed-attempt cost once.
  *
- * `forced` (the user explicitly chose Dexie) skips that cache: a device
- * whose SQLite once failed to open may still hold real SQLite data, and
- * an explicit switch must at least try to bring it across. Costs one
- * failed Worker init per boot on a device where OPFS truly doesn't work,
- * until a copy succeeds.
+ * `shouldAttemptSqliteToDexieCopy` (`db/backend.ts`) decides whether that
+ * cache applies: it's ignored when Dexie is forced or when this device has
+ * run on SQLite before, since its SQLite data may still be there.
  *
  * Unlike the old op-sqlite-backed version of this function,
  * `createWaSqliteDriver` has no module-level singleton to worry about
@@ -77,11 +76,10 @@ const ME_QUERY = {
  * self-contained.
  */
 async function attemptReverseMigrationIfNeeded(
-    forced: boolean,
+    setting: BackendSetting,
 ): Promise<void> {
     if (await realDexieMigrationTarget.hasCompletedMigration()) return;
-    if (!hasOpfsCapability()) return;
-    if (!forced && getCachedOpfsFailure()) return;
+    if (!shouldAttemptSqliteToDexieCopy(setting)) return;
 
     try {
         const driver = await createWaSqliteDriver("eregisters-metadata");
@@ -138,6 +136,7 @@ const FullApp: FC<{
                     );
                 }
                 initCollections("sqlite", sqliteDriver);
+                markSqliteUsed();
                 // Awaited, not fire-and-forget: the sync machine must not
                 // start until the copy is done, or its first (full) pull
                 // into the still-empty SQLite tables races the migration
@@ -163,7 +162,7 @@ const FullApp: FC<{
                 // Awaited for the same reason as the forward direction
                 // above — see attemptReverseMigrationIfNeeded's own doc
                 // comment. Never throws.
-                await attemptReverseMigrationIfNeeded(setting === "dexie");
+                await attemptReverseMigrationIfNeeded(setting);
                 // Lets the next SQLite boot see that Dexie data may be
                 // newer than its last copy — see markDexieLive's doc
                 // comment. Best-effort: never block boot on it.

@@ -223,7 +223,13 @@ export async function runDexieMigrationIfNeeded(
     }
 
     publishMigrationProgress({ phase: "checking" });
-    const hasDexieData = await source.existsAnyDexieData();
+    // Metadata counts too (a metadata sync ran on Dexie), mirroring the
+    // reverse direction's hasAnySqliteDataToMigrate — otherwise a Dexie
+    // store holding metadata but no tracker database would take the
+    // fresh-install shortcut and never copy it.
+    const hasDexieData =
+        (await source.existsAnyDexieData()) ||
+        (await source.readMetadataVersion()) !== undefined;
     if (!hasDexieData) {
         // Fresh install — nothing to copy, don't scan for it again next boot.
         await markComplete(db);

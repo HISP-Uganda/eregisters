@@ -188,4 +188,50 @@ describe("backend", () => {
             expect(attemptSqliteInit).toHaveBeenCalledTimes(1);
         });
     });
+    describe("shouldAttemptSqliteToDexieCopy", () => {
+        const opfs = () =>
+            vi.stubGlobal("navigator", {
+                storage: { getDirectory: async () => undefined },
+            });
+
+        it("tries on auto with no cached failure", async () => {
+            opfs();
+            const { shouldAttemptSqliteToDexieCopy } = await import("../backend");
+            expect(shouldAttemptSqliteToDexieCopy("auto")).toBe(true);
+        });
+
+        it("skips on auto when SQLite failed before and was never used on this device", async () => {
+            opfs();
+            const { shouldAttemptSqliteToDexieCopy, setCachedOpfsFailure } =
+                await import("../backend");
+            setCachedOpfsFailure();
+            expect(shouldAttemptSqliteToDexieCopy("auto")).toBe(false);
+        });
+
+        it("still tries on auto after a cached failure if this device has used SQLite (its data may be there)", async () => {
+            opfs();
+            const {
+                shouldAttemptSqliteToDexieCopy,
+                setCachedOpfsFailure,
+                markSqliteUsed,
+            } = await import("../backend");
+            markSqliteUsed();
+            setCachedOpfsFailure();
+            expect(shouldAttemptSqliteToDexieCopy("auto")).toBe(true);
+        });
+
+        it("always tries when Dexie is forced", async () => {
+            opfs();
+            const { shouldAttemptSqliteToDexieCopy, setCachedOpfsFailure } =
+                await import("../backend");
+            setCachedOpfsFailure();
+            expect(shouldAttemptSqliteToDexieCopy("dexie")).toBe(true);
+        });
+
+        it("never tries without OPFS (SQLite can't be read at all)", async () => {
+            vi.stubGlobal("navigator", {});
+            const { shouldAttemptSqliteToDexieCopy } = await import("../backend");
+            expect(shouldAttemptSqliteToDexieCopy("dexie")).toBe(false);
+        });
+    });
 });
