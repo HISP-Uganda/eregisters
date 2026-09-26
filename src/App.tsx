@@ -1,33 +1,12 @@
 import { useDataEngine, useDataQuery } from "@dhis2/app-runtime";
 import { RouterProvider } from "@tanstack/react-router";
+import { useSelector } from "@xstate/react";
 import { App, ConfigProvider, Typography } from "antd";
-import React, { FC, useEffect, useState } from "react";
-import { MigrationProgressBanner } from "./components/migration-progress-banner";
+import React, { FC, useEffect } from "react";
 import { Spinner } from "./components/spinner";
-import {
-    clearCachedOpfsFailure,
-    getBackendSetting,
-    markSqliteUsed,
-    resolveBackend,
-    setCachedOpfsFailure,
-    shouldAttemptSqliteToDexieCopy,
-    type BackendSetting,
-    type StorageBackend,
-} from "./db/backend";
-import { initCollections } from "./db/collections";
-import { dexieMetadataStore } from "./db/dexie/metadata-store";
-import {
-    clearSqliteMigrationFlag,
-    markDexieLive,
-    realDexieMigrationTarget,
-} from "./db/dexie/real-dexie-migration-target";
-import { runSqliteMigrationIfNeeded } from "./db/dexie/migrate-from-sqlite";
-import { realDexieMigrationSource } from "./db/sqlite/dexie-migration-source";
-import type { SqlDriver } from "./db/sqlite/driver-types";
-import { sqliteMetadataStore } from "./db/sqlite/metadata-store";
-import { runDexieMigrationIfNeeded } from "./db/sqlite/migrate-from-dexie";
-import { createWaSqliteDriver } from "./db/sqlite/wa-sqlite-driver";
-import type { MetadataStore } from "./db/metadata-store";
+import { StorageBootScreen } from "./components/storage-boot-screen";
+import { bootView } from "./machines/storage-boot";
+import { getStorageBootActor } from "./machines/storage-boot-actor";
 import { SyncContext } from "./machines/sync";
 import { router } from "./router";
 import { MeData, MeUser } from "./schemas";
@@ -41,55 +20,6 @@ const ME_QUERY = {
     },
 } as const;
 
-/**
- * Reverse migration (wa-sqlite -> Dexie), awaited on the Dexie branch of
- * bootstrap — wayfinder ticket "Wiring the reverse migration to
- * actually execute on a backend switch"
- * (`docs/wayfinder/opfs-dexie-dual-backend/tickets/006-wire-backend-switch-migration.md`),
- * updated to read from wa-sqlite instead of op-sqlite once wa-sqlite
- * became what "sqlite" means (wayfinder map "Replace op-sqlite with
- * wa-sqlite for real multi-tab support").
- *
- * `resolveBackend()` never attempts to open the SQL backend for a
- * forced "dexie" setting, so a device that was just switched to Dexie has no
- * `SqlDriver` to read its old SQL data from. `hasCompletedMigration()` is
- * cheap and Dexie-only, so it gates a separate, best-effort
- * `createWaSqliteDriver` attempt made ONLY to feed this migration — that
- * driver is discarded afterwards, never wired into the app's live
- * collections (those stay on Dexie throughout). Deliberately spawns no
- * duplicate-tab lock dance (ticket 005: Dexie needs none for its own
- * correctness, and wa-sqlite's `OPFSCoopSyncVFS` supports multiple tabs
- * natively anyway) — any driver-open failure is treated the same as
- * "can't migrate right now" and retried next reload, reusing
- * `runSqliteMigrationIfNeeded`'s own failure path rather than a second
- * blocking UI. Reuses `backend.ts`'s OPFS-failure cache so a device
- * that's structurally incapable of OPFS (the common reason it resolved
- * to Dexie in the first place) only pays the failed-attempt cost once.
- *
- * `shouldAttemptSqliteToDexieCopy` (`db/backend.ts`) decides whether that
- * cache applies: it's ignored when Dexie is forced or when this device has
- * run on SQLite before, since its SQLite data may still be there.
- *
- * Unlike the old op-sqlite-backed version of this function,
- * `createWaSqliteDriver` has no module-level singleton to worry about
- * polluting — each call spawns its own dedicated Worker and is fully
- * self-contained.
- */
-async function attemptReverseMigrationIfNeeded(
-    setting: BackendSetting,
-): Promise<void> {
-    if (await realDexieMigrationTarget.hasCompletedMigration()) return;
-    if (!shouldAttemptSqliteToDexieCopy(setting)) return;
-
-    try {
-        const driver = await createWaSqliteDriver("eregisters-metadata");
-        clearCachedOpfsFailure();
-        await runSqliteMigrationIfNeeded(driver, realDexieMigrationTarget);
-    } catch {
-        setCachedOpfsFailure();
-    }
-}
-
 const Main = () => {
     const syncActor = SyncContext.useActorRef();
     const engine = useDataEngine();
@@ -98,111 +28,29 @@ const Main = () => {
     );
 };
 
+/**
+ * Renders once local storage is ready — the storage-boot machine
+ * (`machines/storage-boot.ts`) resolves the live store and runs any store
+ * copy first, so the sync machine never races a copy. Until then the boot
+ * screen shows its progress / failure / Retry.
+ */
 const FullApp: FC<{
     userInfo: MeUser;
 }> = ({ userInfo }) => {
     const engine = useDataEngine();
     const { message } = App.useApp();
-    const [sqlDriver, setSqlDriver] = useState<SqlDriver | null>(null);
-    const [backend, setBackend] = useState<StorageBackend | null>(null);
-    const [metadataStore, setMetadataStore] = useState<MetadataStore | null>(
-        null,
+    const bootActor = getStorageBootActor();
+    const view = useSelector(bootActor, bootView, shallowEqualView);
+    const storage = useSelector(bootActor, (snapshot) =>
+        snapshot.status === "done" ? snapshot.output : undefined,
     );
-    const [sqlDriverError, setSqlDriverError] = useState<Error | null>(null);
 
-    useEffect(() => {
-        // No duplicate-tab lock dance here (op-sqlite's single-connection
-        // constraint required one; wa-sqlite's OPFSCoopSyncVFS supports
-        // multiple tabs/windows of the same browser natively — wayfinder
-        // map "Replace op-sqlite with wa-sqlite for real multi-tab
-        // support"). `single-tab-lock.ts` and its "already open in
-        // another tab" screen are gone along with it.
-        async function bootstrap() {
-            const setting = getBackendSetting();
-            let sqliteDriver: SqlDriver | undefined;
-
-            const resolved = await resolveBackend(setting, async () => {
-                sqliteDriver = await createWaSqliteDriver(
-                    "eregisters-metadata",
-                );
-            });
-
-            if (resolved === "sqlite") {
-                // Never fall through to the Dexie branch here — that
-                // silently ignored a forced "sqlite" setting before.
-                if (!sqliteDriver) {
-                    throw new Error(
-                        "SQLite backend resolved but no driver was opened",
-                    );
-                }
-                initCollections("sqlite", sqliteDriver);
-                markSqliteUsed();
-                // Awaited, not fire-and-forget: the sync machine must not
-                // start until the copy is done, or its first (full) pull
-                // into the still-empty SQLite tables races the migration
-                // and older Dexie rows can overwrite freshly-pulled ones.
-                // The loading screen shows progress meanwhile. A fresh
-                // install resolves this instantly (nothing to copy). This
-                // never throws for a failed copy — that's caught
-                // internally and published as progress, and the app
-                // proceeds so the copy retries next reload.
-                await runDexieMigrationIfNeeded(
-                    sqliteDriver,
-                    realDexieMigrationSource,
-                );
-                // SQLite is the live store now, so a later switch to Dexie
-                // must copy its data back — see the function's doc
-                // comment. Best-effort: never block boot on it.
-                await clearSqliteMigrationFlag().catch(() => undefined);
-                setSqlDriver(sqliteDriver);
-                setMetadataStore(sqliteMetadataStore(sqliteDriver));
-                setBackend("sqlite");
-            } else {
-                initCollections("dexie");
-                // Awaited for the same reason as the forward direction
-                // above — see attemptReverseMigrationIfNeeded's own doc
-                // comment. Never throws.
-                await attemptReverseMigrationIfNeeded(setting);
-                // Lets the next SQLite boot see that Dexie data may be
-                // newer than its last copy — see markDexieLive's doc
-                // comment. Best-effort: never block boot on it.
-                await markDexieLive().catch(() => undefined);
-                setMetadataStore(dexieMetadataStore());
-                setBackend("dexie");
-            }
-        }
-
-        bootstrap().catch((error: unknown) => {
-            setSqlDriverError(
-                error instanceof Error ? error : new Error(String(error)),
-            );
-        });
-    }, []);
-
-    if (sqlDriverError) {
+    if (!storage) {
         return (
-            <Spinner
-                component={
-                    <Typography.Text type="danger">
-                        Could not open local storage — this device may not
-                        support offline mode, or the app is misconfigured on
-                        this server. Try reloading; if this keeps happening,
-                        contact your administrator. ({sqlDriverError.message})
-                    </Typography.Text>
-                }
-            />
-        );
-    }
-
-    if (!backend || !metadataStore) {
-        return (
-            <Spinner
-                component={
-                    <>
-                        <Typography.Text>Preparing local storage…</Typography.Text>
-                        <MigrationProgressBanner />
-                    </>
-                }
+            <StorageBootScreen
+                view={view}
+                onRetry={() => bootActor.send({ type: "RETRY" })}
+                onContinue={() => bootActor.send({ type: "CONTINUE" })}
             />
         );
     }
@@ -212,9 +60,9 @@ const FullApp: FC<{
             options={{
                 input: {
                     engine,
-                    backend,
-                    metadataStore,
-                    sqlDriver: sqlDriver ?? undefined,
+                    backend: storage.backend,
+                    metadataStore: storage.metadataStore,
+                    sqlDriver: storage.sqlDriver,
                     userInfo,
                     message,
                 },
@@ -226,7 +74,18 @@ const FullApp: FC<{
     );
 };
 
+function shallowEqualView(
+    a: ReturnType<typeof bootView>,
+    b: ReturnType<typeof bootView>,
+): boolean {
+    return JSON.stringify(a) === JSON.stringify(b);
+}
+
 const MyApp: FC = () => {
+    // Started here, not in FullApp: storage boot needs nothing from `me`,
+    // so opening storage and any store copy overlap the `me` round trip.
+    // A module-level singleton — never tied to this component's lifecycle.
+    getStorageBootActor();
     const { data, loading, error } = useDataQuery<MeData>(ME_QUERY);
     useEffect(() => {
         if (!("serviceWorker" in navigator)) return;

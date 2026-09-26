@@ -11,6 +11,7 @@ import { createSchema } from ".././schema";
 import { getConfigRow, putConfigRow } from ".././config-rows";
 import { sqliteMetadataStore } from ".././metadata-store";
 import {
+    getTrackedEntitiesCollection,
     initTrackerCollections,
     resetTrackerCollectionsForTests,
 } from ".././tracker-collections-instance";
@@ -18,10 +19,26 @@ import { trackedEntitiesRowAdapter } from ".././row-adapters/tracked-entities";
 import { enrollmentsRowAdapter } from ".././row-adapters/enrollments";
 import { eventsRowAdapter } from ".././row-adapters/events";
 import {
-    runDexieMigrationIfNeeded,
+    forwardCopySteps,
     type DexieMigrationSource,
 } from ".././migrate-from-dexie";
-import { getMigrationProgress } from ".././migration-progress";
+import { runStoreCopy, type MigrationProgress } from "../../store-copy";
+
+let lastProgress: MigrationProgress = { phase: "idle" };
+
+/** The forward copy run end to end, the same sequence the storage-boot machine drives. */
+async function runDexieMigrationIfNeeded(
+    db: Parameters<typeof forwardCopySteps>[0],
+    source: DexieMigrationSource,
+): Promise<void> {
+    await runStoreCopy(forwardCopySteps(db, source), (progress) => {
+        lastProgress = progress;
+    });
+}
+
+function getMigrationProgress(): MigrationProgress {
+    return lastProgress;
+}
 
 /** Fresh driver + collections per test, since the migration flag/collection singletons are once-per-process. */
 async function setUp() {
@@ -113,14 +130,18 @@ class FakeDexieMigrationSource implements DexieMigrationSource {
             present?: boolean;
             failReadEvents?: boolean;
             dexieLastLiveAt?: string;
+            reverseCopyCompletedAt?: string;
         } = {},
     ) {}
 
     async readDexieLastLiveAt(): Promise<string | undefined> {
         return this.data.dexieLastLiveAt;
     }
+    async readReverseCopyCompletedAt(): Promise<string | undefined> {
+        return this.data.reverseCopyCompletedAt;
+    }
     async existsAnyDexieData(): Promise<boolean> {
-        return this.data.present ?? true;
+        return (this.data.present ?? true) && this.dropAllCalls === 0;
     }
     async readTrackedEntities(): Promise<FlattenedTrackedEntity[]> {
         return this.data.trackedEntities ?? [];
@@ -356,7 +377,7 @@ describe("runDexieMigrationIfNeeded", () => {
                 completedAt: "2026-02-01T00:00:00.000Z",
             });
             const source = new FakeDexieMigrationSource({
-                trackedEntities: [makeTrackedEntity()],
+                present: false,
                 dexieLastLiveAt: "2026-01-01T00:00:00.000Z",
             });
 
@@ -364,6 +385,77 @@ describe("runDexieMigrationIfNeeded", () => {
 
             expect(await trackedEntitiesRowAdapter.loadAll(driver)).toEqual([]);
             expect(source.dropAllCalls).toBe(0);
+        } finally {
+            close();
+        }
+    });
+
+    it("retries a failed cleanup without re-copying when the copy is current but Dexie tracker data remains", async () => {
+        const { driver, close } = await setUp();
+        try {
+            await putConfigRow(driver, "migration_status", {
+                id: "dexie-migration",
+                completedAt: "2026-02-01T00:00:00.000Z",
+            });
+            const source = new FakeDexieMigrationSource({
+                trackedEntities: [makeTrackedEntity()],
+                dexieLastLiveAt: "2026-01-01T00:00:00.000Z",
+            });
+
+            await runDexieMigrationIfNeeded(driver, source);
+            expect(source.dropAllCalls).toBe(1);
+            expect(await trackedEntitiesRowAdapter.loadAll(driver)).toEqual([]);
+
+            // Leftovers gone: the next boot is a plain no-op.
+            await runDexieMigrationIfNeeded(driver, source);
+            expect(source.dropAllCalls).toBe(1);
+        } finally {
+            close();
+        }
+    });
+
+    it("drops stale SQLite leftovers of a still-current reverse copy before copying Dexie in", async () => {
+        const { driver, close } = await setUp();
+        try {
+            // Leftover from a reverse copy whose SQLite cleanup failed: a
+            // tracked entity since deleted on Dexie.
+            await getTrackedEntitiesCollection().utils.bulkInsertLocally(
+                [makeTrackedEntity({ trackedEntity: "deleted-since" })],
+                { source: "local" },
+            );
+            const source = new FakeDexieMigrationSource({
+                trackedEntities: [makeTrackedEntity({ trackedEntity: "kept" })],
+                reverseCopyCompletedAt: "2026-02-01T00:00:00.000Z",
+            });
+
+            await runDexieMigrationIfNeeded(driver, source);
+
+            const ids = (await trackedEntitiesRowAdapter.loadAll(driver)).map(
+                (row) => row.trackedEntity,
+            );
+            expect(ids).toEqual(["kept"]);
+        } finally {
+            close();
+        }
+    });
+
+    it("keeps SQLite data when no reverse copy is current", async () => {
+        const { driver, close } = await setUp();
+        try {
+            await getTrackedEntitiesCollection().utils.bulkInsertLocally(
+                [makeTrackedEntity({ trackedEntity: "live-sqlite-row" })],
+                { source: "local" },
+            );
+            const source = new FakeDexieMigrationSource({
+                trackedEntities: [makeTrackedEntity({ trackedEntity: "kept" })],
+            });
+
+            await runDexieMigrationIfNeeded(driver, source);
+
+            const ids = (await trackedEntitiesRowAdapter.loadAll(driver))
+                .map((row) => row.trackedEntity)
+                .sort();
+            expect(ids).toEqual(["kept", "live-sqlite-row"]);
         } finally {
             close();
         }
@@ -469,4 +561,80 @@ describe("runDexieMigrationIfNeeded", () => {
             close();
         }
     });
+
+    it("copies a multi-chunk dataset — first, middle and last rows all land (§14 Test 2)", async () => {
+        const { driver, close } = await setUp();
+        try {
+            const ids = Array.from({ length: 1201 }, (_, i) => `te-${String(i).padStart(4, "0")}`);
+            const source = new FakeDexieMigrationSource({
+                trackedEntities: ids.map((trackedEntity) => makeTrackedEntity({ trackedEntity })),
+            });
+
+            await runDexieMigrationIfNeeded(driver, source);
+
+            const copied = new Set(
+                (await trackedEntitiesRowAdapter.loadAll(driver)).map((r) => r.trackedEntity),
+            );
+            expect(copied.size).toBe(1201);
+            for (const id of [ids[0], ids[600], ids[1200]]) expect(copied.has(id)).toBe(true);
+            expect(getMigrationProgress()).toEqual({ phase: "done" });
+            expect(source.dropAllCalls).toBe(1);
+        } finally {
+            close();
+        }
+    });
+
+    it("re-copies everything without duplicates after an interrupted run left partial rows (§14 Test 3)", async () => {
+        const { driver, close } = await setUp();
+        try {
+            // A killed tab: some rows written, copy-complete flag never written.
+            await getTrackedEntitiesCollection().utils.bulkInsertLocally(
+                [makeTrackedEntity({ trackedEntity: "te-a" })],
+                { source: "local" },
+            );
+            const source = new FakeDexieMigrationSource({
+                trackedEntities: ["te-a", "te-b", "te-c"].map((trackedEntity) =>
+                    makeTrackedEntity({ trackedEntity }),
+                ),
+            });
+
+            await runDexieMigrationIfNeeded(driver, source);
+
+            const ids = (await trackedEntitiesRowAdapter.loadAll(driver))
+                .map((r) => r.trackedEntity)
+                .sort();
+            expect(ids).toEqual(["te-a", "te-b", "te-c"]);
+            expect(source.dropAllCalls).toBe(1);
+        } finally {
+            close();
+        }
+    });
+
+    it("fails loudly, naming the table and field, when a row misses a required reference (§14 Test 12)", async () => {
+        const { driver, close } = await setUp();
+        try {
+            const source = new FakeDexieMigrationSource({
+                trackedEntities: [makeTrackedEntity()],
+                enrollments: [makeEnrollment()],
+                events: [
+                    makeEvent({ event: "evt-ok" }),
+                    makeEvent({ event: "evt-orphan", enrollment: undefined as unknown as string }),
+                ],
+            });
+
+            await runDexieMigrationIfNeeded(driver, source);
+
+            expect(getMigrationProgress()).toEqual({
+                phase: "failed",
+                error: "events: 1 rows missing enrollment",
+            });
+            // Rolled back, not completed, source kept.
+            expect(await trackedEntitiesRowAdapter.loadAll(driver)).toEqual([]);
+            expect(await getConfigRow(driver, "migration_status", "dexie-migration")).toBeUndefined();
+            expect(source.dropAllCalls).toBe(0);
+        } finally {
+            close();
+        }
+    });
 });
+

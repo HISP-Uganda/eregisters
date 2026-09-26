@@ -1,8 +1,13 @@
+import type { MetadataVersion } from "../../schemas";
 import type { SyncState } from "../index";
 import type { HmisDraft } from "../hmis-drafts";
 import { replaceMetadataTables } from "../metadata-operations";
 import { dexieMetadataStore } from "./metadata-store";
-import { countDexieRowsByIds } from "./dexie-verification";
+import {
+    countDexieRowsByIds,
+    listDexieIds,
+    sumDexieNestedKeys,
+} from "./dexie-verification";
 import type { DexieMigrationTarget } from "./migrate-from-sqlite";
 import {
     getEnrollmentsDexieCollection,
@@ -14,7 +19,19 @@ import {
 const MIGRATION_STATUS_TABLE = "migration_status";
 const MIGRATION_STATUS_ID = "sqlite-migration";
 
-type MigrationStatusRow = { id: string; completedAt: string };
+type MigrationStatusRow = { id: string; completedAt: string; cleanedAt?: string };
+
+const NESTED_FIELDS = {
+    trackedEntities: ["MOHRegister_TrackedEntities", "attributes"],
+    enrollments: ["MOHRegister_Enrollments", "attributes"],
+    events: ["MOHRegister_Events", "dataValues"],
+} as const;
+
+const TRACKER_TABLES = [
+    ["MOHRegister_TrackedEntities", "trackedEntities"],
+    ["MOHRegister_Enrollments", "enrollments"],
+    ["MOHRegister_Events", "events"],
+] as const;
 
 /**
  * Records that Dexie is the live store as of now — called on every Dexie
@@ -71,6 +88,81 @@ export const realDexieMigrationTarget: DexieMigrationTarget = {
             MIGRATION_STATUS_TABLE,
             { id: MIGRATION_STATUS_ID, completedAt: new Date().toISOString() },
         );
+    },
+
+    async isSqliteCleaned(): Promise<boolean> {
+        const row = await dexieMetadataStore().getRow<MigrationStatusRow>(
+            MIGRATION_STATUS_TABLE,
+            MIGRATION_STATUS_ID,
+        );
+        return row?.cleanedAt !== undefined;
+    },
+
+    async markSqliteCleaned(): Promise<void> {
+        const store = dexieMetadataStore();
+        const row = await store.getRow<MigrationStatusRow>(
+            MIGRATION_STATUS_TABLE,
+            MIGRATION_STATUS_ID,
+        );
+        if (!row) return;
+        await store.putRow<MigrationStatusRow>(MIGRATION_STATUS_TABLE, {
+            ...row,
+            cleanedAt: new Date().toISOString(),
+        });
+    },
+
+    async readDexieLastLiveAt(): Promise<string | undefined> {
+        const row = await dexieMetadataStore().getRow<{
+            id: string;
+            liveAt: string;
+        }>(MIGRATION_STATUS_TABLE, "dexie-live");
+        return row?.liveAt;
+    },
+
+    async hasTrackerData(): Promise<boolean> {
+        for (const [dbName, table] of TRACKER_TABLES) {
+            if ((await listDexieIds(dbName, table)).length > 0) return true;
+        }
+        return false;
+    },
+
+    // Through the collections (not a raw table clear), so their in-memory
+    // state drops the rows too.
+    async clearTrackerData(): Promise<void> {
+        initDexieTrackerCollections();
+        const [tes, enrollments, events] = await Promise.all(
+            TRACKER_TABLES.map(([dbName, table]) => listDexieIds(dbName, table)),
+        );
+        await getTrackedEntitiesDexieCollection().utils.deleteLocally(tes);
+        await getEnrollmentsDexieCollection().utils.deleteLocally(enrollments);
+        await getEventsDexieCollection().utils.deleteLocally(events);
+    },
+
+    readSyncState() {
+        return dexieMetadataStore().getRow<SyncState>("sync_state", "current");
+    },
+
+    readMetadataVersion() {
+        return dexieMetadataStore().getRow<MetadataVersion & { id: string }>(
+            "metadata_versions",
+            "metadata-version",
+        );
+    },
+
+    async countMetadataRows(table: string): Promise<number> {
+        return (await dexieMetadataStore().listRows(table)).length;
+    },
+
+    async clearMetadataVersion(): Promise<void> {
+        await dexieMetadataStore().deleteRow(
+            "metadata_versions",
+            "metadata-version",
+        );
+    },
+
+    countNestedKeys(table, ids) {
+        const [dbName, field] = NESTED_FIELDS[table];
+        return sumDexieNestedKeys(dbName, table, ids, field);
     },
 
     async writeTrackedEntities(rows): Promise<void> {

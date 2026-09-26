@@ -41,3 +41,55 @@ export async function countDexieRowsByIds(
         handle.close();
     }
 }
+
+/**
+ * Every stored row id of one tracker table — same schema-less open as
+ * `countDexieRowsByIds`. Empty when the database doesn't exist (never
+ * creates it).
+ */
+export async function listDexieIds(
+    dbName: string,
+    tableName: string,
+): Promise<string[]> {
+    if (!(await Dexie.exists(dbName))) return [];
+    const handle = new Dexie(dbName);
+    try {
+        await handle.open();
+        if (!handle.tables.some((table) => table.name === tableName)) return [];
+        return (await handle
+            .table<unknown, string>(tableName)
+            .toCollection()
+            .primaryKeys()) as string[];
+    } finally {
+        handle.close();
+    }
+}
+
+/** Total keys of one nested record field across the given rows — schema-less open, as above. */
+export async function sumDexieNestedKeys(
+    dbName: string,
+    tableName: string,
+    ids: string[],
+    field: string,
+): Promise<number> {
+    if (ids.length === 0) return 0;
+    const handle = new Dexie(dbName);
+    try {
+        await handle.open();
+        const rows = await handle
+            .table<Record<string, unknown>, string>(tableName)
+            .where("id")
+            .anyOf(ids)
+            .toArray();
+        let total = 0;
+        for (const row of rows) {
+            const nested = row[field];
+            if (nested && typeof nested === "object") {
+                total += Object.keys(nested).length;
+            }
+        }
+        return total;
+    } finally {
+        handle.close();
+    }
+}

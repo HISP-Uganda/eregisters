@@ -21,4 +21,6 @@ export interface SqlDriver {
         params?: ReadonlyArray<unknown>,
     ) => Promise<SqlExecuteResult<TRow>>;
     transaction: <T>(fn: (tx: SqlDriver) => Promise<T>) => Promise<T>;
+    /** Releases the underlying connection (the wa-sqlite Worker). Optional: test drivers need none. */
+    close?: () => Promise<void>;
 }

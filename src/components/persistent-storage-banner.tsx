@@ -17,7 +17,7 @@ function wasDismissed(): boolean {
  * `db/persistent-storage.ts`) and warns when the browser refuses — offline
  * data that hasn't been pushed yet could then be evicted, and in a
  * private/incognito window it is always deleted when the window closes.
- * Same full-width `<Alert>` placement as `MigrationProgressBanner`.
+ * Same full-width `<Alert>` placement as `StorageFallbackNotice`.
  * Closable; stays closed for the rest of the browser session. Nothing is
  * shown when persistence is granted or the API isn't supported.
  */

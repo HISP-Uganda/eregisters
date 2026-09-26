@@ -90,6 +90,15 @@ export const realDexieMigrationSource: DexieMigrationSource = {
         return results.some(Boolean);
     },
 
+    async readReverseCopyCompletedAt(): Promise<string | undefined> {
+        // Written by `realDexieMigrationTarget.markMigrationComplete`.
+        const row = await readMetadataRow<{ completedAt: string }>(
+            "migration_status",
+            "sqlite-migration",
+        );
+        return row?.completedAt;
+    },
+
     async readDexieLastLiveAt(): Promise<string | undefined> {
         // Written by `markDexieLive` (`../dexie/real-dexie-migration-target.ts`).
         const row = await readMetadataRow<{ liveAt: string }>(

@@ -38,7 +38,10 @@ import {
     getEventsCollection,
     getTrackedEntitiesCollection,
 } from "../db/collections";
-import { MigrationProgressBanner } from "../components/migration-progress-banner";
+import { useSelector } from "@xstate/react";
+import { StorageFallbackNotice } from "../components/storage-boot-screen";
+import { bootView } from "../machines/storage-boot";
+import { getStorageBootActor } from "../machines/storage-boot-actor";
 // import { PersistentStorageBanner } from "../components/persistent-storage-banner";
 import { Spinner } from "../components/spinner";
 import { SyncFailuresModal } from "../components/sync-failures-modal";
@@ -547,6 +550,7 @@ function LayoutWithDrafts() {
             new Map((program?.programStages ?? []).map((s) => [s.id, s.name])),
         [program],
     );
+    const storageView = useSelector(getStorageBootActor(), bootView);
     const syncingMetadata = SyncContext.useSelector((snapshot) => {
         return isMetadataSyncLoading(
             snapshot.matches({ metadataSync: "syncing" }) ||
@@ -941,7 +945,7 @@ function LayoutWithDrafts() {
             >
                 {navItems(true)}
             </Drawer>
-            <MigrationProgressBanner />
+            <StorageFallbackNotice view={storageView} />
             {/* <PersistentStorageBanner /> */}
             {showAppReload && (
                 <Alert

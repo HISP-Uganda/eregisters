@@ -41,7 +41,7 @@ const CHECKED_TABLES = [
     "category_option_combos",
 ] as const;
 
-function keyForRow(table: string, row: { id: string }): string {
+export function keyForRow(table: string, row: { id: string }): string {
     if (table === "option_sets") return optionSetKey(row as FlattenedOptionSet);
     if (table === "option_groups")
         return optionGroupKey(row as FlattenedOptionGroup);
@@ -365,4 +365,20 @@ export async function resetMetadataDatabaseGeneric(
     for (const table of tables) {
         await clearTable(store, table);
     }
+}
+
+/**
+ * Distinct keys per migrated metadata table — the row count
+ * `replaceMetadataTables` should leave in the target (composite-key
+ * tables collapse duplicate source rows).
+ */
+export function distinctMetadataKeys(
+    tables: Record<string, unknown[]>,
+): Record<string, number> {
+    const counts: Record<string, number> = {};
+    for (const table of MIGRATED_METADATA_TABLES) {
+        const rows = (tables[table] ?? []) as { id: string }[];
+        counts[table] = new Set(rows.map((row) => keyForRow(table, row))).size;
+    }
+    return counts;
 }

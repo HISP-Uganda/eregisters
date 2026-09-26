@@ -38,6 +38,7 @@ export interface WaSqliteWorkerLike {
         type: "error",
         listener: (event: ErrorEvent) => void,
     ): void;
+    terminate?(): void;
 }
 
 function defaultWorkerFactory(): WaSqliteWorkerLike {
@@ -79,6 +80,13 @@ class WaSqliteWorkerClient {
             for (const entry of this.pending.values()) entry.reject(error);
             this.pending.clear();
         });
+    }
+
+    close(): void {
+        const error = new Error("wa-sqlite driver closed");
+        for (const entry of this.pending.values()) entry.reject(error);
+        this.pending.clear();
+        this.worker.terminate?.();
     }
 
     request(request: WaSqliteRequestBody): Promise<SqlExecuteResult> {
@@ -131,6 +139,10 @@ export function wrapWaSqliteWorker(
                 throw error;
             }
         },
+        // Terminating the Worker releases its OPFS access handles, which
+        // is what a discarded driver (the reverse store copy's read-only
+        // one) must not keep holding.
+        close: async () => client.close(),
     };
 }
 

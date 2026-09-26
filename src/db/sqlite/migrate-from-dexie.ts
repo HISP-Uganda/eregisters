@@ -5,7 +5,10 @@ import type {
     MetadataVersion,
 } from "../../schemas";
 import type { SyncState } from "../index";
-import { replaceMetadataTables } from "../metadata-operations";
+import {
+    distinctMetadataKeys,
+    replaceMetadataTables,
+} from "../metadata-operations";
 import { getConfigRow, putConfigRow } from "./config-rows";
 import {
     deleteEnrollmentCascade,
@@ -13,8 +16,23 @@ import {
     deleteTrackedEntityCascade,
 } from "./delete-cascade";
 import type { SqlDriver } from "./driver-types";
+import type { RowAdapter } from "./row-adapter";
+import { enrollmentsRowAdapter } from "./row-adapters/enrollments";
+import { eventsRowAdapter } from "./row-adapters/events";
+import { trackedEntitiesRowAdapter } from "./row-adapters/tracked-entities";
 import { sqliteMetadataStore } from "./metadata-store";
-import { publishMigrationProgress } from "./migration-progress";
+import { hasAnySqliteData } from "../dexie/migrate-from-sqlite";
+import { dropAllSqliteData } from "./drop-all-data";
+import { createSchema } from "./schema";
+import {
+    assertCheckpoint,
+    assertNestedRows,
+    copyTable,
+    countNestedKeys,
+    metadataShortfalls,
+    type CopiedCheckpoint,
+    type StoreCopySteps,
+} from "../store-copy";
 import {
     getEnrollmentsCollection,
     getEventsCollection,
@@ -45,6 +63,12 @@ export interface DexieMigrationSource {
      * store (`markDexieLive` in `../dexie/real-dexie-migration-target.ts`).
      */
     readDexieLastLiveAt(): Promise<string | undefined>;
+    /**
+     * When the reverse (SQLite -> Dexie) copy completed, or undefined if it
+     * hasn't / its flag was cleared. Every SQLite boot clears that flag, so
+     * a value here means SQLite hasn't been live since that copy.
+     */
+    readReverseCopyCompletedAt(): Promise<string | undefined>;
     readTrackedEntities(): Promise<FlattenedTrackedEntity[]>;
     readEnrollments(): Promise<FlattenedEnrollment[]>;
     readEvents(): Promise<FlattenedEvent[]>;
@@ -146,43 +170,63 @@ async function countMatchingIds(
     return total;
 }
 
+async function existingIds(
+    db: SqlDriver,
+    table: string,
+    idColumn: string,
+    ids: string[],
+): Promise<Set<string>> {
+    const found = new Set<string>();
+    await forEachIdChunk(ids, async (idsChunk, placeholders) => {
+        const result = await db.execute<{ id: string }>(
+            `SELECT ${idColumn} as id FROM ${table} WHERE ${idColumn} IN (${placeholders})`,
+            idsChunk,
+        );
+        for (const row of result.rows) found.add(row.id);
+    });
+    return found;
+}
+
+/**
+ * Upsert against the DATABASE, not the collection: `bulkInsertLocally`
+ * picks insert vs update from the collection's in-memory snapshot, which
+ * is empty at boot (nothing has subscribed yet). A copy interrupted after
+ * committing a table (tab closed mid-copy — no rollback runs, no
+ * copy-complete flag) then failed every later boot on a duplicate key.
+ * One transaction per table, as before; the collection is refreshed
+ * afterwards in case something is subscribed.
+ */
+async function upsertRows<T extends object>(
+    db: SqlDriver,
+    adapter: RowAdapter<T, string>,
+    target: { table: string; idColumn: string },
+    rows: T[],
+    idOf: (row: T) => string,
+    refresh: () => Promise<void>,
+): Promise<void> {
+    const existing = await existingIds(
+        db,
+        target.table,
+        target.idColumn,
+        rows.map(idOf),
+    );
+    await db.transaction(async (tx) => {
+        for (const row of rows) {
+            if (existing.has(idOf(row))) {
+                await adapter.updateRow(tx, row, { source: "local" });
+            } else {
+                await adapter.insertRow(tx, row, { source: "local" });
+            }
+        }
+    });
+    await refresh();
+}
+
 type WrittenKeys = {
     trackedEntities: string[];
     enrollments: string[];
     events: string[];
 };
-
-/**
- * Reads one table's rows, publishes before/after progress, writes them
- * (skipped entirely for an empty table — nothing to insert), and returns
- * the ids actually written, for `WrittenKeys`/verification/cleanup. All
- * three tables in `runDexieMigrationIfNeeded` follow exactly this shape;
- * this is the one place that shape is spelled out.
- */
-async function copyTable<T>(descriptor: {
-    label: string;
-    read: () => Promise<T[]>;
-    write: (rows: T[]) => Promise<void>;
-    idOf: (row: T) => string;
-}): Promise<string[]> {
-    const rows = await descriptor.read();
-    publishMigrationProgress({
-        phase: "copying",
-        table: descriptor.label,
-        copied: 0,
-        total: rows.length,
-    });
-    if (rows.length > 0) {
-        await descriptor.write(rows);
-    }
-    publishMigrationProgress({
-        phase: "copying",
-        table: descriptor.label,
-        copied: rows.length,
-        total: rows.length,
-    });
-    return rows.map(descriptor.idOf);
-}
 
 async function cleanUpPartialWrite(
     db: SqlDriver,
@@ -209,130 +253,221 @@ async function cleanUpPartialWrite(
 }
 
 /**
+ * The forward (Dexie -> SQLite) store copy as steps — see `../store-copy.ts`.
+ *
  * HMIS drafts are deliberately NOT copied: `src/db/hmis-drafts.ts` reads
  * and writes them in Dexie's `MOHRegisterDB` on both backends, so they
  * never need to move, and that database is never dropped here.
  */
-export async function runDexieMigrationIfNeeded(
+export function forwardCopySteps(
     db: SqlDriver,
     source: DexieMigrationSource,
-): Promise<void> {
-    if (await isMigrationCurrent(db, source)) {
-        publishMigrationProgress({ phase: "done" });
-        return;
-    }
+): StoreCopySteps {
+    // What `verify` must find, gathered as the copy reads its source.
+    const expectedNested = { teAttributes: 0, enrAttributes: 0, dataValues: 0 };
+    let copiedCheckpoint: CopiedCheckpoint = {};
+    let expectedMetadata: Record<string, number> = {};
 
-    publishMigrationProgress({ phase: "checking" });
-    // Metadata counts too (a metadata sync ran on Dexie), mirroring the
-    // reverse direction's hasAnySqliteDataToMigrate — otherwise a Dexie
-    // store holding metadata but no tracker database would take the
-    // fresh-install shortcut and never copy it.
-    const hasDexieData =
-        (await source.existsAnyDexieData()) ||
-        (await source.readMetadataVersion()) !== undefined;
-    if (!hasDexieData) {
-        // Fresh install — nothing to copy, don't scan for it again next boot.
-        await markComplete(db);
-        publishMigrationProgress({ phase: "done" });
-        return;
-    }
+    return {
+        tables: ["trackedEntities", "enrollments", "events"],
 
-    const written: WrittenKeys = {
-        trackedEntities: [],
-        enrollments: [],
-        events: [],
-    };
+        async detect() {
+            if (await isMigrationCurrent(db, source)) {
+                // Current means Dexie hasn't been live since the copy, and
+                // nothing else creates its tracker databases — so any that
+                // exist are a failed cleanup's leftovers.
+                return (await source.existsAnyDexieData())
+                    ? "cleanup-owed"
+                    : "current";
+            }
+            // Metadata counts too (a metadata sync ran on Dexie), mirroring
+            // the reverse direction's hasAnySqliteDataToMigrate — otherwise
+            // a Dexie store holding metadata but no tracker database would
+            // take the fresh-install shortcut and never copy it.
+            const hasDexieData =
+                (await source.existsAnyDexieData()) ||
+                (await source.readMetadataVersion()) !== undefined;
+            return hasDexieData ? "needs-copy" : "fresh";
+        },
 
-    try {
-        written.trackedEntities = await copyTable({
-            label: "trackedEntities",
-            read: () => source.readTrackedEntities(),
-            write: (rows) =>
-                getTrackedEntitiesCollection().utils.bulkInsertLocally(rows, {
-                    source: "local",
+        async prepareTarget() {
+            if ((await source.readReverseCopyCompletedAt()) === undefined) {
+                return;
+            }
+            if (!(await hasAnySqliteData(db))) return;
+            await dropAllSqliteData(db);
+            await createSchema(db);
+        },
+
+        async copyTracker(report, onWritten) {
+            onWritten(
+                "trackedEntities",
+                await copyTable(report, {
+                    label: "trackedEntities",
+                    read: async () => {
+                        const rows = await source.readTrackedEntities();
+                        expectedNested.teAttributes = countNestedKeys(rows, "attributes");
+                        return rows;
+                    },
+                    write: (rows) =>
+                        upsertRows(
+                            db,
+                            trackedEntitiesRowAdapter,
+                            { table: "tracked_entities", idColumn: "tracked_entity" },
+                            rows,
+                            (r) => r.trackedEntity,
+                            () => getTrackedEntitiesCollection().utils.refresh(),
+                        ),
+                    idOf: (r) => r.trackedEntity,
                 }),
-            idOf: (r) => r.trackedEntity,
-        });
-
-        written.enrollments = await copyTable({
-            label: "enrollments",
-            read: () => source.readEnrollments(),
-            write: (rows) =>
-                getEnrollmentsCollection().utils.bulkInsertLocally(rows, {
-                    source: "local",
-                }),
-            idOf: (r) => r.enrollment,
-        });
-
-        written.events = await copyTable({
-            label: "events",
-            read: () => source.readEvents(),
-            write: (rows) =>
-                getEventsCollection().utils.bulkInsertLocally(rows, {
-                    source: "local",
-                }),
-            idOf: (r) => r.event,
-        });
-
-        // Single-row config, not tracker data: no verification-count step
-        // needed (one row per table), and nothing to roll back on failure
-        // elsewhere in this function's catch block — a missing/stale
-        // sync-state row just means the app re-derives it from the next
-        // sync cycle, same as a fresh install.
-        const [syncState, metadataVersion] = await Promise.all([
-            source.readSyncState(),
-            source.readMetadataVersion(),
-        ]);
-        if (syncState) {
-            await putConfigRow(db, "sync_state", syncState);
-        }
-        if (metadataVersion) {
-            await putConfigRow(db, "metadata_versions", metadataVersion);
-        }
-
-        await replaceMetadataTables(
-            sqliteMetadataStore(db),
-            await source.readMetadataTables(),
-        );
-
-        publishMigrationProgress({ phase: "verifying" });
-        const [teCount, enrCount, evtCount] = await Promise.all([
-            countMatchingIds(
-                db,
-                "tracked_entities",
-                "tracked_entity",
-                written.trackedEntities,
-            ),
-            countMatchingIds(
-                db,
-                "enrollments",
-                "enrollment",
-                written.enrollments,
-            ),
-            countMatchingIds(db, "events", "event", written.events),
-        ]);
-        if (
-            teCount !== written.trackedEntities.length ||
-            enrCount !== written.enrollments.length ||
-            evtCount !== written.events.length
-        ) {
-            throw new Error(
-                `Migration verification failed: expected ${written.trackedEntities.length}/${written.enrollments.length}/${written.events.length} tracked entities/enrollments/events, found ${teCount}/${enrCount}/${evtCount}`,
             );
-        }
+            onWritten(
+                "enrollments",
+                await copyTable(report, {
+                    label: "enrollments",
+                    read: async () => {
+                        const rows = await source.readEnrollments();
+                        expectedNested.enrAttributes = countNestedKeys(rows, "attributes");
+                        return rows;
+                    },
+                    write: (rows) =>
+                        upsertRows(
+                            db,
+                            enrollmentsRowAdapter,
+                            { table: "enrollments", idColumn: "enrollment" },
+                            rows,
+                            (r) => r.enrollment,
+                            () => getEnrollmentsCollection().utils.refresh(),
+                        ),
+                    idOf: (r) => r.enrollment,
+                    required: ["trackedEntity"],
+                }),
+            );
+            onWritten(
+                "events",
+                await copyTable(report, {
+                    label: "events",
+                    read: async () => {
+                        const rows = await source.readEvents();
+                        expectedNested.dataValues = countNestedKeys(rows, "dataValues");
+                        return rows;
+                    },
+                    write: (rows) =>
+                        upsertRows(
+                            db,
+                            eventsRowAdapter,
+                            { table: "events", idColumn: "event" },
+                            rows,
+                            (r) => r.event,
+                            () => getEventsCollection().utils.refresh(),
+                        ),
+                    idOf: (r) => r.event,
+                    required: ["enrollment", "trackedEntity"],
+                }),
+            );
+        },
 
-        await markComplete(db);
-        await source.dropAll();
-        publishMigrationProgress({ phase: "done" });
-    } catch (error) {
-        // Restart from scratch on next boot (decision 5) — don't attempt
-        // partial resume. The migration-complete flag is never written on
-        // this path, so `existsAnyDexieData()` (Dexie untouched) drives a
-        // full retry next time this runs.
-        await cleanUpPartialWrite(db, written);
-        publishMigrationProgress({
-            phase: "failed",
-            error: error instanceof Error ? error.message : String(error),
-        });
-    }
+        async copyConfig() {
+            // Single-row config, not tracker data: no verification-count
+            // step needed (one row per table) and nothing to roll back — a
+            // missing/stale sync-state row just means the app re-derives it
+            // from the next sync cycle, same as a fresh install.
+            const [syncState, metadataVersion] = await Promise.all([
+                source.readSyncState(),
+                source.readMetadataVersion(),
+            ]);
+            if (syncState) {
+                await putConfigRow(db, "sync_state", syncState);
+            }
+            if (metadataVersion) {
+                await putConfigRow(db, "metadata_versions", metadataVersion);
+            }
+            copiedCheckpoint = {
+                lastPullAt: syncState?.lastPullAt,
+                lastPushAt: syncState?.lastPushAt,
+                lastMetadataSync: metadataVersion?.lastSync,
+            };
+            return copiedCheckpoint;
+        },
+
+        async copyMetadata() {
+            const tables = await source.readMetadataTables();
+            expectedMetadata = distinctMetadataKeys(tables);
+            await replaceMetadataTables(sqliteMetadataStore(db), tables);
+        },
+
+        async verify(written) {
+            const expected = toWrittenKeys(written);
+            const [teCount, enrCount, evtCount] = await Promise.all([
+                countMatchingIds(
+                    db,
+                    "tracked_entities",
+                    "tracked_entity",
+                    expected.trackedEntities,
+                ),
+                countMatchingIds(
+                    db,
+                    "enrollments",
+                    "enrollment",
+                    expected.enrollments,
+                ),
+                countMatchingIds(db, "events", "event", expected.events),
+            ]);
+            if (
+                teCount !== expected.trackedEntities.length ||
+                enrCount !== expected.enrollments.length ||
+                evtCount !== expected.events.length
+            ) {
+                throw new Error(
+                    `Migration verification failed: expected ${expected.trackedEntities.length}/${expected.enrollments.length}/${expected.events.length} tracked entities/enrollments/events, found ${teCount}/${enrCount}/${evtCount}`,
+                );
+            }
+
+            // One child row per nested key (attributes / dataValues), so
+            // the expected count is exact.
+            const [teAttrs, enrAttrs, dataValues] = await Promise.all([
+                countMatchingIds(db, "tracked_entity_attributes", "tracked_entity", expected.trackedEntities),
+                countMatchingIds(db, "enrollment_attributes", "enrollment", expected.enrollments),
+                countMatchingIds(db, "event_data_values", "event", expected.events),
+            ]);
+            assertNestedRows("tracked entity attributes", expectedNested.teAttributes, teAttrs);
+            assertNestedRows("enrollment attributes", expectedNested.enrAttributes, enrAttrs);
+            assertNestedRows("event data values", expectedNested.dataValues, dataValues);
+
+            const [syncState, metadataVersion] = await Promise.all([
+                getConfigRow<SyncState>(db, "sync_state", "current"),
+                getConfigRow<MetadataVersion>(db, "metadata_versions", "metadata-version"),
+            ]);
+            assertCheckpoint(copiedCheckpoint, {
+                lastPullAt: syncState?.lastPullAt,
+                lastPushAt: syncState?.lastPushAt,
+                lastMetadataSync: metadataVersion?.lastSync,
+            });
+
+            const store = sqliteMetadataStore(db);
+            const found: Record<string, number> = {};
+            for (const table of Object.keys(expectedMetadata)) {
+                found[table] = (await store.listRows(table)).length;
+            }
+            const short = metadataShortfalls(expectedMetadata, found);
+            if (short.length === 0) return { metadataRepull: false };
+            console.warn("Store copy: metadata short in", short, "— clearing lastMetadataSync for a full metadata pull");
+            await store.deleteRow("metadata_versions", "metadata-version");
+            return { metadataRepull: true };
+        },
+
+        markComplete: () => markComplete(db),
+
+        cleanup: () => source.dropAll(),
+
+        rollback: (written) => cleanUpPartialWrite(db, toWrittenKeys(written)),
+    };
+}
+
+function toWrittenKeys(written: Record<string, string[]>): WrittenKeys {
+    return {
+        trackedEntities: written.trackedEntities ?? [],
+        enrollments: written.enrollments ?? [],
+        events: written.events ?? [],
+    };
 }
