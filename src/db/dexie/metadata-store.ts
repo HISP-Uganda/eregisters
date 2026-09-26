@@ -60,12 +60,33 @@ export function dexieMetadataStore(): MetadataStore {
             // putConfigRow — see reactive-config.ts's doc comment.
             notifyConfigChanged(table, id);
         },
+        async putRows<T extends { id: string }>(
+            table: string,
+            rows: T[],
+            keyOf?: (row: T) => string,
+        ) {
+            if (rows.length === 0) return;
+            await db.rows.bulkPut(
+                rows.map((row) => ({
+                    table,
+                    id: keyOf ? keyOf(row) : row.id,
+                    data: row,
+                })),
+            );
+            // Same reactive-notify step putRow does per row.
+            for (const row of rows) {
+                notifyConfigChanged(table, keyOf ? keyOf(row) : row.id);
+            }
+        },
         async listRows<T extends object>(table: string) {
             const rows = await db.rows.where("table").equals(table).toArray();
             return rows.map((row) => row.data as T);
         },
         async deleteRow(table: string, key: string) {
             await db.rows.delete([table, key]);
+        },
+        async clearTable(table: string) {
+            await db.rows.where("table").equals(table).delete();
         },
     };
 }

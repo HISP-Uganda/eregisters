@@ -49,8 +49,20 @@ function inMemoryMetadataStore(): MetadataStore {
         async listRows<T extends object>(table: string) {
             return Array.from(tableFor(table).values()) as T[];
         },
+        async putRows<T extends { id: string }>(
+            table: string,
+            rowsToPut: T[],
+            keyOf?: (row: T) => string,
+        ) {
+            for (const row of rowsToPut) {
+                tableFor(table).set(keyOf ? keyOf(row) : row.id, row);
+            }
+        },
         async deleteRow(table: string, key: string) {
             tableFor(table).delete(key);
+        },
+        async clearTable(table: string) {
+            tableFor(table).clear();
         },
     };
 }

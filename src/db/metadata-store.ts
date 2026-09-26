@@ -58,6 +58,19 @@ export interface MetadataStore {
         row: T,
         key?: string,
     ) => Promise<void>;
+    /**
+     * Bulk `putRow` — same semantics per row, but written as one batch
+     * (one SQL transaction / one Dexie bulkPut) instead of one
+     * transaction per row, which dominated metadata-sync time. `keyOf`
+     * plays `putRow`'s `key` role for the composite-key tables.
+     */
+    putRows: <T extends { id: string }>(
+        table: string,
+        rows: T[],
+        keyOf?: (row: T) => string,
+    ) => Promise<void>;
     listRows: <T extends object>(table: string) => Promise<T[]>;
     deleteRow: (table: string, key: string) => Promise<void>;
+    /** Deletes every row of `table` in one operation. */
+    clearTable: (table: string) => Promise<void>;
 }

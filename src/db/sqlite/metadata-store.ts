@@ -1,4 +1,5 @@
 import type { MetadataStore } from "../metadata-store";
+import { notifyConfigChanged } from "../reactive-config";
 import { getConfigRow, putConfigRow } from "./config-rows";
 import type { SqlDriver } from "./driver-types";
 import { getAllRows } from "./metadata-info";
@@ -27,6 +28,36 @@ function splitCompositeKey(key: string): [string, string] {
     return separatorIndex === -1
         ? [key, ""]
         : [key.slice(0, separatorIndex), key.slice(separatorIndex + 2)];
+}
+
+/**
+ * Stays well under SQLite's bound-parameter limit (999 on older builds)
+ * for the multi-row INSERTs `putRows` issues.
+ */
+const MAX_PARAMS_PER_STATEMENT = 900;
+
+async function insertManyRows(
+    db: SqlDriver,
+    table: string,
+    columns: readonly string[],
+    rows: unknown[][],
+): Promise<void> {
+    const rowsPerStatement = Math.max(
+        1,
+        Math.floor(MAX_PARAMS_PER_STATEMENT / columns.length),
+    );
+    const placeholder = `(${columns.map(() => "?").join(", ")})`;
+    await db.transaction(async (tx) => {
+        for (let i = 0; i < rows.length; i += rowsPerStatement) {
+            const chunk = rows.slice(i, i + rowsPerStatement);
+            await tx.execute(
+                `INSERT OR REPLACE INTO ${table} (${columns.join(", ")}) VALUES ${chunk
+                    .map(() => placeholder)
+                    .join(", ")}`,
+                chunk.flat(),
+            );
+        }
+    });
 }
 
 /**
@@ -84,6 +115,50 @@ export function sqliteMetadataStore(db: SqlDriver): MetadataStore {
             }
             await putConfigRow(db, table, row);
         },
+        async putRows<T extends { id: string }>(
+            table: string,
+            rows: T[],
+            keyOf?: (row: T) => string,
+        ): Promise<void> {
+            if (rows.length === 0) return;
+            if (table === "organisation_units") {
+                await insertManyRows(
+                    db,
+                    table,
+                    ["id", "name", "path", "data"],
+                    rows.map((row) => {
+                        const { id, name, path, ...rest } = row as unknown as {
+                            id: string;
+                            name: string;
+                            path: string;
+                        };
+                        return [id, name, path, JSON.stringify(rest)];
+                    }),
+                );
+                return;
+            }
+            const composite = COMPOSITE_TABLES[table];
+            if (composite && keyOf) {
+                await insertManyRows(
+                    db,
+                    table,
+                    [composite.first, composite.second, "data"],
+                    rows.map((row) => [
+                        ...splitCompositeKey(keyOf(row)),
+                        JSON.stringify(row),
+                    ]),
+                );
+                return;
+            }
+            await insertManyRows(
+                db,
+                table,
+                ["id", "data"],
+                rows.map((row) => [row.id, JSON.stringify(row)]),
+            );
+            // Same reactive-notify step putRow gets via putConfigRow.
+            for (const row of rows) notifyConfigChanged(table, row.id);
+        },
         async listRows<T extends object>(table: string) {
             if (table === "organisation_units") {
                 const result = await db.execute<OrganisationUnitSqlRow>(
@@ -104,6 +179,9 @@ export function sqliteMetadataStore(db: SqlDriver): MetadataStore {
                 return;
             }
             await db.execute(`DELETE FROM ${table} WHERE id = ?`, [key]);
+        },
+        async clearTable(table: string): Promise<void> {
+            await db.execute(`DELETE FROM ${table}`);
         },
     };
 }

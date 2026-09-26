@@ -39,9 +39,10 @@ import {
     getTrackedEntitiesCollection,
 } from "../db/collections";
 import { MigrationProgressBanner } from "../components/migration-progress-banner";
+// import { PersistentStorageBanner } from "../components/persistent-storage-banner";
 import { Spinner } from "../components/spinner";
 import { SyncFailuresModal } from "../components/sync-failures-modal";
-import { setBackendSetting } from "../db/backend";
+import { getBackendSetting, setBackendSetting } from "../db/backend";
 import { useMetadata } from "../hooks/useMetadata";
 import { useUIConfig } from "../hooks/useUIConfig";
 import { SyncContext } from "../machines/sync";
@@ -56,6 +57,13 @@ import type {
     FlattenedTrackedEntity,
 } from "../schemas";
 import { parseServerTime } from "../utils/server-time";
+import {
+    shouldShowAppReload,
+    shouldShowMetadataReload,
+} from "../utils/reload-signals";
+
+/** When this page loaded its code — see `shouldShowAppReload`. */
+const PAGE_LOADED_AT = new Date().toISOString();
 
 dayjs.extend(relativeTime);
 
@@ -596,23 +604,31 @@ function LayoutWithDrafts() {
             return !lastSeen || timestamp > lastSeen;
         }
 
+        const lastMetadataPullAt = lastMetadataPull
+            ? parseServerTime(lastMetadataPull, serverTimeZoneId).toISOString()
+            : undefined;
+
         function checkSignals() {
-            if (
-                isNewSignal(
-                    uiConfig.reloadSignal.app?.timestamp,
-                    "eregisters.lastSeenAppSignal",
-                )
-            ) {
-                setShowAppReload(true);
-            }
-            if (
-                isNewSignal(
-                    uiConfig.reloadSignal.metadata?.timestamp,
-                    "eregisters.lastSeenMetadataSignal",
-                )
-            ) {
-                setShowMetadataReload(true);
-            }
+            // Only a page that doesn't already have what a broadcast
+            // announces gets its banner — see utils/reload-signals.ts.
+            setShowAppReload(
+                shouldShowAppReload({
+                    signalAt: uiConfig.reloadSignal.app?.timestamp,
+                    lastSeen: localStorage.getItem(
+                        "eregisters.lastSeenAppSignal",
+                    ),
+                    pageLoadedAt: PAGE_LOADED_AT,
+                }),
+            );
+            setShowMetadataReload(
+                shouldShowMetadataReload({
+                    signalAt: uiConfig.reloadSignal.metadata?.timestamp,
+                    lastSeen: localStorage.getItem(
+                        "eregisters.lastSeenMetadataSignal",
+                    ),
+                    lastMetadataPullAt,
+                }),
+            );
 
             // Admin-controlled device storage backend policy — wayfinder
             // map "Centrally admin-controlled device storage
@@ -633,18 +649,28 @@ function LayoutWithDrafts() {
                     "eregisters.lastSeenStorageBackendPolicy",
                 )
             ) {
+                // Only ask for a reload when the policy actually changes
+                // this device's setting — a device already on it (e.g. a
+                // first load, which read it before this check) has nothing
+                // to reload for.
+                const changesSetting = getBackendSetting() !== policy!.value;
                 setBackendSetting(policy!.value);
                 localStorage.setItem(
                     "eregisters.lastSeenStorageBackendPolicy",
                     policy!.timestamp,
                 );
-                setShowStorageBackendReload(true);
+                if (changesSetting) setShowStorageBackendReload(true);
             }
         }
         checkSignals();
         const interval = setInterval(checkSignals, 60_000);
         return () => clearInterval(interval);
-    }, [uiConfig.reloadSignal, uiConfig.storageBackendPolicy]);
+    }, [
+        uiConfig.reloadSignal,
+        uiConfig.storageBackendPolicy,
+        lastMetadataPull,
+        serverTimeZoneId,
+    ]);
     const { data: pendingTrackedEntities } = useLiveSuspenseQuery((q) =>
         q
             .from({ trackedEntities: trackedEntitiesCollection })
@@ -916,6 +942,7 @@ function LayoutWithDrafts() {
                 {navItems(true)}
             </Drawer>
             <MigrationProgressBanner />
+            {/* <PersistentStorageBanner /> */}
             {showAppReload && (
                 <Alert
                     type="warning"
@@ -966,7 +993,11 @@ function LayoutWithDrafts() {
                             size="small"
                             type="primary"
                             onClick={() => {
-                                syncActor.send({ type: "FULL_METADATA_SYNC" });
+                                // Incremental: only what changed since the
+                                // last metadata sync, not a full wipe and
+                                // re-download ("Full Metadata Sync" in the
+                                // sync button's menu is still there).
+                                syncActor.send({ type: "START_METADATA_SYNC" });
                                 const ts =
                                     uiConfig.reloadSignal.metadata?.timestamp;
                                 if (ts)

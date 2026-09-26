@@ -478,351 +478,362 @@ const syncMachine = setup({
                 categoryOptionCombos: [],
                 succeededResources: new Set<Resource>(),
             };
-            for (const resource of resources) {
-                try {
-                    switch (resource) {
-                        case "categoryOptionCombos":
-                            const {
-                                categoryOptionCombos: { categoryOptionCombos },
-                            } = (await engine.query({
-                                categoryOptionCombos: {
-                                    resource: `categoryCombos/UjXPudXlraY/categoryOptionCombos.json`,
-                                    params: {
-                                        fields: "id,name,access,categoryOptions[id,name,access]",
-                                    },
+            // Every resource is fetched in parallel (they're independent
+            // requests); results are merged into `results` by field, and
+            // the metadata-version bookkeeping runs once afterwards, over
+            // every resource that succeeded.
+            const fetchResource = async (resource: Resource): Promise<void> => {
+                switch (resource) {
+                    case "categoryOptionCombos":
+                        const {
+                            categoryOptionCombos: { categoryOptionCombos },
+                        } = (await engine.query({
+                            categoryOptionCombos: {
+                                resource: `categoryCombos/UjXPudXlraY/categoryOptionCombos.json`,
+                                params: {
+                                    fields: "id,name,access,categoryOptions[id,name,access]",
                                 },
-                            })) as {
-                                categoryOptionCombos: {
-                                    categoryOptionCombos: CategoryOptionCombo[];
-                                };
+                            },
+                        })) as {
+                            categoryOptionCombos: {
+                                categoryOptionCombos: CategoryOptionCombo[];
                             };
-                            results.categoryOptionCombos = categoryOptionCombos;
-                            break;
-                        case "organisationUnits":
-                            const {
-                                organisationUnits: { organisationUnits },
-                            } = (await engine.query({
-                                organisationUnits: {
-                                    resource: `organisationUnits/${userOrgUnit}.json`,
-                                    params: {
-                                        fields: "id,name,code,path,parent",
-                                        paging: false,
-                                        includeDescendants: true,
-                                    },
+                        };
+                        results.categoryOptionCombos = categoryOptionCombos;
+                        break;
+                    case "organisationUnits":
+                        const {
+                            organisationUnits: { organisationUnits },
+                        } = (await engine.query({
+                            organisationUnits: {
+                                resource: `organisationUnits/${userOrgUnit}.json`,
+                                params: {
+                                    fields: "id,name,code,path,parent",
+                                    paging: false,
+                                    includeDescendants: true,
                                 },
-                            })) as {
-                                organisationUnits: {
-                                    organisationUnits: OU[];
-                                };
+                            },
+                        })) as {
+                            organisationUnits: {
+                                organisationUnits: OU[];
                             };
-                            results.organisationUnits = organisationUnits;
-                            break;
-                        case "dataSets":
-                            const {
-                                dataSets: { dataSets },
-                            } = (await engine.query({
-                                dataSets: {
-                                    resource: "dataSets.json",
-                                    params: {
-                                        fields: "id,name,code,periodType",
-                                    },
+                        };
+                        results.organisationUnits = organisationUnits;
+                        break;
+                    case "dataSets":
+                        const {
+                            dataSets: { dataSets },
+                        } = (await engine.query({
+                            dataSets: {
+                                resource: "dataSets.json",
+                                params: {
+                                    fields: "id,name,code,periodType",
                                 },
-                            })) as {
-                                dataSets: {
-                                    dataSets: DataSet[];
-                                };
+                            },
+                        })) as {
+                            dataSets: {
+                                dataSets: DataSet[];
                             };
-                            results.dataSets = dataSets;
-                            break;
+                        };
+                        results.dataSets = dataSets;
+                        break;
 
-                        case "programs":
-                            const { program } = (await engine.query({
-                                program: {
-                                    resource: "programs",
-                                    id: "ueBhWkWll5v",
-                                    params: {
-                                        fields: "id,name,programSections[id,name,sortOrder,trackedEntityAttributes[id]],trackedEntityType[id,trackedEntityTypeAttributes[id]],programType,selectEnrollmentDatesInFuture,selectIncidentDatesInFuture,programStages[id,repeatable,name,code,executionDateLabel,programStageDataElements[id,sortOrder,compulsory,renderOptionsAsRadio,dataElement[id],renderType,allowFutureDate],programStageSections[id,name,sortOrder,dataElements[id]]],programTrackedEntityAttributes[id,mandatory,searchable,renderOptionsAsRadio,renderType,sortOrder,allowFutureDate,displayInList,trackedEntityAttribute[id]]",
-                                    },
+                    case "programs":
+                        const { program } = (await engine.query({
+                            program: {
+                                resource: "programs",
+                                id: "ueBhWkWll5v",
+                                params: {
+                                    fields: "id,name,programSections[id,name,sortOrder,trackedEntityAttributes[id]],trackedEntityType[id,trackedEntityTypeAttributes[id]],programType,selectEnrollmentDatesInFuture,selectIncidentDatesInFuture,programStages[id,repeatable,name,code,executionDateLabel,programStageDataElements[id,sortOrder,compulsory,renderOptionsAsRadio,dataElement[id],renderType,allowFutureDate],programStageSections[id,name,sortOrder,dataElements[id]]],programTrackedEntityAttributes[id,mandatory,searchable,renderOptionsAsRadio,renderType,sortOrder,allowFutureDate,displayInList,trackedEntityAttribute[id]]",
                                 },
-                            })) as { program: Program };
-                            results.programs = [program];
-                            break;
+                            },
+                        })) as { program: Program };
+                        results.programs = [program];
+                        break;
 
-                        case "dataElements":
-                            const dataElementsParams: any = {
-                                fields: "id,name,code,valueType,formName,optionSetValue,optionSet[id]",
-                                paging: false,
+                    case "dataElements":
+                        const dataElementsParams: any = {
+                            fields: "id,name,code,valueType,formName,optionSetValue,optionSet[id]",
+                            paging: false,
+                        };
+
+                        if (
+                            shouldUseLastUpdatedFilter(
+                                metadataSyncMode,
+                                lastMetadataPull,
+                            )
+                        ) {
+                            dataElementsParams.filter = `lastUpdated:gt:${lastMetadataPull}`;
+                        }
+                        const {
+                            dataElements: { dataElements },
+                        } = (await engine.query({
+                            dataElements: {
+                                resource: "dataElements",
+                                params: dataElementsParams,
+                            },
+                        })) as {
+                            dataElements: {
+                                dataElements: DataElement[];
                             };
+                        };
 
-                            if (
-                                shouldUseLastUpdatedFilter(
-                                    metadataSyncMode,
-                                    lastMetadataPull,
-                                )
-                            ) {
-                                dataElementsParams.filter = `lastUpdated:gt:${lastMetadataPull}`;
-                            }
-                            const {
-                                dataElements: { dataElements },
-                            } = (await engine.query({
-                                dataElements: {
-                                    resource: "dataElements",
-                                    params: dataElementsParams,
+                        results.dataElements = dataElements;
+                        break;
+                    case "programIndicators":
+                        const programIndicatorsParams: any = {
+                            fields: "id,name,filter,program,aggregationType,expression",
+                            paging: false,
+                        };
+                        if (
+                            shouldUseLastUpdatedFilter(
+                                metadataSyncMode,
+                                lastMetadataPull,
+                            )
+                        ) {
+                            programIndicatorsParams.filter = `lastUpdated:gt:${lastMetadataPull}`;
+                        }
+                        const {
+                            programIndicators: { programIndicators },
+                        } = (await engine.query({
+                            programIndicators: {
+                                resource: "programIndicators",
+                                params: programIndicatorsParams,
+                            },
+                        })) as {
+                            programIndicators: {
+                                programIndicators: ProgramIndicator[];
+                            };
+                        };
+
+                        results.programIndicators = programIndicators;
+
+                        break;
+
+                    case "attributes":
+                        const attributesParams: any = {
+                            fields: "id,name,code,unique,generated,pattern,confidential,valueType,optionSetValue,displayFormName,formName,optionSet[id]",
+                            paging: false,
+                        };
+                        if (
+                            shouldUseLastUpdatedFilter(
+                                metadataSyncMode,
+                                lastMetadataPull,
+                            )
+                        ) {
+                            attributesParams.filter = `lastUpdated:gt:${lastMetadataPull}`;
+                        }
+                        const {
+                            trackedEntityAttributes: {
+                                trackedEntityAttributes,
+                            },
+                        } = (await engine.query({
+                            trackedEntityAttributes: {
+                                resource: "trackedEntityAttributes",
+                                params: attributesParams,
+                            },
+                        })) as {
+                            trackedEntityAttributes: {
+                                trackedEntityAttributes: TrackedEntityAttribute[];
+                            };
+                        };
+
+                        results.trackedEntityAttributes =
+                            trackedEntityAttributes;
+                        break;
+
+                    case "programRules":
+                        const programRulesFilters = [
+                            "program.id:eq:ueBhWkWll5v",
+                        ];
+                        if (
+                            shouldUseLastUpdatedFilter(
+                                metadataSyncMode,
+                                lastMetadataPull,
+                            )
+                        ) {
+                            programRulesFilters.push(
+                                `lastUpdated:gt:${lastMetadataPull}`,
+                            );
+                        }
+                        const {
+                            programRules: { programRules },
+                        } = (await engine.query({
+                            programRules: {
+                                resource: `programRules.json`,
+                                params: {
+                                    filter: programRulesFilters,
+                                    fields: "*,programRuleActions[*]",
+                                    paging: false,
                                 },
-                            })) as {
-                                dataElements: {
-                                    dataElements: DataElement[];
-                                };
+                            },
+                        })) as {
+                            programRules: {
+                                programRules: ProgramRule[];
                             };
+                        };
 
-                            results.dataElements = dataElements;
-                            break;
-                        case "programIndicators":
-                            const programIndicatorsParams: any = {
-                                fields: "id,name,filter,program,aggregationType,expression",
-                                paging: false,
-                            };
-                            if (
-                                shouldUseLastUpdatedFilter(
-                                    metadataSyncMode,
-                                    lastMetadataPull,
-                                )
-                            ) {
-                                programIndicatorsParams.filter = `lastUpdated:gt:${lastMetadataPull}`;
-                            }
-                            const {
-                                programIndicators: { programIndicators },
-                            } = (await engine.query({
-                                programIndicators: {
-                                    resource: "programIndicators",
-                                    params: programIndicatorsParams,
+                        results.programRules = programRules;
+
+                        break;
+
+                    case "programRuleVariables":
+                        const programRuleVariablesFilters = [
+                            "program.id:eq:ueBhWkWll5v",
+                        ];
+                        if (
+                            shouldUseLastUpdatedFilter(
+                                metadataSyncMode,
+                                lastMetadataPull,
+                            )
+                        ) {
+                            programRuleVariablesFilters.push(
+                                `lastUpdated:gt:${lastMetadataPull}`,
+                            );
+                        }
+                        const {
+                            programRuleVariables: { programRuleVariables },
+                        } = (await engine.query({
+                            programRuleVariables: {
+                                resource: `programRuleVariables.json`,
+                                params: {
+                                    filter: programRuleVariablesFilters,
+                                    fields: "*",
+                                    paging: false,
                                 },
-                            })) as {
-                                programIndicators: {
-                                    programIndicators: ProgramIndicator[];
-                                };
+                            },
+                        })) as {
+                            programRuleVariables: {
+                                programRuleVariables: ProgramRuleVariable[];
                             };
+                        };
 
-                            results.programIndicators = programIndicators;
+                        results.programRuleVariables = programRuleVariables;
+                        break;
 
-                            break;
-
-                        case "attributes":
-                            const attributesParams: any = {
-                                fields: "id,name,code,unique,generated,pattern,confidential,valueType,optionSetValue,displayFormName,formName,optionSet[id]",
-                                paging: false,
-                            };
-                            if (
-                                shouldUseLastUpdatedFilter(
-                                    metadataSyncMode,
-                                    lastMetadataPull,
-                                )
-                            ) {
-                                attributesParams.filter = `lastUpdated:gt:${lastMetadataPull}`;
-                            }
-                            const {
-                                trackedEntityAttributes: {
-                                    trackedEntityAttributes,
-                                },
-                            } = (await engine.query({
-                                trackedEntityAttributes: {
-                                    resource: "trackedEntityAttributes",
-                                    params: attributesParams,
-                                },
-                            })) as {
-                                trackedEntityAttributes: {
-                                    trackedEntityAttributes: TrackedEntityAttribute[];
-                                };
-                            };
-
-                            results.trackedEntityAttributes =
-                                trackedEntityAttributes;
-                            break;
-
-                        case "programRules":
-                            const programRulesFilters = [
-                                "program.id:eq:ueBhWkWll5v",
-                            ];
-                            if (
-                                shouldUseLastUpdatedFilter(
-                                    metadataSyncMode,
-                                    lastMetadataPull,
-                                )
-                            ) {
-                                programRulesFilters.push(
-                                    `lastUpdated:gt:${lastMetadataPull}`,
-                                );
-                            }
-                            const {
-                                programRules: { programRules },
-                            } = (await engine.query({
-                                programRules: {
-                                    resource: `programRules.json`,
-                                    params: {
-                                        filter: programRulesFilters,
-                                        fields: "*,programRuleActions[*]",
-                                        paging: false,
-                                    },
-                                },
-                            })) as {
-                                programRules: {
-                                    programRules: ProgramRule[];
-                                };
-                            };
-
-                            results.programRules = programRules;
-
-                            break;
-
-                        case "programRuleVariables":
-                            const programRuleVariablesFilters = [
-                                "program.id:eq:ueBhWkWll5v",
-                            ];
-                            if (
-                                shouldUseLastUpdatedFilter(
-                                    metadataSyncMode,
-                                    lastMetadataPull,
-                                )
-                            ) {
-                                programRuleVariablesFilters.push(
-                                    `lastUpdated:gt:${lastMetadataPull}`,
-                                );
-                            }
-                            const {
-                                programRuleVariables: { programRuleVariables },
-                            } = (await engine.query({
-                                programRuleVariables: {
-                                    resource: `programRuleVariables.json`,
-                                    params: {
-                                        filter: programRuleVariablesFilters,
-                                        fields: "*",
-                                        paging: false,
-                                    },
-                                },
-                            })) as {
-                                programRuleVariables: {
-                                    programRuleVariables: ProgramRuleVariable[];
-                                };
-                            };
-
-                            results.programRuleVariables = programRuleVariables;
-                            break;
-
-                        case "optionSets":
-                            const optionSetsParams: any = {
-                                fields: "id,name,options[id,name,code,sortOrder]",
-                                paging: false,
-                            };
-                            if (
-                                shouldUseLastUpdatedFilter(
-                                    metadataSyncMode,
-                                    lastMetadataPull,
-                                )
-                            ) {
-                                optionSetsParams.filter = `lastUpdated:gt:${lastMetadataPull}`;
-                            }
-                            const { optionSets } = (await engine.query({
+                    case "optionSets":
+                        const optionSetsParams: any = {
+                            fields: "id,name,options[id,name,code,sortOrder]",
+                            paging: false,
+                        };
+                        if (
+                            shouldUseLastUpdatedFilter(
+                                metadataSyncMode,
+                                lastMetadataPull,
+                            )
+                        ) {
+                            optionSetsParams.filter = `lastUpdated:gt:${lastMetadataPull}`;
+                        }
+                        const { optionSets } = (await engine.query({
+                            optionSets: {
+                                resource: "optionSets",
+                                params: optionSetsParams,
+                            },
+                        })) as {
+                            optionSets: {
                                 optionSets: {
-                                    resource: "optionSets",
-                                    params: optionSetsParams,
-                                },
-                            })) as {
-                                optionSets: {
-                                    optionSets: {
+                                    id: string;
+                                    name: string;
+                                    options: {
                                         id: string;
                                         name: string;
-                                        options: {
-                                            id: string;
-                                            name: string;
-                                            code: string;
-                                            sortOrder: number;
-                                        }[];
+                                        code: string;
+                                        sortOrder: number;
                                     }[];
-                                };
+                                }[];
                             };
-
-                            const flattenedOptionSets =
-                                optionSets.optionSets.flatMap((os) =>
-                                    os.options.map((o) => ({
-                                        ...o,
-                                        optionSet: os.id,
-                                        optionSetName: os.name,
-                                    })),
-                                );
-                            results.optionSets = flattenedOptionSets;
-                            break;
-
-                        case "optionGroups":
-                            const optionGroupsParams: any = {
-                                fields: "id,options[id,name,code,sortOrder]",
-                                paging: false,
-                            };
-                            if (
-                                shouldUseLastUpdatedFilter(
-                                    metadataSyncMode,
-                                    lastMetadataPull,
-                                )
-                            ) {
-                                optionGroupsParams.filter = `lastUpdated:gt:${lastMetadataPull}`;
-                            }
-                            const { optionGroups } = (await engine.query({
-                                optionGroups: {
-                                    resource: "optionGroups",
-                                    params: optionGroupsParams,
-                                },
-                            })) as {
-                                optionGroups: {
-                                    optionGroups: Array<{
-                                        id: string;
-                                        options: {
-                                            id: string;
-                                            name: string;
-                                            code: string;
-                                            sortOrder: number;
-                                        }[];
-                                    }>;
-                                };
-                            };
-
-                            const flattenedOptionGroups =
-                                optionGroups.optionGroups.flatMap((og) =>
-                                    og.options.map((o) => ({
-                                        ...o,
-                                        optionGroup: og.id,
-                                    })),
-                                );
-                            results.optionGroups = flattenedOptionGroups;
-                            break;
-                    }
-                    // Prefer the server clock captured above; fall back to
-                    // the previous boundary (don't advance with an
-                    // untrusted timestamp — same rule as resolveNextDataPull)
-                    // and only to the device clock as a last resort, since
-                    // MetadataVersion.lastSync requires a string.
-                    const currentTimestamp =
-                        serverDate ??
-                        lastMetadataPull ??
-                        new Date().toISOString();
-                    let version =
-                        await getMetadataVersionRecord(metadataStore);
-                    if (version === undefined) {
-                        version = {
-                            id: "metadata-version",
-                            lastSync: currentTimestamp,
-                            versions: {},
                         };
-                    }
-                    version.versions[resource] = currentTimestamp;
-                    version.lastSync = currentTimestamp;
-                    results.metadataVersion = [version];
+
+                        const flattenedOptionSets =
+                            optionSets.optionSets.flatMap((os) =>
+                                os.options.map((o) => ({
+                                    ...o,
+                                    optionSet: os.id,
+                                    optionSetName: os.name,
+                                })),
+                            );
+                        results.optionSets = flattenedOptionSets;
+                        break;
+
+                    case "optionGroups":
+                        const optionGroupsParams: any = {
+                            fields: "id,options[id,name,code,sortOrder]",
+                            paging: false,
+                        };
+                        if (
+                            shouldUseLastUpdatedFilter(
+                                metadataSyncMode,
+                                lastMetadataPull,
+                            )
+                        ) {
+                            optionGroupsParams.filter = `lastUpdated:gt:${lastMetadataPull}`;
+                        }
+                        const { optionGroups } = (await engine.query({
+                            optionGroups: {
+                                resource: "optionGroups",
+                                params: optionGroupsParams,
+                            },
+                        })) as {
+                            optionGroups: {
+                                optionGroups: Array<{
+                                    id: string;
+                                    options: {
+                                        id: string;
+                                        name: string;
+                                        code: string;
+                                        sortOrder: number;
+                                    }[];
+                                }>;
+                            };
+                        };
+
+                        const flattenedOptionGroups =
+                            optionGroups.optionGroups.flatMap((og) =>
+                                og.options.map((o) => ({
+                                    ...o,
+                                    optionGroup: og.id,
+                                })),
+                            );
+                        results.optionGroups = flattenedOptionGroups;
+                        break;
+                }
+            };
+
+            const outcomes = await Promise.allSettled(
+                resources.map((resource) => fetchResource(resource)),
+            );
+            outcomes.forEach((outcome, index) => {
+                const resource = resources[index];
+                if (outcome.status === "fulfilled") {
                     results.succeededResources!.add(resource);
-                } catch (error) {
+                } else {
                     console.warn(
                         `[metadata-sync] Skipping ${resource}:`,
-                        error,
+                        outcome.reason,
                     );
-                    continue;
                 }
+            });
+
+            if (results.succeededResources!.size > 0) {
+                // Prefer the server clock captured above; fall back to
+                // the previous boundary (don't advance with an
+                // untrusted timestamp — same rule as resolveNextDataPull)
+                // and only to the device clock as a last resort, since
+                // MetadataVersion.lastSync requires a string.
+                const currentTimestamp =
+                    serverDate ?? lastMetadataPull ?? new Date().toISOString();
+                const version = (await getMetadataVersionRecord(
+                    metadataStore,
+                )) ?? {
+                    id: "metadata-version",
+                    lastSync: currentTimestamp,
+                    versions: {},
+                };
+                for (const resource of results.succeededResources!) {
+                    version.versions[resource] = currentTimestamp;
+                }
+                version.lastSync = currentTimestamp;
+                results.metadataVersion = [version];
             }
             return results;
         }),
@@ -859,19 +870,7 @@ const syncMachine = setup({
             },
         ),
     },
-    delays: {
-        // dataSyncInterval: () => 1000 * 60 * 30 + Math.random() * 1000 * 60 * 5,
-        dataSyncInterval: () => {
-            const min = 30 * 60 * 1000;
-            const max = 60 * 60 * 1000;
-            return Math.floor(Math.random() * (max - min + 1)) + min;
-        },
-        dataPullInterval: () => {
-            const min = 1 * 60 * 60 * 1000;
-            const max = 3 * 60 * 60 * 1000;
-            return Math.floor(Math.random() * (max - min + 1)) + min;
-        },
-    },
+    delays: {},
     guards: {
         hasValidParams: ({ context: { dataSet, period, orgUnit } }) =>
             !isEmpty(dataSet) && !isEmpty(period) && !isEmpty(orgUnit),
@@ -1101,7 +1100,9 @@ const syncMachine = setup({
                 savingMetadata: {
                     invoke: {
                         src: "saveMetadata",
-                        input: ({ context: { metadataStore, rawMetadata } }) => {
+                        input: ({
+                            context: { metadataStore, rawMetadata },
+                        }) => {
                             return { metadataStore, metadata: rawMetadata };
                         },
                         onDone: {
@@ -1180,7 +1181,9 @@ const syncMachine = setup({
                 deletingMetadata: {
                     invoke: {
                         src: "deleteAllMetadata",
-                        input: ({ context: { metadataStore, rawMetadata } }) => ({
+                        input: ({
+                            context: { metadataStore, rawMetadata },
+                        }) => ({
                             metadataStore,
                             metadata: rawMetadata,
                         }),
@@ -1253,15 +1256,6 @@ const syncMachine = setup({
                     },
                 },
                 waiting: {
-                    // Background refresh of ui-config on every boot, not
-                    // only after a metadata sync: otherwise an ordinary
-                    // reload (local metadata present, no sync needed) keeps
-                    // showing the active backend's stale local copy — e.g.
-                    // the storage-backend policy an admin just changed, or
-                    // the other backend's copy after a backend switch. Not
-                    // a blocking step, so a slow/offline network never
-                    // delays reaching `waiting` (RootRoute's loader waits
-                    // on it).
                     invoke: {
                         src: "pullUIConfig",
                         input: ({ context: { metadataStore, engine } }) => ({
@@ -1332,14 +1326,6 @@ const syncMachine = setup({
                             }),
                         },
                     },
-                    after: {
-                        dataSyncInterval: {
-                            target: "batchSync",
-                            actions: assign({
-                                dataPushMode: () => "batch",
-                            }),
-                        },
-                    },
                 },
 
                 batchSync: {
@@ -1400,9 +1386,6 @@ const syncMachine = setup({
             id: "dataPull",
             states: {
                 idle: {
-                    after: {
-                        dataPullInterval: "syncing",
-                    },
                     on: {
                         START_DATA_SYNC: {
                             target: "syncing",
@@ -1486,14 +1469,6 @@ const syncMachine = setup({
                 },
 
                 waiting: {
-                    after: {
-                        dataPullInterval: {
-                            target: "syncing",
-                            actions: assign({
-                                dataPullMode: () => "incremental",
-                            }),
-                        },
-                    },
                     on: {
                         START_DATA_SYNC: {
                             target: "syncing",
@@ -1523,14 +1498,6 @@ const syncMachine = setup({
                 // on the next scheduled interval, and accepts the same
                 // manual/network-triggered re-pull events immediately.
                 failure: {
-                    after: {
-                        dataPullInterval: {
-                            target: "syncing",
-                            actions: assign({
-                                dataPullMode: () => "incremental",
-                            }),
-                        },
-                    },
                     on: {
                         START_DATA_SYNC: {
                             target: "syncing",

@@ -57,10 +57,7 @@ async function tableHasRowsGeneric(
 }
 
 async function clearTable(store: MetadataStore, table: string): Promise<void> {
-    const rows = await store.listRows<{ id: string }>(table);
-    for (const row of rows) {
-        await store.deleteRow(table, keyForRow(table, row));
-    }
+    await store.clearTable(table);
 }
 
 /**
@@ -103,9 +100,11 @@ export async function replaceMetadataTables(
     if (!hasAny) return;
     for (const table of MIGRATED_METADATA_TABLES) {
         await clearTable(store, table);
-        for (const row of (tables[table] ?? []) as { id: string }[]) {
-            await store.putRow(table, row, keyForRow(table, row));
-        }
+        await store.putRows(
+            table,
+            (tables[table] ?? []) as { id: string }[],
+            (row) => keyForRow(table, row),
+        );
     }
 }
 
@@ -258,9 +257,7 @@ export async function saveMetadataGeneric(
         rows: T[],
         key?: (row: T) => string,
     ): Promise<void> => {
-        for (const row of rows) {
-            await store.putRow(table, row, key?.(row));
-        }
+        await store.putRows(table, rows, key);
     };
 
     if (wrote("organisationUnits")) {

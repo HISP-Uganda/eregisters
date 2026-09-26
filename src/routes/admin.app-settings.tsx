@@ -170,142 +170,147 @@ function AppSettings() {
     const metadataTs = uiConfig.reloadSignal.metadata?.timestamp;
 
     return (
-        <Flex vertical gap={24} style={{ maxWidth: 520 }}>
-            <Typography.Title level={4} style={{ margin: 0 }}>
-                App Settings
-            </Typography.Title>
+        // Own scroll area: the admin layout's <Content> is a fixed-height
+        // flex column with overflow hidden (other admin pages manage their
+        // own inner scrolling), which cut this page off on small screens.
+        <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
+            <Flex vertical gap={24} style={{ maxWidth: 520 }}>
+                <Typography.Title level={4} style={{ margin: 0 }}>
+                    App Settings
+                </Typography.Title>
 
-            <Flex vertical gap={8}>
-                <Typography.Text strong>Data Pull Page Size</Typography.Text>
-                <Typography.Text type="secondary">
-                    Number of tracked entities fetched per page when pulling
-                    data from DHIS2. Higher values mean fewer requests but
-                    larger payloads. Default is {DEFAULT_DATA_PULL_PAGE_SIZE}.
-                </Typography.Text>
-                <Flex gap={12} align="center">
-                    <InputNumber
-                        min={1}
-                        max={1000}
-                        value={pageSize}
-                        onChange={(value) =>
-                            setPageSize(value ?? DEFAULT_DATA_PULL_PAGE_SIZE)
-                        }
-                    />
-                    <Button
-                        type="primary"
-                        loading={savingPageSize}
-                        onClick={savePageSize}
-                    >
-                        Save
-                    </Button>
-                </Flex>
-            </Flex>
-
-            <Divider style={{ margin: 0 }} />
-
-            <Flex vertical gap={8}>
-                <Typography.Text strong>
-                    Device Storage Backend
-                </Typography.Text>
-                <Typography.Text type="secondary">
-                    Controls which local storage backend every device uses.
-                    Applies fleet-wide — a device already open shows a
-                    reload banner once it next checks in; a device on
-                    "Auto" still falls back to IndexedDB on its own if
-                    SQLite/OPFS genuinely doesn't work there.{" "}
-                    <Tag color={hasOpfsCapability() ? "green" : "orange"}>
-                        this browser: {hasOpfsCapability() ? "SQLite-capable" : "no OPFS"}
-                    </Tag>
-                </Typography.Text>
-                <Radio.Group
-                    value={storageBackend}
-                    onChange={(e) => setStorageBackend(e.target.value)}
-                >
-                    <Flex vertical gap={4}>
-                        {STORAGE_BACKEND_OPTIONS.map((option) => (
-                            <Radio key={option.value} value={option.value}>
-                                <Typography.Text strong>
-                                    {option.title}
-                                </Typography.Text>{" "}
-                                <Typography.Text
-                                    type="secondary"
-                                    style={{ fontSize: 12 }}
-                                >
-                                    {option.description}
-                                </Typography.Text>
-                            </Radio>
-                        ))}
+                <Flex vertical gap={8}>
+                    <Typography.Text strong>Data Pull Page Size</Typography.Text>
+                    <Typography.Text type="secondary">
+                        Number of tracked entities fetched per page when pulling
+                        data from DHIS2. Higher values mean fewer requests but
+                        larger payloads. Default is {DEFAULT_DATA_PULL_PAGE_SIZE}.
+                    </Typography.Text>
+                    <Flex gap={12} align="center">
+                        <InputNumber
+                            min={1}
+                            max={1000}
+                            value={pageSize}
+                            onChange={(value) =>
+                                setPageSize(value ?? DEFAULT_DATA_PULL_PAGE_SIZE)
+                            }
+                        />
+                        <Button
+                            type="primary"
+                            loading={savingPageSize}
+                            onClick={savePageSize}
+                        >
+                            Save
+                        </Button>
                     </Flex>
-                </Radio.Group>
-                <Flex gap={12} align="center">
-                    <Button
-                        type="primary"
-                        loading={savingStorageBackend}
-                        onClick={saveStorageBackend}
+                </Flex>
+
+                <Divider style={{ margin: 0 }} />
+
+                <Flex vertical gap={8}>
+                    <Typography.Text strong>
+                        Device Storage Backend
+                    </Typography.Text>
+                    <Typography.Text type="secondary">
+                        Controls which local storage backend every device uses.
+                        Applies fleet-wide — a device already open shows a
+                        reload banner once it next checks in; a device on
+                        "Auto" still falls back to IndexedDB on its own if
+                        SQLite/OPFS genuinely doesn't work there.{" "}
+                        <Tag color={hasOpfsCapability() ? "green" : "orange"}>
+                            this browser: {hasOpfsCapability() ? "SQLite-capable" : "no OPFS"}
+                        </Tag>
+                    </Typography.Text>
+                    <Radio.Group
+                        value={storageBackend}
+                        onChange={(e) => setStorageBackend(e.target.value)}
                     >
-                        Save
-                    </Button>
-                    {uiConfig.storageBackendPolicy?.timestamp && (
-                        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                            Last updated:{" "}
-                            {dayjs(
-                                uiConfig.storageBackendPolicy.timestamp,
-                            ).fromNow()}
-                        </Typography.Text>
-                    )}
+                        <Flex vertical gap={4}>
+                            {STORAGE_BACKEND_OPTIONS.map((option) => (
+                                <Radio key={option.value} value={option.value}>
+                                    <Typography.Text strong>
+                                        {option.title}
+                                    </Typography.Text>{" "}
+                                    <Typography.Text
+                                        type="secondary"
+                                        style={{ fontSize: 12 }}
+                                    >
+                                        {option.description}
+                                    </Typography.Text>
+                                </Radio>
+                            ))}
+                        </Flex>
+                    </Radio.Group>
+                    <Flex gap={12} align="center">
+                        <Button
+                            type="primary"
+                            loading={savingStorageBackend}
+                            onClick={saveStorageBackend}
+                        >
+                            Save
+                        </Button>
+                        {uiConfig.storageBackendPolicy?.timestamp && (
+                            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                                Last updated:{" "}
+                                {dayjs(
+                                    uiConfig.storageBackendPolicy.timestamp,
+                                ).fromNow()}
+                            </Typography.Text>
+                        )}
+                    </Flex>
+                </Flex>
+
+                <Divider style={{ margin: 0 }} />
+
+                <Flex vertical gap={8}>
+                    <Typography.Text strong>Force App Reload</Typography.Text>
+                    <Typography.Text type="secondary">
+                        Sends a banner to all currently-online users asking them to
+                        reload the page. Use after deploying a new app version.
+                    </Typography.Text>
+                    <Flex gap={12} align="center">
+                        <Button
+                            type="primary"
+                            loading={broadcastingApp}
+                            onClick={() => broadcast("app")}
+                            style={{ background: "#7c3aed", borderColor: "#7c3aed" }}
+                        >
+                            Broadcast Reload Request
+                        </Button>
+                        {appTs && (
+                            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                                Last broadcast: {dayjs(appTs).fromNow()}
+                            </Typography.Text>
+                        )}
+                    </Flex>
+                </Flex>
+
+                <Divider style={{ margin: 0 }} />
+
+                <Flex vertical gap={8}>
+                    <Typography.Text strong>Force Metadata Refresh</Typography.Text>
+                    <Typography.Text type="secondary">
+                        Sends a banner asking all currently-online users to pull the
+                        latest metadata from DHIS2. Use after updating program rules
+                        or data elements.
+                    </Typography.Text>
+                    <Flex gap={12} align="center">
+                        <Button
+                            type="primary"
+                            loading={broadcastingMetadata}
+                            onClick={() => broadcast("metadata")}
+                            style={{ background: "#0ea5e9", borderColor: "#0ea5e9" }}
+                        >
+                            Broadcast Metadata Refresh
+                        </Button>
+                        {metadataTs && (
+                            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                                Last broadcast: {dayjs(metadataTs).fromNow()}
+                            </Typography.Text>
+                        )}
+                    </Flex>
                 </Flex>
             </Flex>
-
-            <Divider style={{ margin: 0 }} />
-
-            <Flex vertical gap={8}>
-                <Typography.Text strong>Force App Reload</Typography.Text>
-                <Typography.Text type="secondary">
-                    Sends a banner to all currently-online users asking them to
-                    reload the page. Use after deploying a new app version.
-                </Typography.Text>
-                <Flex gap={12} align="center">
-                    <Button
-                        type="primary"
-                        loading={broadcastingApp}
-                        onClick={() => broadcast("app")}
-                        style={{ background: "#7c3aed", borderColor: "#7c3aed" }}
-                    >
-                        Broadcast Reload Request
-                    </Button>
-                    {appTs && (
-                        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                            Last broadcast: {dayjs(appTs).fromNow()}
-                        </Typography.Text>
-                    )}
-                </Flex>
-            </Flex>
-
-            <Divider style={{ margin: 0 }} />
-
-            <Flex vertical gap={8}>
-                <Typography.Text strong>Force Metadata Refresh</Typography.Text>
-                <Typography.Text type="secondary">
-                    Sends a banner asking all currently-online users to pull the
-                    latest metadata from DHIS2. Use after updating program rules
-                    or data elements.
-                </Typography.Text>
-                <Flex gap={12} align="center">
-                    <Button
-                        type="primary"
-                        loading={broadcastingMetadata}
-                        onClick={() => broadcast("metadata")}
-                        style={{ background: "#0ea5e9", borderColor: "#0ea5e9" }}
-                    >
-                        Broadcast Metadata Refresh
-                    </Button>
-                    {metadataTs && (
-                        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                            Last broadcast: {dayjs(metadataTs).fromNow()}
-                        </Typography.Text>
-                    )}
-                </Flex>
-            </Flex>
-        </Flex>
+        </div>
     );
 }

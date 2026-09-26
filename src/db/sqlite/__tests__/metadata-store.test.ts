@@ -78,4 +78,81 @@ describe("sqliteMetadataStore", () => {
         );
         expect(rows).toEqual([{ id: "p1", name: "New Name" }]);
     });
+
+    describe("putRows / clearTable (bulk)", () => {
+        async function setUp() {
+            const { driver, close: c } = createNodeSqliteDriver();
+            close = c;
+            await createSchema(driver);
+            return { driver, store: sqliteMetadataStore(driver) };
+        }
+
+        it("writes many uniform rows, upserting existing ids", async () => {
+            const { store } = await setUp();
+            await store.putRow("programs", { id: "p0", name: "Old" });
+            const rows = Array.from({ length: 1234 }, (_, i) => ({
+                id: `p${i}`,
+                name: `Program ${i}`,
+            }));
+
+            await store.putRows("programs", rows);
+
+            const stored = await store.listRows<{ id: string; name: string }>(
+                "programs",
+            );
+            expect(stored).toHaveLength(1234);
+            expect(stored.find((r) => r.id === "p0")?.name).toBe("Program 0");
+        });
+
+        it("writes composite-key rows under their explicit keys", async () => {
+            const { store } = await setUp();
+
+            await store.putRows(
+                "option_sets",
+                [
+                    { id: "o1", optionSet: "osA" },
+                    { id: "o1", optionSet: "osB" },
+                ],
+                (row) => `${row.id}::${row.optionSet}`,
+            );
+
+            expect(await store.listRows("option_sets")).toHaveLength(2);
+        });
+
+        it("writes organisation units into their real columns", async () => {
+            const { driver, store } = await setUp();
+
+            await store.putRows("organisation_units", [
+                { id: "ou1", name: "A", path: "/ou1" },
+                { id: "ou2", name: "B", path: "/ou1/ou2" },
+            ]);
+
+            const result = await driver.execute<{ path: string }>(
+                "SELECT path FROM organisation_units ORDER BY id",
+            );
+            expect(result.rows.map((r) => r.path)).toEqual(["/ou1", "/ou1/ou2"]);
+        });
+
+        it("is a no-op for an empty list", async () => {
+            const { store } = await setUp();
+            await store.putRows("programs", []);
+            expect(await store.listRows("programs")).toEqual([]);
+        });
+
+        it("clearTable removes every row of a table, including composite-key ones", async () => {
+            const { store } = await setUp();
+            await store.putRows("programs", [{ id: "p1" }, { id: "p2" }]);
+            await store.putRows(
+                "option_sets",
+                [{ id: "o1", optionSet: "osA" }],
+                (row) => `${row.id}::${row.optionSet}`,
+            );
+
+            await store.clearTable("programs");
+            await store.clearTable("option_sets");
+
+            expect(await store.listRows("programs")).toEqual([]);
+            expect(await store.listRows("option_sets")).toEqual([]);
+        });
+    });
 });
