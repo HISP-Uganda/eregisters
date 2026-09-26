@@ -40,7 +40,10 @@ export interface StorageBootDeps {
     acquireCopyLock(): Promise<() => void>;
     /** Per-boot bookkeeping flags for the live store. Best-effort. */
     commitLiveStore(backend: StorageBackend): Promise<void>;
-    metadataStoreFor(backend: StorageBackend, driver?: SqlDriver): MetadataStore;
+    metadataStoreFor(
+        backend: StorageBackend,
+        driver?: SqlDriver,
+    ): MetadataStore;
     /** Consecutive failed copies on "auto" for this direction (see `store-copy-failures.ts`). */
     readCopyFailures(direction: CopyDirection): number;
     recordCopyFailure(direction: CopyDirection): void;
@@ -169,16 +172,11 @@ export const storageBootMachine = setup({
         initLiveCollections: ({ context }) => {
             context.deps.initCollections(context.backend!, context.liveDriver);
         },
-        assignError: assign(
-            (_, params: { error: unknown; step?: string }) => ({
-                error: errorMessage(params.error),
-                failedStep: params.step,
-            }),
-        ),
-        logBoot: (
-            { context },
-            params: { outcome: BootSummary["outcome"] },
-        ) => {
+        assignError: assign((_, params: { error: unknown; step?: string }) => ({
+            error: errorMessage(params.error),
+            failedStep: params.step,
+        })),
+        logBoot: ({ context }, params: { outcome: BootSummary["outcome"] }) => {
             console.info("storage.boot", bootSummary(context, params.outcome));
         },
         releaseCopyLock: assign(({ context }) => {
@@ -380,9 +378,12 @@ export const storageBootMachine = setup({
                         input: ({ context }) => ({ steps: context.steps! }),
                         onDone: [
                             {
-                                guard: ({ event }) => event.output === "current",
+                                guard: ({ event }) =>
+                                    event.output === "current",
                                 target: "copied",
-                                actions: assign({ verdict: "current" as const }),
+                                actions: assign({
+                                    verdict: "current" as const,
+                                }),
                             },
                             {
                                 // An earlier cleanup failed; retried every
@@ -728,7 +729,13 @@ export const storageBootMachine = setup({
 /** What the boot screen / fallback notice should show — the UI's only view of this machine. */
 export type BootView =
     | { kind: "preparing" }
-    | { kind: "copying"; step: number; steps: number; copied: number; total: number }
+    | {
+          kind: "copying";
+          step: number;
+          steps: number;
+          copied: number;
+          total: number;
+      }
     | { kind: "finishing" }
     | { kind: "failed"; error: string }
     | { kind: "unavailable"; error: string }
@@ -790,7 +797,13 @@ export interface BootSummary {
     copy?: {
         direction: CopyDirection;
         verdict?: CopyVerdict;
-        result: "copied" | "current" | "fresh" | "cleanup-only" | "failed" | "skipped";
+        result:
+            | "copied"
+            | "current"
+            | "fresh"
+            | "cleanup-only"
+            | "failed"
+            | "skipped";
         /** Row counts only — never ids or row contents. */
         rows: Record<string, number>;
         checkpoint?: CopiedCheckpoint;
@@ -802,7 +815,10 @@ export interface BootSummary {
     };
 }
 
-const VERDICT_RESULT: Record<CopyVerdict, NonNullable<BootSummary["copy"]>["result"]> = {
+const VERDICT_RESULT: Record<
+    CopyVerdict,
+    NonNullable<BootSummary["copy"]>["result"]
+> = {
     current: "current",
     fresh: "fresh",
     "cleanup-owed": "cleanup-only",
