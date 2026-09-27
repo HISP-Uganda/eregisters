@@ -10,7 +10,7 @@ import {
 import {
     getConfiguredPageSize,
     getMetadataVersionRecord,
-    persistCurrentSyncState,
+    patchSyncState,
     pullStageHierarchyConfig,
     pullUiConfig,
 } from ".././sync-metadata-actors";
@@ -181,24 +181,61 @@ describe("sync-metadata-actors", () => {
         });
     });
 
-    describe("persistCurrentSyncState", () => {
-        it("writes a sync_state row with the given lastDataPull/lastDataPush", async () => {
-            const { driver, close: c } = createNodeSqliteDriver();
-            close = c;
-            await createSchema(driver);
-
-            await persistCurrentSyncState(sqliteMetadataStore(driver), {
-                lastDataPull: "2026-01-01T00:00:00Z",
-                lastDataPush: "2026-01-02T00:00:00Z",
-            });
-
+    describe("patchSyncState", () => {
+        async function readSyncState(driver: Parameters<typeof sqliteMetadataStore>[0]) {
             const row = await driver.execute<{ data: string }>(
                 "SELECT data FROM sync_state WHERE id = 'current'",
             );
-            const parsed = JSON.parse(row.rows[0]!.data);
-            expect(parsed.lastPullAt).toBe("2026-01-01T00:00:00Z");
+            return JSON.parse(row.rows[0]!.data);
+        }
+
+        it("updates one checkpoint without touching the other", async () => {
+            const { driver, close: c } = createNodeSqliteDriver();
+            close = c;
+            await createSchema(driver);
+            const store = sqliteMetadataStore(driver);
+
+            await patchSyncState(store, { lastPushAt: "2026-01-02T00:00:00Z" });
+            await patchSyncState(store, { lastPullAt: "2026-01-01T00:00:00.000" });
+
+            const parsed = await readSyncState(driver);
+            expect(parsed.lastPullAt).toBe("2026-01-01T00:00:00.000");
             expect(parsed.lastPushAt).toBe("2026-01-02T00:00:00Z");
             expect(parsed.status).toBe("idle");
+        });
+
+        it("lands both of two concurrent patches (pull and push regions run in parallel)", async () => {
+            const { driver, close: c } = createNodeSqliteDriver();
+            close = c;
+            await createSchema(driver);
+            const store = sqliteMetadataStore(driver);
+
+            await Promise.all([
+                patchSyncState(store, { lastPullAt: "pull" }),
+                patchSyncState(store, { lastPushAt: "push" }),
+            ]);
+
+            const parsed = await readSyncState(driver);
+            expect(parsed.lastPullAt).toBe("pull");
+            expect(parsed.lastPushAt).toBe("push");
+        });
+
+        it("rejects a failed write and keeps later writes working", async () => {
+            const { driver, close: c } = createNodeSqliteDriver();
+            close = c;
+            await createSchema(driver);
+            const store = sqliteMetadataStore(driver);
+            const failing = {
+                ...store,
+                putRow: vi.fn().mockRejectedValue(new Error("disk full")),
+            } as typeof store;
+
+            await expect(
+                patchSyncState(failing, { lastPullAt: "lost" }),
+            ).rejects.toThrow("disk full");
+            await patchSyncState(store, { lastPullAt: "kept" });
+
+            expect((await readSyncState(driver)).lastPullAt).toBe("kept");
         });
     });
 

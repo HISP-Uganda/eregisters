@@ -49,7 +49,7 @@ import {
     deleteMetadataForResync,
     getConfiguredPageSize,
     getMetadataVersionRecord,
-    persistCurrentSyncState,
+    patchSyncState,
     pullStageHierarchyConfig,
     pullUiConfig,
     queryMetadata,
@@ -139,6 +139,9 @@ export interface SyncContext {
     sqlDriver: SqlDriver | undefined;
     lastDataPull: string | undefined;
     lastDataPush: string | undefined;
+    /** A pulled / pushed checkpoint awaiting its write to `sync_state`. */
+    pendingDataPull?: string;
+    pendingDataPush?: string;
     lastMetadataPull: string | undefined;
     metadataSyncMode: MetadataSyncMode;
     dataPullMode: DataPullMode;
@@ -190,7 +193,7 @@ type SyncEvent =
           periodType?: string;
       }
     | { type: "PARENT_NOT_READY" };
-const syncMachine = setup({
+export const syncMachine = setup({
     types: {
         context: {} as SyncContext,
         events: {} as SyncEvent,
@@ -224,18 +227,6 @@ const syncMachine = setup({
             lastMetadataPull: undefined,
         }),
 
-        persistSyncState: ({ context }) => {
-            // Previously a bare `void fn(...)` with no error handling — a
-            // rejected write (e.g. a wa-sqlite worker hiccup) was silently
-            // swallowed, so "last pulled" could fail to persist even after
-            // an otherwise-successful pull with no visible error anywhere.
-            void persistCurrentSyncState(context.metadataStore, {
-                lastDataPull: context.lastDataPull,
-                lastDataPush: context.lastDataPush,
-            }).catch((error: unknown) => {
-                console.error("Failed to persist sync state:", error);
-            });
-        },
     },
     actors: {
         pullAggregateData: fromPromise<
@@ -284,6 +275,21 @@ const syncMachine = setup({
                 userInfo.organisationUnits[0].path,
             );
         }),
+        // Awaited, so a checkpoint only advances in context once it is on
+        // disk (IMPLEMENTATION_PLAN R2) — the pull/push states below wait
+        // for this and keep the previous value if it rejects.
+        persistCheckpoint: fromPromise<
+            void,
+            {
+                metadataStore: MetadataStore;
+                patch:
+                    | { lastPullAt: string | undefined }
+                    | { lastPushAt: string | undefined };
+            }
+        >(({ input }) => patchSyncState(input.metadataStore, input.patch)),
+        // Invariant (R13): a failed or offline pull throws, so neither
+        // local rows beyond the pages already merged nor `lastDataPull`
+        // advance; a missing server date keeps the previous boundary.
         pullData: fromPromise<
             string | undefined,
             {
@@ -1066,11 +1072,27 @@ const syncMachine = setup({
                                         event.output.wasDatabaseDeleted
                                             ? "full"
                                             : "incremental";
+                                    // Metadata state never resets the data
+                                    // position (R1): `wasDatabaseDeleted`
+                                    // only means "no metadata checkpoint",
+                                    // which a metadata repair clears on
+                                    // purpose. Without these, the next
+                                    // pull dropped `updatedAfter` and the
+                                    // push checkpoint was erased.
+                                    const syncState = event.output
+                                        .syncState as
+                                        | {
+                                              lastPullAt?: string;
+                                              lastPushAt?: string;
+                                          }
+                                        | undefined;
                                     return {
                                         metadataSyncMode: mode,
                                         lastMetadataPull:
                                             event.output.metadataVersion
                                                 ?.lastSync,
+                                        lastDataPull: syncState?.lastPullAt,
+                                        lastDataPush: syncState?.lastPushAt,
                                         ...deriveValidIds(event.output.program),
                                     };
                                 }),
@@ -1371,13 +1393,32 @@ const syncMachine = setup({
                 },
 
                 updateLastDataPush: {
-                    entry: [
-                        assign({
-                            lastDataPush: () => new Date().toISOString(),
+                    entry: assign({
+                        pendingDataPush: () => new Date().toISOString(),
+                    }),
+                    invoke: {
+                        src: "persistCheckpoint",
+                        input: ({ context }) => ({
+                            metadataStore: context.metadataStore,
+                            patch: { lastPushAt: context.pendingDataPush },
                         }),
-                        "persistSyncState",
-                    ],
-                    always: "idle",
+                        onDone: {
+                            target: "idle",
+                            actions: assign({
+                                lastDataPush: ({ context }) =>
+                                    context.pendingDataPush,
+                            }),
+                        },
+                        onError: {
+                            target: "idle",
+                            actions: ({ event }) => {
+                                console.error(
+                                    "Failed to persist push checkpoint:",
+                                    event.error,
+                                );
+                            },
+                        },
+                    },
                 },
             },
         },
@@ -1445,12 +1486,12 @@ const syncMachine = setup({
 
                         onDone: {
                             target: "updateLastDataPull",
-                            // Persist the server-clock boundary returned by
-                            // `pullData` (captured before the pull) — not the
-                            // device clock. See the Android SDK parity note in
-                            // the actor above.
+                            // The server-clock boundary returned by
+                            // `pullData` (captured before the pull) — not
+                            // the device clock; see the Android SDK parity
+                            // note in the actor. Pending until persisted.
                             actions: assign({
-                                lastDataPull: ({ event }) => event.output,
+                                pendingDataPull: ({ event }) => event.output,
                                 dataPullMode: () => "incremental",
                             }),
                         },
@@ -1463,9 +1504,34 @@ const syncMachine = setup({
                         },
                     },
                 },
+                // The checkpoint advances in context only once it is on disk
+                // (R2). If the write fails, the previous boundary stays and
+                // the next pull re-fetches the same window — merges are
+                // idempotent, so that only costs bandwidth.
                 updateLastDataPull: {
-                    entry: ["persistSyncState"],
-                    always: "waiting",
+                    invoke: {
+                        src: "persistCheckpoint",
+                        input: ({ context }) => ({
+                            metadataStore: context.metadataStore,
+                            patch: { lastPullAt: context.pendingDataPull },
+                        }),
+                        onDone: {
+                            target: "waiting",
+                            actions: assign({
+                                lastDataPull: ({ context }) =>
+                                    context.pendingDataPull,
+                            }),
+                        },
+                        onError: {
+                            target: "waiting",
+                            actions: ({ event }) => {
+                                console.error(
+                                    "Failed to persist pull checkpoint:",
+                                    event.error,
+                                );
+                            },
+                        },
+                    },
                 },
 
                 waiting: {

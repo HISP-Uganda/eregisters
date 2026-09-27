@@ -37,24 +37,42 @@ import {
  * instance with no mocking needed.
  */
 
-export function persistCurrentSyncState(
+let syncStateWrites: Promise<unknown> = Promise.resolve();
+
+/**
+ * Updates ONE checkpoint field of the `sync_state` row (`lastPullAt` or
+ * `lastPushAt`), leaving the other untouched — wayfinder ticket "Load and
+ * persist the data checkpoint correctly on every boot path (Phase 1)".
+ *
+ * Replaces a whole-row rewrite from machine context: the pull and push
+ * regions run in parallel, so each rewriting the row from its own context
+ * made the later write clobber the other's newer checkpoint — and a
+ * context that never loaded a checkpoint erased it outright. Writes are
+ * read-merge-written one at a time (module-level queue) so two patches
+ * can't interleave. Rejects when the write fails, so callers can keep the
+ * previous checkpoint instead of advancing past what's on disk.
+ */
+export function patchSyncState(
     store: MetadataStore,
-    params: {
-        lastDataPull: string | undefined;
-        lastDataPush: string | undefined;
-    },
+    patch: Pick<SyncState, "lastPullAt"> | Pick<SyncState, "lastPushAt">,
 ): Promise<void> {
-    const row: SyncState = {
-        id: "current",
-        status: "idle",
-        isOnline: true,
-        isSyncing: false,
-        lastPullAt: params.lastDataPull,
-        lastPushAt: params.lastDataPush,
-        pendingCount: 0,
-        updatedAt: new Date().toISOString(),
-    };
-    return store.putRow("sync_state", row);
+    const write = syncStateWrites.then(async () => {
+        const existing = await store.getRow<SyncState>("sync_state", "current");
+        const row: SyncState = {
+            id: "current",
+            status: "idle",
+            isOnline: true,
+            isSyncing: false,
+            pendingCount: 0,
+            ...existing,
+            ...patch,
+            updatedAt: new Date().toISOString(),
+        };
+        await store.putRow("sync_state", row);
+    });
+    // Keep the queue alive after a failed write; the caller still sees it.
+    syncStateWrites = write.catch(() => undefined);
+    return write;
 }
 
 export function checkMetadataSyncStatus(
