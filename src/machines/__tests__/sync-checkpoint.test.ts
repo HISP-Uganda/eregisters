@@ -273,6 +273,37 @@ describe("sync.pullData log line (Phase 2)", () => {
         expect(lines[0]).not.toHaveProperty("error");
     });
 
+    it("sends the checkpoint minus the overlap window, but stores the exact server date", async () => {
+        const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+        const queries: Record<string, unknown>[] = [];
+        const engine = {
+            query: async (q: Record<string, { resource: string; params?: Record<string, unknown> }>) => {
+                const [key, { resource, params }] = Object.entries(q)[0];
+                if (resource === "system/info") return { info: { serverDate: "2026-09-27T14:00:00.000" } };
+                if (resource === "tracker/trackedEntities") queries.push(params ?? {});
+                return { [key]: { trackedEntities: [] } };
+            },
+        };
+        const { actor, driver, close } = await setUp({
+            checkIndexDB: async () =>
+                checkResult({ syncState: { id: "current", lastPullAt: "2026-09-27T13:48:54.384" } }),
+            engine,
+        });
+        cleanup = close;
+        await waitFor(actor, (snap) => snap.context.lastDataPull === "2026-09-27T13:48:54.384", TIMEOUT);
+
+        actor.send({ type: "START_DATA_SYNC" });
+        await waitFor(actor, (snap) => snap.matches({ dataPull: "waiting" }), TIMEOUT);
+
+        expect(queries[0]?.updatedAfter).toBe("2026-09-27T13:43:54.384");
+        expect((await storedSyncState(driver)).lastPullAt).toBe("2026-09-27T14:00:00.000");
+        expect(pullLines(info)[0]).toMatchObject({
+            checkpointFrom: "2026-09-27T13:48:54.384",
+            updatedAfter: "2026-09-27T13:43:54.384",
+            checkpointTo: "2026-09-27T14:00:00.000",
+        });
+    });
+
     it("logs a full pull as mode full when there is no checkpoint", async () => {
         const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
         const engine = {

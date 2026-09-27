@@ -174,3 +174,41 @@ export function checkpointForScope(
     return syncState.lastPullAt;
 }
 
+/** How far before the stored checkpoint each incremental pull starts. */
+export const PULL_OVERLAP_MINUTES = 5;
+
+const NAIVE_SERVER_DATE =
+    /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?$/;
+
+/**
+ * The `updatedAfter` actually sent: the stored checkpoint minus
+ * `minutes` — wayfinder ticket "Should Pull Data query with a safety
+ * overlap window?". Closes the gap where a server import stamps
+ * `lastUpdated` just before our `system/info` read but commits after it;
+ * merges are idempotent, so the overlap only re-downloads a few rows.
+ *
+ * Pure wall-clock arithmetic on DHIS2's zone-less server date — never a
+ * timezone conversion (the server reads a zone-less value in its own
+ * zone; converting through UTC would shift the bound by the zone offset).
+ * Anything not in that exact shape is sent unchanged.
+ */
+export function withPullOverlap(
+    checkpoint: string,
+    minutes: number = PULL_OVERLAP_MINUTES,
+): string {
+    const m = NAIVE_SERVER_DATE.exec(checkpoint);
+    if (!m) return checkpoint;
+    const [, y, mo, d, h, mi, s, frac] = m;
+    const ms = frac === undefined ? 0 : Number(frac.padEnd(3, "0"));
+    // Date.UTC is used only as a calendar calculator (handles day/month/
+    // year rollover); the value is formatted straight back, zone-free.
+    const t = new Date(
+        Date.UTC(+y, +mo - 1, +d, +h, +mi, +s, ms) - minutes * 60_000,
+    );
+    const p2 = (n: number) => String(n).padStart(2, "0");
+    const base = `${t.getUTCFullYear()}-${p2(t.getUTCMonth() + 1)}-${p2(t.getUTCDate())}T${p2(t.getUTCHours())}:${p2(t.getUTCMinutes())}:${p2(t.getUTCSeconds())}`;
+    return frac === undefined
+        ? base
+        : `${base}.${String(t.getUTCMilliseconds()).padStart(3, "0")}`;
+}
+

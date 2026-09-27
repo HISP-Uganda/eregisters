@@ -67,6 +67,7 @@ import {
     checkpointForScope,
     pullScopeKey,
     shouldUseLastDataPull,
+    withPullOverlap,
     shouldUseLastUpdatedFilter,
 } from "./sync-metadata-mode";
 import {
@@ -338,6 +339,9 @@ export const syncMachine = setup({
                 )
                     ? lastDataPull
                     : undefined;
+                const updatedAfter = checkpointFrom
+                    ? withPullOverlap(checkpointFrom)
+                    : undefined;
                 const fetched = { trackedEntities: 0, enrollments: 0, events: 0 };
                 let pages = 0;
                 let pageSize = DEFAULT_DATA_PULL_PAGE_SIZE;
@@ -353,6 +357,7 @@ export const syncMachine = setup({
                         : { error: error instanceof Error ? error.message : String(error) }),
                     mode: checkpointFrom ? "incremental" : "full",
                     checkpointFrom: checkpointFrom ?? null,
+                    updatedAfter: updatedAfter ?? null,
                     checkpointTo: checkpointTo ?? null,
                     serverTotal,
                     fetched,
@@ -399,8 +404,8 @@ export const syncMachine = setup({
                             page: currentPage,
                             pageSize: pageSize,
                         };
-                        if (checkpointFrom) {
-                            params = { ...params, updatedAfter: checkpointFrom };
+                        if (updatedAfter) {
+                            params = { ...params, updatedAfter };
                         }
 
                         const response = (await engine.query({

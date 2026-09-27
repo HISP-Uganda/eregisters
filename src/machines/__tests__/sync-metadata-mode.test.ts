@@ -4,6 +4,7 @@ import {
     extractServerDate,
     pullScopeKey,
     resolveNextDataPull,
+    withPullOverlap,
 } from ".././sync-metadata-mode";
 
 /**
@@ -71,6 +72,29 @@ describe("checkpointForScope", () => {
     it("has nothing without a checkpoint", () => {
         expect(checkpointForScope(undefined, scope)).toBeUndefined();
         expect(checkpointForScope({ pullScope: scope }, scope)).toBeUndefined();
+    });
+});
+
+describe("withPullOverlap", () => {
+    it("subtracts the window on the zone-less wall clock", () => {
+        expect(withPullOverlap("2026-09-27T13:48:54.384")).toBe("2026-09-27T13:43:54.384");
+    });
+
+    it("rolls back across midnight, month and year", () => {
+        expect(withPullOverlap("2026-01-01T00:02:00.000")).toBe("2025-12-31T23:57:00.000");
+        expect(withPullOverlap("2028-03-01T00:00:30.100")).toBe("2028-02-29T23:55:30.100");
+    });
+
+    it("keeps the input's precision and never adds a zone", () => {
+        expect(withPullOverlap("2026-09-27T13:48:54")).toBe("2026-09-27T13:43:54");
+        expect(withPullOverlap("2026-09-27T13:48:54.5")).toBe("2026-09-27T13:43:54.500");
+        expect(withPullOverlap("2026-09-27T13:48:54.384")).not.toMatch(/Z|[+-]\d{2}:?\d{2}$/);
+    });
+
+    it("sends anything else unchanged rather than risk shifting it", () => {
+        expect(withPullOverlap("2026-09-27T13:48:54.384Z")).toBe("2026-09-27T13:48:54.384Z");
+        expect(withPullOverlap("2026-09-27T13:48:54+03:00")).toBe("2026-09-27T13:48:54+03:00");
+        expect(withPullOverlap("C1")).toBe("C1");
     });
 });
 

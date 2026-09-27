@@ -13,7 +13,10 @@ export interface PullDataSummary {
     outcome: "ok" | "offline" | "error";
     error?: string;
     mode: "incremental" | "full";
+    /** The stored checkpoint the pull started from. */
     checkpointFrom: string | null;
+    /** What was actually sent — `checkpointFrom` minus the overlap window. */
+    updatedAfter: string | null;
     checkpointTo: string | null;
     serverTotal?: number;
     fetched: { trackedEntities: number; enrollments: number; events: number };
