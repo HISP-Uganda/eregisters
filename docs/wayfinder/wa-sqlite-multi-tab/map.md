@@ -127,6 +127,8 @@ being redirected away.
 
 - [Retire the COOP/COEP header injection if wa-sqlite doesn't need it](tickets/005-retire-coi.md) — retired in **one** release: an open tab on the isolating build updates onto the new SW, reloads and keeps working non-isolated; SQLite, two tabs and offline cold start all verified with `crossOriginIsolated: false` (Chrome). Patch 7 keeps only its navigation handling; patches 2/5/6, its worker branch and the logo `crossOrigin` workaround deleted. Supersedes the "COOP/COEP … NOT touched by this map" decision above.
 
+- [How should config changes made in one tab reach other open tabs?](tickets/006-cross-tab-config-reactivity.md) — a `BroadcastChannel` (`src/db/cross-tab.ts`) tells other tabs what changed (config rows `ui_config`/`stage_hierarchy`, SQLite collection keys) and they re-read it; a thawed frozen tab re-reads everything. Fixed a real bug on the way: a pull could fail on a duplicate key (or lose a row) when another tab had written it — the insert/update choice now reads the database, not the snapshot. Dexie collections were already cross-tab. In-memory metadata refresh moved to the concurrent-sync ticket.
+
 ## Implementation progress
 
 All three tickets' decisions are now fully wired and built (commit

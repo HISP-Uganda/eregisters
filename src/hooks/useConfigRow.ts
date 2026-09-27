@@ -7,8 +7,8 @@ import { useMetadataStore } from "./useMetadataStore";
  * tables (see `useUIConfig.ts`/`useStageHierarchyConfig.ts`) — works
  * against whichever backend's `MetadataStore` is active via `SyncContext`,
  * replacing the earlier SQL-only `useSqliteConfigRow` (which called
- * `getSqlDriver()` directly and threw on the Dexie backend). Same-tab-only
- * reactivity — see `reactive-config.ts`'s doc comment for why.
+ * `getSqlDriver()` directly and threw on the Dexie backend). Re-reads on a
+ * change from this tab or another open tab — see `reactive-config.ts`.
  */
 export function useConfigRow<TConfig>(
     table: string,

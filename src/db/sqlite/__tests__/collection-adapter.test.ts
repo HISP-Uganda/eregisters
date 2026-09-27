@@ -1,5 +1,6 @@
 import { createCollection } from "@tanstack/db";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { createCrossTabBus } from "../../cross-tab";
 import { createNodeSqliteDriver } from ".././test-support/node-sqlite-driver";
 import { sqliteCollectionOptions } from ".././collection-adapter";
 import type { RowAdapter } from ".././row-adapter";
@@ -229,6 +230,121 @@ describe("sqliteCollectionOptions", () => {
         expect(plain(collection.toArray)).toEqual([
             { id: "a", label: "second pull", version: 2 },
         ]);
+    });
+
+    describe("another tab writing the same database (wayfinder ticket \"How should config changes made in one tab reach other open tabs?\")", () => {
+        // Two collections over one driver stand in for two tabs: each has
+        // its own snapshot, which the other's writes don't update.
+        let channelSeq = 0;
+
+        async function twoTabs() {
+            const { driver, close: c } = await setUp();
+            close = c;
+            // One channel name per test; one bus (and resume target) per tab.
+            const channel = `test-cross-tab-${++channelSeq}-${Date.now()}`;
+            const resumeB = new EventTarget();
+            const make = (resumeTarget: EventTarget) =>
+                createCollection(
+                    sqliteCollectionOptions<SimpleRow, string>({
+                        id: "test-shared",
+                        db: driver,
+                        getKey: (row) => row.id,
+                        row: simpleRowAdapter(),
+                        crossTab: createCrossTabBus(channel, resumeTarget),
+                    }),
+                );
+            const tabA = make(new EventTarget());
+            const tabB = make(resumeB);
+            await tabA.toArrayWhenReady();
+            await tabB.toArrayWhenReady();
+            const utils = (collection: typeof tabA) =>
+                collection.utils as unknown as {
+                    bulkInsertLocally: (rows: SimpleRow[]) => Promise<void>;
+                    deleteLocally: (keys: string[]) => Promise<void>;
+                };
+            return { driver, tabA, tabB, utils, resumeB };
+        }
+
+        it("bulkInsertLocally updates a row another tab already stored, instead of failing on a duplicate key", async () => {
+            const { tabA, tabB, utils } = await twoTabs();
+            await utils(tabA).bulkInsertLocally([
+                { id: "a", label: "pulled in tab A", version: 1 },
+            ]);
+
+            await expect(
+                utils(tabB).bulkInsertLocally([
+                    { id: "a", label: "pulled in tab B", version: 2 },
+                ]),
+            ).resolves.toBeUndefined();
+            expect(plain(tabB.toArray)).toEqual([
+                { id: "a", label: "pulled in tab B", version: 2 },
+            ]);
+        });
+
+        it("a write in one tab shows up in the other tab's collection", async () => {
+            const { tabA, tabB, utils } = await twoTabs();
+            await utils(tabA).bulkInsertLocally([
+                { id: "a", label: "registered in tab A", version: 1 },
+            ]);
+            await vi.waitFor(() =>
+                expect(plain(tabB.toArray)).toEqual([
+                    { id: "a", label: "registered in tab A", version: 1 },
+                ]),
+            );
+
+            await utils(tabA).deleteLocally(["a"]);
+            await vi.waitFor(() => expect(tabB.toArray).toEqual([]));
+        });
+
+        it("utils.refresh() in one tab makes the other re-read the whole collection", async () => {
+            const { driver, tabA, tabB } = await twoTabs();
+            await driver.execute(
+                "INSERT INTO simple_rows (id, label, version) VALUES ('d', 'direct SQL', 1)",
+            );
+            await (tabA.utils as unknown as { refresh: () => Promise<void> }).refresh();
+            await vi.waitFor(() =>
+                expect(plain(tabB.toArray)).toEqual([
+                    { id: "d", label: "direct SQL", version: 1 },
+                ]),
+            );
+        });
+
+        it("a tab thawed after the browser froze it re-reads what it missed", async () => {
+            const { driver, tabB, resumeB } = await twoTabs();
+            // A write whose message this tab never got.
+            await driver.execute(
+                "INSERT INTO simple_rows (id, label, version) VALUES ('m', 'missed', 1)",
+            );
+            expect(tabB.toArray).toEqual([]);
+
+            resumeB.dispatchEvent(new Event("resume"));
+            await vi.waitFor(() =>
+                expect(plain(tabB.toArray)).toEqual([
+                    { id: "m", label: "missed", version: 1 },
+                ]),
+            );
+        });
+
+        it("bulkInsertLocally re-inserts a row another tab deleted, instead of silently updating nothing", async () => {
+            const { driver, tabA, tabB, utils } = await twoTabs();
+            await utils(tabA).bulkInsertLocally([
+                { id: "a", label: "first", version: 1 },
+            ]);
+            await utils(tabB).bulkInsertLocally([
+                { id: "a", label: "first", version: 1 },
+            ]);
+            await utils(tabA).deleteLocally(["a"]);
+
+            await utils(tabB).bulkInsertLocally([
+                { id: "a", label: "pulled again", version: 2 },
+            ]);
+            const stored = await driver.execute<SimpleRow>(
+                "SELECT id, label, version FROM simple_rows",
+            );
+            expect(stored.rows).toEqual([
+                { id: "a", label: "pulled again", version: 2 },
+            ]);
+        });
     });
 
     it("wraps a whole bulkInsertLocally batch in one transaction: a later row's constraint failure rolls back an earlier row's write too", async () => {

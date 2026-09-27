@@ -1,5 +1,6 @@
 import type { SyncConfig } from "@tanstack/db";
 import type { TrackerCollectionUtils } from "../tracker-collection-utils";
+import { crossTabBus, type CrossTabBus } from "../cross-tab";
 import type { SqlDriver } from "./driver-types";
 import type { RowAdapter, RowWriteOptions } from "./row-adapter";
 import {
@@ -14,9 +15,12 @@ import {
  * Verify Direct op-sqlite TanStack DB Collection Adapter").
  *
  * Reactivity is an explicit reload-and-diff after every write this adapter
- * performs, rather than Dexie's `liveQuery`-based dependency tracking:
- * these SQLite tables have exactly one writer (this adapter), so there is
- * nothing else to watch for.
+ * performs, rather than Dexie's `liveQuery`-based dependency tracking.
+ * Other open tabs write the same database through their own adapter, so
+ * every write is also published on `cross-tab.ts`'s bus and a write
+ * another tab publishes is reloaded here (a tab the browser froze reloads
+ * everything when it thaws) — wayfinder ticket "How should config changes
+ * made in one tab reach other open tabs?".
  *
  * Diffing compares `row.rowVersion()` first (cheap short-circuit), then
  * falls back to a full content-equality check — a caller can legitimately
@@ -37,6 +41,8 @@ export interface SqliteCollectionOptions<
     onUpdate?: (row: TRow) => Promise<unknown>;
     onDelete?: (key: TKey) => Promise<unknown>;
     persistence?: SafeCallPersistenceOptions;
+    /** Defaults to the app's bus; tests pass their own per simulated tab. */
+    crossTab?: CrossTabBus;
 }
 
 export function sqliteCollectionOptions<
@@ -45,6 +51,15 @@ export function sqliteCollectionOptions<
 >(options: SqliteCollectionOptions<TRow, TKey>) {
     const { id, db, getKey, row, onInsert, onUpdate, onDelete, persistence } =
         options;
+    const crossTab = options.crossTab ?? crossTabBus;
+
+    function publish(keys?: readonly TKey[]): void {
+        crossTab.publish({
+            kind: "collection",
+            id,
+            ...(keys ? { keys: [...keys] } : {}),
+        });
+    }
 
     let previousSnapshot = new Map<TKey, TRow>();
     let syncParams: Parameters<SyncConfig<TRow, TKey>["sync"]>[0] | null =
@@ -139,9 +154,13 @@ export function sqliteCollectionOptions<
     // Upserts: a sync pull re-encountering an entity it already stored
     // locally on a previous cycle is the normal case, not an edge case —
     // calling row.insertRow unconditionally would throw a duplicate-key
-    // error the second time any given row is pulled. previousSnapshot
-    // (already maintained for diffing) doubles as the existence check with
-    // no extra DB round-trip.
+    // error the second time any given row is pulled. The existence check
+    // reads the database inside the write transaction, not
+    // previousSnapshot: another open tab writes the same database, so this
+    // tab's snapshot can miss a row that tab stored (→ duplicate key, the
+    // whole page rolls back) or still hold one it deleted (→ an UPDATE of
+    // nothing, the row silently lost) — wayfinder ticket "How should
+    // config changes made in one tab reach other open tabs?".
     //
     // The whole batch/page is wrapped in ONE transaction (ticket "How Does
     // src/machines/sync.ts's Pull/Push Logic Get Restructured for the New
@@ -155,9 +174,14 @@ export function sqliteCollectionOptions<
         options?: RowWriteOptions,
     ): Promise<void> {
         await db.transaction(async (tx) => {
+            const keys = rows.map(getKey);
+            const stored = row.loadByKeys
+                ? await row.loadByKeys(tx, keys)
+                : await row.loadAll(tx);
+            const existing = new Set(stored.map(getKey));
             for (const r of rows) {
                 const key = getKey(r);
-                if (previousSnapshot.has(key)) {
+                if (existing.has(key)) {
                     await row.updateRow(tx, r, options);
                 } else {
                     await row.insertRow(tx, r, options);
@@ -165,6 +189,7 @@ export function sqliteCollectionOptions<
             }
         });
         await reloadAndDiff(rows.map(getKey));
+        publish(rows.map(getKey));
     }
 
     // Matches tanstack-dexie-db-collection's real two-name API: callers that
@@ -188,6 +213,7 @@ export function sqliteCollectionOptions<
             }
         });
         await reloadAndDiff(rows.map(getKey));
+        publish(rows.map(getKey));
     }
 
     async function deleteLocally(keys: TKey[]): Promise<void> {
@@ -197,6 +223,7 @@ export function sqliteCollectionOptions<
             }
         });
         await reloadAndDiff(keys);
+        publish(keys);
     }
 
     // For callers that write directly against the SqlDriver, bypassing this
@@ -207,8 +234,9 @@ export function sqliteCollectionOptions<
     // `refresh()` afterward so this collection's reactive snapshot catches
     // up; every other write path (`.insert`/`.update`/`.delete`, the `utils`
     // functions above) already keeps the snapshot current on its own.
-    function refresh(): Promise<void> {
-        return reloadAndDiff();
+    async function refresh(): Promise<void> {
+        await reloadAndDiff();
+        publish();
     }
 
     return {
@@ -220,8 +248,24 @@ export function sqliteCollectionOptions<
                 void reloadAndDiff()
                     .then(() => params.markReady())
                     .catch((error) => params.markError(error));
+                const reloadForOtherTab = (keys?: readonly TKey[]) => {
+                    reloadAndDiff(keys).catch((error) =>
+                        console.warn(
+                            `${id}: reload after another tab's write failed`,
+                            error,
+                        ),
+                    );
+                };
+                const unsubscribe = crossTab.subscribe((change) => {
+                    if (change.kind === "collection" && change.id === id) {
+                        reloadForOtherTab(change.keys as TKey[] | undefined);
+                    }
+                });
+                const offResume = crossTab.onResume(() => reloadForOtherTab());
                 return () => {
                     syncParams = null;
+                    unsubscribe();
+                    offResume();
                 };
             },
         } satisfies SyncConfig<TRow, TKey>,

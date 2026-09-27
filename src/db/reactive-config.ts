@@ -11,21 +11,16 @@
  * Backend-neutral by design (moved out of `src/db/sqlite/` — it has no
  * SQL dependency and is used by both metadata-store implementations).
  *
- * Deliberately does NOT react to writes from other browser tabs — accepted
- * regression for this migration phase per wayfinder ticket 013's phasing
- * decision, originally reasoned on the assumption this app was realistically
- * single-tab-per-session (the SQL backend's old op-sqlite driver enforced
- * that via `single-tab-lock.ts`; the Dexie backend never had that guarantee
- * — ticket 005 on the dual-backend map decided it didn't need one). That
- * assumption no longer holds on the SQL backend either: wa-sqlite's
- * `OPFSCoopSyncVFS` (wayfinder map "Replace op-sqlite with wa-sqlite for
- * real multi-tab support") supports multiple tabs natively, and
- * `single-tab-lock.ts` is gone. A config change made in one tab (e.g. an
- * admin editing `ui_config` in `admin.app-settings.tsx`) is genuinely not
- * live-reflected in another tab's UI until that tab independently re-reads
- * it — a real, if minor, gap on both backends now, not tracked as a fixed
- * ticket yet.
+ * Also reaches other open tabs, which share the database but not this
+ * module: every change is published on `cross-tab.ts`'s bus, and a change
+ * another tab publishes (or this tab thawing after the browser froze it)
+ * re-runs the local listeners — wayfinder ticket "How should config
+ * changes made in one tab reach other open tabs?". (Until then this was an
+ * accepted same-tab-only gap, reasoned on the SQL backend being
+ * single-tab; wa-sqlite made concurrent tabs real.)
  */
+
+import { crossTabBus } from "./cross-tab";
 
 type Listener = () => void;
 
@@ -35,10 +30,42 @@ function keyFor(table: string, id: string): string {
     return `${table}:${id}`;
 }
 
-export function notifyConfigChanged(table: string, id: string): void {
-    const key = keyFor(table, id);
-    for (const listener of listeners.get(key) ?? []) {
+function notifyLocal(table: string, id: string): void {
+    for (const listener of listeners.get(keyFor(table, id)) ?? []) {
         listener();
+    }
+}
+
+let subscribedToOtherTabs = false;
+
+function subscribeToOtherTabs(): void {
+    if (subscribedToOtherTabs) return;
+    subscribedToOtherTabs = true;
+    crossTabBus.subscribe((change) => {
+        if (change.kind === "config") notifyLocal(change.table, change.id);
+    });
+    crossTabBus.onResume(() => {
+        for (const set of listeners.values()) {
+            for (const listener of set) listener();
+        }
+    });
+}
+
+/**
+ * The tables `useConfigRow` reads (`useUIConfig`, `useStageHierarchyConfig`)
+ * — the only ones worth telling other tabs about. Both metadata stores'
+ * `putRows` notify for every row they write, and a metadata sync writes
+ * thousands; broadcasting those would flood every other tab for nothing.
+ */
+export const CROSS_TAB_CONFIG_TABLES: ReadonlySet<string> = new Set([
+    "ui_config",
+    "stage_hierarchy",
+]);
+
+export function notifyConfigChanged(table: string, id: string): void {
+    notifyLocal(table, id);
+    if (CROSS_TAB_CONFIG_TABLES.has(table)) {
+        crossTabBus.publish({ kind: "config", table, id });
     }
 }
 
@@ -47,6 +74,7 @@ export function subscribeConfigChanged(
     id: string,
     listener: Listener,
 ): () => void {
+    subscribeToOtherTabs();
     const key = keyFor(table, id);
     let set = listeners.get(key);
     if (!set) {
