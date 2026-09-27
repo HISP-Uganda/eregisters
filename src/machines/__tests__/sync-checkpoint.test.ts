@@ -259,6 +259,9 @@ describe("sync.pullData log line (Phase 2)", () => {
         await waitFor(actor, (snap) => snap.matches({ dataPull: "waiting" }), TIMEOUT);
 
         expect(queries[0]?.updatedAfter).toBe("C1");
+        // Scoped to the user's own org unit with the parameter DHIS2 2.42 still honours.
+        expect(queries[0]).toMatchObject({ orgUnits: "ou-1", orgUnitMode: "SELECTED" });
+        expect(queries[0]).not.toHaveProperty("ouMode");
         const lines = pullLines(info);
         expect(lines).toHaveLength(1);
         expect(lines[0]).toMatchObject({

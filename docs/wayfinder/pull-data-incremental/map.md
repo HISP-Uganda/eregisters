@@ -84,12 +84,14 @@ historical records.
   "deleted records still appearing". Research confirmed deletes are
   invisible without `includeDeleted=true`; add that flag only together
   with tombstone handling.
-- Migrating `ouMode=SELECTED` → `orgUnitMode` (deprecated in DHIS2 2.41,
-  removed in 2.42) — not Pull Data correctness, but **more urgent than
-  first thought**: the Phase 1 smoke showed production is already
-  **2.42** (`/api/42/`) and `ouMode=SELECTED` requests still return 200,
-  so the server is likely ignoring it and applying its default org-unit
-  mode. Verify the pulled scope and migrate soon (separate effort).
+- ~~Migrating `ouMode=SELECTED` → `orgUnitMode`~~ — **done outside this
+  map** (no map needed, 2026-09-27): verified against production (DHIS2
+  2.42) that with `orgUnits` present the server ignores `ouMode` and
+  defaults to SELECTED — every mode variant returned only Test Facility's
+  record, and the local store held only Test Facility rows, so nothing
+  out of scope was ever pulled. Renamed to `orgUnitMode` for correctness;
+  without `orgUnits` the account's ACCESSIBLE reach is MOH - Uganda
+  (6.7M records), so `orgUnits` must never be dropped from the pull.
 - R9 per-program checkpoints — deferred until a second program is
   enabled.
 - Migration-cleanup / store-copy concerns — done by the "Storage

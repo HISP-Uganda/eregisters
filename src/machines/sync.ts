@@ -399,7 +399,10 @@ export const syncMachine = setup({
                         let params: Record<string, any> = {
                             program,
                             orgUnits: orgUnit,
-                            ouMode: "SELECTED",
+                            // `orgUnitMode`, not the legacy `ouMode`: DHIS2
+                            // 2.41 deprecated `ouMode` and 2.42 (production)
+                            // removed it — the server silently ignores it.
+                            orgUnitMode: "SELECTED",
                             fields: "trackedEntity,createdAt,updatedAt,createdAtClient,updatedAtClient,orgUnit,trackedEntityType,inactive,deleted,potentialDuplicate,createdBy[uid,username,firstName,surname],updatedBy[uid,username,firstName,surname],attributes[attribute,value,createdAt,updatedAt],enrollments[enrollment,createdAt,updatedAt,createdAtClient,updatedAtClient,orgUnit,program,enrolledAt,occurredAt,completedAt,followUp,status,trackedEntity,geometry,attributeOptionCombo,deleted,createdBy[uid,username,firstName,surname],updatedBy[uid,username,firstName,surname],attributes[attribute,value,createdAt,updatedAt],events[event,enrollment,createdAt,updatedAt,createdAtClient,updatedAtClient,status,geometry,program,programStage,orgUnit,trackedEntity,occurredAt,completedAt,scheduledAt,attributeOptionCombo,assignedUser,completedBy,followUp,deleted,createdBy[uid,username,firstName,surname],updatedBy[uid,username,firstName,surname],dataValues[dataElement,createdBy,value,createdAt,updatedAt,providedElsewhere]]]",
                             page: currentPage,
                             pageSize: pageSize,
