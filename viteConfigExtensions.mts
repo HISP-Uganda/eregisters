@@ -46,10 +46,8 @@ const viteConfig = defineConfig(async (configEnv: ConfigEnv) => {
         // used to set. wa-sqlite's OPFSCoopSyncVFS needs neither (wayfinder
         // map "Replace op-sqlite with wa-sqlite for real multi-tab
         // support"), and op-sqlite is gone, so neither is needed here
-        // anymore. Production's own COOP/COEP mechanism
-        // (`scripts/patch-sw.js`) is untouched — its retirement is a
-        // separate, deliberately deferred decision, not this dev-config
-        // cleanup.
+        // anymore. Production's COOP/COEP injection in
+        // `scripts/patch-sw.js` has since been retired too.
         optimizeDeps: {
             exclude: ["@journeyapps/wa-sqlite"],
         },

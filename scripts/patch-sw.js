@@ -1,21 +1,19 @@
 // scripts/patch-sw.js
 // Runs after d2-app-scripts build via the "postbuild" npm hook.
-// Applies seven patches to build/app/service-worker.js:
+// Applies four patches to build/app/service-worker.js:
 //   1. Appends clients.claim() so controllerchange fires → page reloads after SW update
-//   2. Fixes navigation handler to serve fresh index.html from network (not old precache)
-//   3. Throws on !response.ok so a 5xx is treated as a failure, not a success
+//   3. Throws on a 5xx response so Workbox treats it as a failure, not a success
 //   4. Adds an 8s timeout to the app-shell NetworkFirst strategy
-//   5. Adds an 8s timeout to the navigation handler's fetch
-//   6. Injects COOP/COEP headers onto the navigation response (OPFS needs cross-origin isolation)
-//   7. Independent navigation handler (network+timeout+cache-fallback+COI headers) that takes
-//      exclusive ownership of navigation requests before Workbox's own routing runs — patches
-//      2/5/6 all depend on matching Workbox's exact minified navigation code, which varies
-//      across @dhis2/pwa build environments (confirmed: patch 2 failed to match in a real
-//      production build, cascading into patch 6 never running and OPFS never isolating).
-//      Patch 7 needs no such matching at all, so it can't fail the same way. Patches 2/5/6 are
-//      left in place as harmless dead code (unreachable for navigations once patch 7's
-//      stopImmediatePropagation() takes over) rather than removed mid-incident — see wayfinder
-//      ticket 018.
+//   7. Independent navigation handler (network-first, 8s timeout, precache fallback incl.
+//      directory URLs → index.html) that takes exclusive ownership of navigation requests
+//      before Workbox's own routing runs — it needs no matching of Workbox's minified code,
+//      which varies across @dhis2/pwa builds (wayfinder ticket 018).
+//
+// Retired (wayfinder map "Replace op-sqlite with wa-sqlite…", ticket "Retire the COOP/COEP
+// header injection if wa-sqlite doesn't need it"): patches 2, 5 and 6, and patch 7's
+// COOP/COEP injection and worker-script branch. They existed for op-sqlite, which needed
+// cross-origin isolation; wa-sqlite's OPFSCoopSyncVFS doesn't. Numbers are kept so older
+// notes and tickets still line up.
 
 const fs = require('fs')
 const path = require('path')
@@ -45,35 +43,6 @@ if (!sw.includes(CLAIM_SENTINEL)) {
     console.log('[patch-sw] Applied patch 1: clients.claim() in activate handler')
 } else {
     console.log('[patch-sw] Patch 1 already applied — skipping')
-}
-
-// ── Patch 2: Fix navigation handler to serve fresh index.html from network ────
-// @dhis2/pwa's navigation handler always returns old precached index.html when
-// the network responds with ok — preventing updates from being visible after
-// the SW activates. The fix returns the live network response when ok, falling
-// back to precache only on error or opaqueredirect.
-//
-// Minified original: "opaqueredirect"!==X.type&&X.ok?PRECACHE:X
-//   meaning: if (NOT opaqueredirect AND ok) → return precached (OLD) ← bug
-// Patched to:        "opaqueredirect"===X.type||!X.ok?PRECACHE:X
-//   meaning: if (IS opaqueredirect OR NOT ok) → return precached (fallback only)
-//            else → return X (fresh network response) ← correct
-const NAV_SENTINEL = '__patch_nav_network_first__'
-
-if (!sw.includes(NAV_SENTINEL)) {
-    const navPattern = /"opaqueredirect"!==(\w+)\.type&&\1\.ok\?([\w()]+):\1/
-    if (navPattern.test(sw)) {
-        sw = sw.replace(navPattern, (match, varName, precacheFn) =>
-            `"opaqueredirect"===${varName}.type||!${varName}.ok?${precacheFn}:${varName}`
-        )
-        sw += `\n// ${NAV_SENTINEL}\n`
-        modified = true
-        console.log('[patch-sw] Applied patch 2: navigation handler uses network-first for index.html')
-    } else {
-        console.warn('[patch-sw] Patch 2: navigation handler pattern not found — skipping (SW structure may have changed)')
-    }
-} else {
-    console.log('[patch-sw] Patch 2 already applied — skipping')
 }
 
 // ── Patch 3: Throw on !response.ok so 5xx is treated as a failure ────────────
@@ -141,103 +110,24 @@ if (!sw.includes(APP_SHELL_TIMEOUT_SENTINEL)) {
     console.log('[patch-sw] Patch 4 already applied — skipping')
 }
 
-// ── Patch 5: Timeout the navigation handler's fetch ───────────────────────────
-// The navigation handler (already patched by patch 2 to fall back to
-// precache on a redirect/not-ok response) has no timeout — a genuinely
-// hanging response blocks it forever. Wrap its fetch() in the same 8s
-// timeout, falling through to the existing precache-fallback .catch().
-const NAV_TIMEOUT_SENTINEL = '__patch_nav_timeout__'
-
-if (!sw.includes(NAV_TIMEOUT_SENTINEL)) {
-    const navFetchPattern = /\(\{request:(\w+)\}\)=>fetch\(\1\)\.then\(/
-    if (navFetchPattern.test(sw)) {
-        const helper = `// ${NAV_TIMEOUT_SENTINEL}\n// Races the navigation fetch against an 8s timeout so a hanging server falls back to precache instead of blocking forever.\nfunction __patchFetchWithTimeout(fetchPromise,ms){return Promise.race([fetchPromise,new Promise((_,reject)=>setTimeout(()=>reject(new Error('${NAV_TIMEOUT_SENTINEL}')),ms))]);}\n`
-        sw = helper + sw
-        sw = sw.replace(navFetchPattern, (match, varName) =>
-            `({request:${varName}})=>__patchFetchWithTimeout(fetch(${varName}),8000).then(`
-        )
-        modified = true
-        console.log('[patch-sw] Applied patch 5: 8s timeout on the navigation handler fetch')
-    } else {
-        console.warn('[patch-sw] Patch 5: navigation handler fetch pattern not found — skipping (SW structure may have changed)')
-    }
-} else {
-    console.log('[patch-sw] Patch 5 already applied — skipping')
-}
-
-// ── Patch 6: Inject COOP/COEP headers onto the navigation response ────────────
-// DHIS2 core serves installed apps via a fixed-header servlet with no per-app
-// COOP/COEP mechanism (see docs/wayfinder/dexie-to-opfs-sqlite/tickets/001-
-// coop-coep-prototype.md) — OPFS (needed for the SQLite/OPFS migration)
-// requires the top-level document response to carry
-// Cross-Origin-Opener-Policy: same-origin and Cross-Origin-Embedder-Policy:
-// require-corp. This patch wraps ONLY the navigation response patch 2 already
-// locates — not a second competing `fetch` listener, which would race
-// Workbox's own routing (already modified by patch 2) for `respondWith()`.
-// Same-origin subresources (scripts, workers, wasm) don't need CORP headers
-// under COEP require-corp — only the document response needs these two
-// headers for `window.crossOriginIsolated` to become true.
-//
-// Verified end-to-end (real headless Chrome, server sending no COOP/COEP of
-// its own) in wayfinder ticket 001 / branch spike/coop-coep-header-injection:
-// one-time reload after install, crossOriginIsolated becomes true, OPFS/
-// op-sqlite work under it. NOT yet verified against the real DHIS2 servlet,
-// a PWA update (vs. fresh install), or Safari — see ticket 012.
-const COI_SENTINEL = '__patch_coi_headers__'
-
-if (!sw.includes(COI_SENTINEL)) {
-    // Matches patch 2's own output exactly (patch 5 only rewraps the fetch()
-    // call earlier in this same expression, so this trailing conditional is
-    // untouched either way) — only applies if patch 2 already ran (COI
-    // without the network-first fix would just re-isolate stale precached
-    // HTML, which is pointless).
-    const coiPattern = /"opaqueredirect"===(\w+)\.type\|\|!\1\.ok\?([\w()]+):\1\)/
-    if (coiPattern.test(sw)) {
-        sw = sw.replace(coiPattern, (match, varName, precacheFn) =>
-            `"opaqueredirect"===${varName}.type||!${varName}.ok?${precacheFn}:__patch_addCoiHeaders(${varName}))`
-        )
-        sw += `\n// ${COI_SENTINEL}\nfunction __patch_addCoiHeaders(response) {\n    if (!response || response.status === 0 || response.type === 'opaque') return response;\n    const headers = new Headers(response.headers);\n    headers.set('Cross-Origin-Opener-Policy', 'same-origin');\n    headers.set('Cross-Origin-Embedder-Policy', 'require-corp');\n    return new Response(response.body, { status: response.status, statusText: response.statusText, headers });\n}\n`
-        modified = true
-        console.log('[patch-sw] Applied patch 6: COOP/COEP headers injected onto navigation response')
-    } else {
-        console.warn('[patch-sw] Patch 6: navigation handler pattern not found (needs patch 2 applied first) — skipping')
-    }
-} else {
-    console.log('[patch-sw] Patch 6 already applied — skipping')
-}
-
-// ── Patch 7: Independent navigation + worker-script handler ──────────────────
+// ── Patch 7: Independent navigation handler ──────────────────────────────────
 // Registered as its own fetch listener, prepended to the TOP of the file so
 // it runs (and registers) before Workbox's own internal routing listener —
 // service worker fetch listeners fire in registration order, and the first
 // to call event.respondWith() wins. Scoped to event.request.mode==="navigate"
 // (real browser navigations only, per the Fetch spec — never fetch() calls
-// or subresource loads, so this can't interfere with API/asset requests) OR
-// event.request.destination==="worker"/"sharedworker", and calls
-// event.stopImmediatePropagation() to stop Workbox's router from running
-// (and attempting its own respondWith()) for these requests at all — this is
-// what makes a second fetch listener safe here, where a naive competing
-// listener would race Workbox's for respondWith().
+// or subresource loads), and calls event.stopImmediatePropagation() so
+// Workbox's router doesn't also try to respond.
 //
-// The worker branch exists because COEP isn't just a top-level-document
-// requirement: per spec, a Worker constructed from a COEP-isolated document
-// must itself be served with its own Cross-Origin-Embedder-Policy header, or
-// the browser refuses to instantiate it (confirmed live: op-sqlite's
-// opsqlite-web.worker-*.js request succeeded — 200, same-origin — but Chrome
-// still blocked it, DevTools showing Cross-Origin-Embedder-Policy: NOT-SET on
-// that response specifically). Same-origin-ness doesn't exempt a worker
-// script from this the way it does regular subresources under
-// Cross-Origin-Resource-Policy.
+// Network-first so a deployed update is picked up (Workbox's precache would
+// otherwise keep serving a stale index.html), with an 8s timeout and a
+// precache fallback so a slow or unreachable server still opens the app.
+// Worker scripts and other assets are left to Workbox's precache, which
+// serves the hashed files cache-first (so they work offline too).
 //
-// Deliberately self-contained (its own helper functions, not shared with
-// patches 5/6) since those patches' helpers may not exist in the bundle at
-// all if their own pattern-matching failed — patch 7 must not depend on
-// any other patch having successfully applied.
-//
-// caches.match(request) (the global Cache Storage lookup, not a specific
-// cache's .match()) searches every open cache by request match — no need to
-// know Workbox's precache cache name, which is itself a version-dependent
-// internal detail patches 2/5/6's approach was exposed to.
+// Deliberately self-contained: no dependency on any other patch having
+// applied, and no knowledge of Workbox's precache cache name —
+// caches.match() searches every cache.
 const INDEPENDENT_NAV_SENTINEL = '__patch_independent_nav__'
 
 if (!sw.includes(INDEPENDENT_NAV_SENTINEL)) {
@@ -248,76 +138,36 @@ function __patch7FetchWithTimeout(fetchPromise, ms) {
         new Promise((_, reject) => setTimeout(() => reject(new Error('${INDEPENDENT_NAV_SENTINEL}:timeout')), ms)),
     ])
 }
-function __patch7AddCoiHeaders(response) {
-    if (!response || response.status === 0 || response.type === 'opaque') return response
-    const headers = new Headers(response.headers)
-    headers.set('Cross-Origin-Opener-Policy', 'same-origin')
-    headers.set('Cross-Origin-Embedder-Policy', 'require-corp')
-    return new Response(response.body, { status: response.status, statusText: response.statusText, headers })
-}
-// Precached copy of a navigation or worker request. Workbox's precache
-// keys carry a ?__WB_REVISION__= query (hence ignoreSearch), and stores the
-// app page as index.html — so a directory URL (the PWA's start_url "."
-// resolves to one) must fall back to it, as Workbox's own navigation route
-// does. Without that, an installed app launched offline didn't open at all.
+// Precached copy of a navigation. Workbox's precache keys carry a
+// ?__WB_REVISION__= query (hence ignoreSearch), and store the app page as
+// index.html — so a directory URL (the PWA's start_url "." resolves to one)
+// must fall back to it, as Workbox's own navigation route does. Without
+// that, an installed app launched offline didn't open at all.
 async function __patch7Cached(request) {
     const exact = await caches.match(request, { ignoreSearch: true })
     if (exact) return exact
     const url = new URL(request.url)
-    if (request.mode === 'navigate' && url.pathname.endsWith('/')) {
+    if (url.pathname.endsWith('/')) {
         return caches.match(new URL('index.html', url).href, { ignoreSearch: true })
     }
     return undefined
 }
 self.addEventListener('fetch', function (event) {
-    const isNavigation = event.request.mode === 'navigate'
-    const isWorkerScript = event.request.destination === 'worker' || event.request.destination === 'sharedworker'
-    if (!isNavigation && !isWorkerScript) return
+    if (event.request.mode !== 'navigate') return
     event.stopImmediatePropagation()
-
-    if (isWorkerScript) {
-        // Network first, then the precached copy. Network-only (as this
-        // was) meant an offline cold start couldn't start the wa-sqlite
-        // Worker: SQLite failed to open and the app fell back to an empty
-        // Dexie store until it was back online — wayfinder ticket "Does an
-        // offline cold start fail to load the wa-sqlite worker?".
-        event.respondWith((async function () {
-            try {
-                const response = await fetch(event.request)
-                if (response && response.ok) return __patch7AddCoiHeaders(response)
-                const cached = await __patch7Cached(event.request)
-                return __patch7AddCoiHeaders(cached || response)
-            } catch (err) {
-                const cached = await __patch7Cached(event.request)
-                if (cached) return __patch7AddCoiHeaders(cached)
-                throw err
-            }
-        })())
-        return
-    }
 
     event.respondWith((async function () {
         const request = event.request
         try {
             const response = await __patch7FetchWithTimeout(fetch(request), 8000)
             if (response && response.ok && response.type !== 'opaqueredirect') {
-                return __patch7AddCoiHeaders(response)
+                return response
             }
-            // ignoreSearch: Workbox's precache stores index.html with a
-            // cache-busting ?__WB_REVISION__=... query param appended (since
-            // the file itself has no content hash in its name) — a plain
-            // caches.match() on the exact request URL (no query) would miss
-            // that precached entry entirely.
             const cached = await __patch7Cached(request)
-            return __patch7AddCoiHeaders(cached || response)
+            return cached || response
         } catch (err) {
-            // ignoreSearch: Workbox's precache stores index.html with a
-            // cache-busting ?__WB_REVISION__=... query param appended (since
-            // the file itself has no content hash in its name) — a plain
-            // caches.match() on the exact request URL (no query) would miss
-            // that precached entry entirely.
             const cached = await __patch7Cached(request)
-            if (cached) return __patch7AddCoiHeaders(cached)
+            if (cached) return cached
             throw err
         }
     })())
@@ -325,7 +175,7 @@ self.addEventListener('fetch', function (event) {
 `
     sw = patch7 + sw
     modified = true
-    console.log('[patch-sw] Applied patch 7: independent navigation handler (network+timeout+cache-fallback+COI headers, no Workbox structure matching)')
+    console.log('[patch-sw] Applied patch 7: independent navigation handler (network-first, timeout, precache fallback)')
 } else {
     console.log('[patch-sw] Patch 7 already applied — skipping')
 }

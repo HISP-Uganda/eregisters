@@ -69,5 +69,5 @@ antd v6 with a global `ConfigProvider` theme override in `App.tsx`. Icons from `
 ## Working style
 
 - Sync is subtle. When touching `src/machines/sync.ts`, don't refactor away helpers in `sync-metadata-mode.ts` — they encode which pull mode uses `lastUpdated` filters vs full pulls, which push mode records timestamps, etc.
-- The service-worker patch (`scripts/patch-sw.js`) is load-bearing for the PWA update path. If you change build tooling, verify a full build cycle produces the two sentinels (`__patch_claim_clients__`, `__patch_navigation__` if present) in `build/app/service-worker.js`.
+- The service-worker patch (`scripts/patch-sw.js`) is load-bearing for the PWA update path. If you change build tooling, verify a full build cycle produces the sentinels `__patch_claim_clients__`, `__patch_app_shell_timeout__` and `__patch_independent_nav__` in `build/app/service-worker.js`. The app does **not** need cross-origin isolation (wa-sqlite's `OPFSCoopSyncVFS` doesn't use `SharedArrayBuffer`) — don't reintroduce COOP/COEP headers.
 - `docs/xstate-phase{1,2,3}-complete.md` document the historical migration of sync/form state into XState — useful background if you are refactoring machines, otherwise ignore.

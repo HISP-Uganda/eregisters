@@ -125,6 +125,8 @@ being redirected away.
 - [Does an offline cold start fail to load the wa-sqlite worker?](tickets/008-offline-cold-start-worker.md) — yes, and worse: patch 7 fetched the worker network-only (offline → empty Dexie store, Total Clients 0) and never matched directory navigations to the precached index.html (an installed app launched offline didn't open at all). Fixed in patch 7 with a precache fallback for both; verified offline. No data lost in recovery. Surfaced a transient first-open failure on same-tab reloads.
 - [Why does the first SQLite open sometimes fail on a reload, and should it trigger a full store copy?](tickets/009-transient-open-failure.md) — a wa-sqlite race: OPFSCoopSyncVFS deletes a stale temp dir whose lock is free while the old page's Worker still holds handles in it, and the uncaught error fails the open. Fixed with a pnpm patch (best-effort cleanup) + a bounded open retry; the OPFS failure cache now needs 2 consecutive failures. 6/6 offline same-tab navigations now open SQLite (was ~1 in 3 failing).
 
+- [Retire the COOP/COEP header injection if wa-sqlite doesn't need it](tickets/005-retire-coi.md) — retired in **one** release: an open tab on the isolating build updates onto the new SW, reloads and keeps working non-isolated; SQLite, two tabs and offline cold start all verified with `crossOriginIsolated: false` (Chrome). Patch 7 keeps only its navigation handling; patches 2/5/6, its worker branch and the logo `crossOrigin` workaround deleted. Supersedes the "COOP/COEP … NOT touched by this map" decision above.
+
 ## Implementation progress
 
 All three tickets' decisions are now fully wired and built (commit

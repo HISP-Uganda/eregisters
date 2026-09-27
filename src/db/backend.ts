@@ -20,9 +20,9 @@ const SQLITE_USED_KEY = "eregisters.sqliteUsed";
 
 /**
  * Bump this whenever a fix ships that could change whether OPFS init
- * succeeds on a previously-failing device (e.g. a COOP/COEP header-
- * injection fix in `scripts/patch-sw.js` — see wayfinder ticket
- * "COI Header Injection Fails in Real Production Build", `docs/wayfinder/dexie-to-opfs-sqlite/tickets/018-coi-injection-production-failure.md`).
+ * succeeds on a previously-failing device (e.g. a fix to how the
+ * wa-sqlite Worker is served or opened — see the wayfinder tickets under
+ * `docs/wayfinder/wa-sqlite-multi-tab/`).
  * A cached negative result from an older version is treated as stale, not
  * trusted, so a device that previously failed gets one more real attempt.
  */
@@ -150,7 +150,7 @@ export function shouldAttemptSqliteToDexieCopy(
  * (`docs/wayfinder/opfs-dexie-dual-backend/tickets/002-opfs-detection-strategy.md`),
  * wa-sqlite (like op-sqlite before it) exposes no capability-detection
  * API beyond this, and the
- * failure modes that actually matter (COOP/COEP misconfiguration, Safari
+ * failure modes that actually matter (the Worker script failing to load, Safari
  * private-browsing, incognito quota caps, multi-tab access-handle
  * conflicts) only surface on a real init attempt.
  */
