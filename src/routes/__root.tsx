@@ -16,6 +16,7 @@ import {
 } from "@tanstack/react-router";
 import {
     Alert,
+    App,
     Badge,
     Button,
     Drawer,
@@ -540,6 +541,7 @@ function SyncErrorsButton({
 }
 
 function LayoutWithDrafts() {
+    const { modal } = App.useApp();
     const syncActor = SyncContext.useActorRef();
     const { orgUnitName, program } = useMetadata();
     const trackedEntitiesCollection = getTrackedEntitiesCollection();
@@ -791,10 +793,23 @@ function LayoutWithDrafts() {
                 }
                 dropdownItems={[
                     {
-                        key: "full",
-                        label: "Pull All Data",
+                        // Deliberately not a routine action: routine Pull
+                        // Data is incremental. This is the recovery path
+                        // for a device that seems to be missing records.
+                        key: "redownload",
+                        label: "Re-download all data…",
                         onClick: () =>
-                            syncActor.send({ type: "FULL_DATA_SYNC" }),
+                            modal.confirm({
+                                title: "Re-download all data?",
+                                content:
+                                    "This fetches every record for your facility from the server again. It can take a long time on a slow connection. Your local records and unsent changes are kept. Use this only if records seem to be missing.",
+                                okText: "Re-download",
+                                cancelText: "Cancel",
+                                onOk: () =>
+                                    syncActor.send({
+                                        type: "RESET_DATA_CHECKPOINT",
+                                    }),
+                            }),
                     },
                 ]}
                 disabled={!hasProgram}

@@ -54,7 +54,9 @@ let syncStateWrites: Promise<unknown> = Promise.resolve();
  */
 export function patchSyncState(
     store: MetadataStore,
-    patch: Pick<SyncState, "lastPullAt"> | Pick<SyncState, "lastPushAt">,
+    patch:
+        | Pick<SyncState, "lastPullAt" | "pullScope">
+        | Pick<SyncState, "lastPushAt">,
 ): Promise<void> {
     const write = syncStateWrites.then(async () => {
         const existing = await store.getRow<SyncState>("sync_state", "current");

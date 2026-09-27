@@ -80,6 +80,8 @@ export interface SyncState {
     lastSyncAt?: string;
     lastPullAt?: string;
     lastPushAt?: string;
+    /** Program + org unit `lastPullAt` was taken for (see `pullScopeKey`). */
+    pullScope?: string;
     lastSyncDuration?: number;
     lastSyncCount?: number;
     lastError?: string;

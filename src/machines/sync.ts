@@ -64,6 +64,8 @@ import {
     resolveNextDataPull,
     shouldContinueDataPull,
     shouldRecordDataPush,
+    checkpointForScope,
+    pullScopeKey,
     shouldUseLastDataPull,
     shouldUseLastUpdatedFilter,
 } from "./sync-metadata-mode";
@@ -177,7 +179,8 @@ type SyncEvent =
     | { type: "START_METADATA_SYNC" }
     | { type: "START_DATA_SYNC" }
     | { type: "FULL_METADATA_SYNC" }
-    | { type: "FULL_DATA_SYNC" }
+    /** Forget the pull checkpoint and pull everything again (local records kept). */
+    | { type: "RESET_DATA_CHECKPOINT" }
     | {
           type: "EVALUATE_INDICATORS";
           event: FlattenedEvent;
@@ -199,6 +202,13 @@ type SyncEvent =
           periodType?: string;
       }
     | { type: "PARENT_NOT_READY" };
+/** The one tracker program this deployment pulls (see IMPLEMENTATION_PLAN R9 for multi-program). */
+const PULL_PROGRAM = "ueBhWkWll5v";
+
+function currentPullScope(userInfo: MeUser): string {
+    return pullScopeKey(PULL_PROGRAM, userInfo.organisationUnits[0].id);
+}
+
 export const syncMachine = setup({
     types: {
         context: {} as SyncContext,
@@ -289,7 +299,7 @@ export const syncMachine = setup({
             {
                 metadataStore: MetadataStore;
                 patch:
-                    | { lastPullAt: string | undefined }
+                    | { lastPullAt: string | undefined; pullScope?: string }
                     | { lastPushAt: string | undefined };
             }
         >(({ input }) => patchSyncState(input.metadataStore, input.patch)),
@@ -890,7 +900,6 @@ export const syncMachine = setup({
                 await resetMetadataForRecovery(metadataStore);
             },
         ),
-        deleteAllData: fromPromise<void>(async () => {}),
         processBatchSync: fromPromise(
             async ({
                 input,
@@ -1079,18 +1088,22 @@ export const syncMachine = setup({
                                 guard: ({ event }) => {
                                     return !event.output.needsSyncing;
                                 },
-                                actions: assign(({ event }) => {
+                                actions: assign(({ context, event }) => {
                                     const syncState = event.output.syncState as
                                         | {
                                               lastPullAt?: string;
                                               lastPushAt?: string;
+                                              pullScope?: string;
                                           }
                                         | undefined;
                                     return {
                                         lastMetadataPull:
                                             event.output.metadataVersion
                                                 ?.lastSync,
-                                        lastDataPull: syncState?.lastPullAt,
+                                        lastDataPull: checkpointForScope(
+                                            syncState,
+                                            currentPullScope(context.userInfo),
+                                        ),
                                         lastDataPush: syncState?.lastPushAt,
                                         ...deriveValidIds(event.output.program),
                                     };
@@ -1102,7 +1115,7 @@ export const syncMachine = setup({
                                     return event.output.needsSyncing;
                                 },
 
-                                actions: assign(({ event }) => {
+                                actions: assign(({ context, event }) => {
                                     const mode =
                                         event.output.hasEmptyTables ||
                                         event.output.wasDatabaseDeleted
@@ -1120,6 +1133,7 @@ export const syncMachine = setup({
                                         | {
                                               lastPullAt?: string;
                                               lastPushAt?: string;
+                                              pullScope?: string;
                                           }
                                         | undefined;
                                     return {
@@ -1127,7 +1141,10 @@ export const syncMachine = setup({
                                         lastMetadataPull:
                                             event.output.metadataVersion
                                                 ?.lastSync,
-                                        lastDataPull: syncState?.lastPullAt,
+                                        lastDataPull: checkpointForScope(
+                                            syncState,
+                                            currentPullScope(context.userInfo),
+                                        ),
                                         lastDataPush: syncState?.lastPushAt,
                                         ...deriveValidIds(event.output.program),
                                     };
@@ -1471,11 +1488,8 @@ export const syncMachine = setup({
                             }),
                         },
 
-                        FULL_DATA_SYNC: {
-                            target: "fullRefresh",
-                            actions: assign({
-                                dataPullMode: () => "full",
-                            }),
+                        RESET_DATA_CHECKPOINT: {
+                            target: "resettingCheckpoint",
                         },
 
                         NETWORK_RECONNECT: {
@@ -1486,13 +1500,33 @@ export const syncMachine = setup({
                         },
                     },
                 },
-                fullRefresh: {
+                // Clears only the pull checkpoint — on disk first, then in
+                // context — and pulls straight away. Local rows and the push
+                // checkpoint are untouched: the full pull is a merge, like
+                // any other. If the clear can't be saved, nothing changes.
+                resettingCheckpoint: {
                     invoke: {
-                        src: "deleteAllData",
+                        src: "persistCheckpoint",
+                        input: ({ context }) => ({
+                            metadataStore: context.metadataStore,
+                            patch: { lastPullAt: undefined, pullScope: undefined },
+                        }),
                         onDone: {
                             target: "syncing",
+                            actions: assign({
+                                lastDataPull: undefined,
+                                dataPullMode: () => "incremental",
+                            }),
                         },
-                        onError: "failure",
+                        onError: {
+                            target: "waiting",
+                            actions: ({ event }) => {
+                                console.error(
+                                    "Failed to reset pull checkpoint:",
+                                    event.error,
+                                );
+                            },
+                        },
                     },
                 },
 
@@ -1516,7 +1550,7 @@ export const syncMachine = setup({
                             sqlDriver,
                             lastDataPull,
                             orgUnit: userInfo.organisationUnits[0].id,
-                            program: "ueBhWkWll5v",
+                            program: PULL_PROGRAM,
                             dataPullMode,
                         }),
 
@@ -1549,7 +1583,10 @@ export const syncMachine = setup({
                         src: "persistCheckpoint",
                         input: ({ context }) => ({
                             metadataStore: context.metadataStore,
-                            patch: { lastPullAt: context.pendingDataPull },
+                            patch: {
+                                lastPullAt: context.pendingDataPull,
+                                pullScope: currentPullScope(context.userInfo),
+                            },
                         }),
                         onDone: {
                             target: "waiting",
@@ -1578,11 +1615,8 @@ export const syncMachine = setup({
                                 dataPullMode: () => "incremental",
                             }),
                         },
-                        FULL_DATA_SYNC: {
-                            target: "fullRefresh",
-                            actions: assign({
-                                dataPullMode: () => "full",
-                            }),
+                        RESET_DATA_CHECKPOINT: {
+                            target: "resettingCheckpoint",
                         },
                         NETWORK_RECONNECT: {
                             target: "syncing",
@@ -1607,11 +1641,8 @@ export const syncMachine = setup({
                                 dataPullMode: () => "incremental",
                             }),
                         },
-                        FULL_DATA_SYNC: {
-                            target: "fullRefresh",
-                            actions: assign({
-                                dataPullMode: () => "full",
-                            }),
+                        RESET_DATA_CHECKPOINT: {
+                            target: "resettingCheckpoint",
                         },
                         NETWORK_RECONNECT: {
                             target: "syncing",

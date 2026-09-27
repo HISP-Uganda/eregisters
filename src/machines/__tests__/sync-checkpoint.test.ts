@@ -321,3 +321,86 @@ describe("sync.pullData log line (Phase 2)", () => {
     });
 });
 
+describe("checkpoint scope and reset (Phase 3)", () => {
+    let cleanup: (() => void) | undefined;
+    afterEach(() => {
+        cleanup?.();
+        cleanup = undefined;
+        vi.restoreAllMocks();
+    });
+
+    const SCOPE = "ueBhWkWll5v:ou-1";
+
+    it("ignores a checkpoint taken for a different org unit", async () => {
+        const { actor, close } = await setUp({
+            checkIndexDB: async () =>
+                checkResult({ syncState: { id: "current", lastPullAt: "C1", lastPushAt: "P1", pullScope: "ueBhWkWll5v:ou-OLD" } }),
+        });
+        cleanup = close;
+
+        const s = await waitFor(actor, (snap) => snap.context.lastDataPush === "P1", TIMEOUT);
+
+        expect(s.context.lastDataPull).toBeUndefined();
+    });
+
+    it("keeps a checkpoint taken for this scope, and saves the scope with the next one", async () => {
+        const { actor, driver, close } = await setUp({
+            checkIndexDB: async () =>
+                checkResult({ syncState: { id: "current", lastPullAt: "C1", pullScope: SCOPE } }),
+            pullData: async () => "C2",
+        });
+        cleanup = close;
+        await waitFor(actor, (snap) => snap.context.lastDataPull === "C1", TIMEOUT);
+
+        actor.send({ type: "START_DATA_SYNC" });
+        await waitFor(actor, (snap) => snap.matches({ dataPull: "waiting" }), TIMEOUT);
+
+        expect(await storedSyncState(driver)).toMatchObject({ lastPullAt: "C2", pullScope: SCOPE });
+    });
+
+    it("RESET_DATA_CHECKPOINT clears only the pull checkpoint on disk, then pulls everything", async () => {
+        const pullData = vi.fn(async () => "C9");
+        const { actor, driver, close } = await setUp({
+            checkIndexDB: async () => checkResult({}),
+            pullData,
+            processBatchSync: async () => ({ processed: 1 }),
+        });
+        cleanup = close;
+        await waitFor(actor, (snap) => snap.context.lastDataPull === "C1", TIMEOUT);
+        actor.send({ type: "PUSH_DATA" });
+        const pushed = await waitFor(actor, (snap) => snap.context.lastDataPush !== "P1", TIMEOUT);
+
+        actor.send({ type: "RESET_DATA_CHECKPOINT" });
+        const s = await waitFor(actor, (snap) => snap.matches({ dataPull: "waiting" }), TIMEOUT);
+
+        expect(pullData).toHaveBeenCalledTimes(1);
+        expect(pullData).toHaveBeenCalledWith(expect.objectContaining({ lastDataPull: undefined }));
+        expect(s.context.lastDataPull).toBe("C9");
+        expect(await storedSyncState(driver)).toMatchObject({
+            lastPullAt: "C9",
+            lastPushAt: pushed.context.lastDataPush,
+        });
+    });
+
+    it("does nothing when the reset can't be saved", async () => {
+        const { driver, close } = createNodeSqliteDriver();
+        await createSchema(driver);
+        const real = sqliteMetadataStore(driver);
+        const failing: MetadataStore = { ...real, putRow: vi.fn().mockRejectedValue(new Error("disk full")) };
+        vi.spyOn(console, "error").mockImplementation(() => undefined);
+        const pullData = vi.fn(async () => "C9");
+        const setup = await setUp({ checkIndexDB: async () => checkResult({}), pullData }, failing);
+        cleanup = () => {
+            setup.close();
+            close();
+        };
+        await waitFor(setup.actor, (snap) => snap.context.lastDataPull === "C1", TIMEOUT);
+
+        setup.actor.send({ type: "RESET_DATA_CHECKPOINT" });
+        const s = await waitFor(setup.actor, (snap) => snap.matches({ dataPull: "waiting" }), TIMEOUT);
+
+        expect(pullData).not.toHaveBeenCalled();
+        expect(s.context.lastDataPull).toBe("C1");
+    });
+});
+

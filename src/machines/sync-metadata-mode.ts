@@ -145,3 +145,32 @@ export function shouldContinueDataPull({
 
     return receivedCount === pageSize;
 }
+
+/**
+ * What a data checkpoint was taken for — the program and org unit the
+ * pull was scoped to (wayfinder ticket "Retire Pull All Data behind an
+ * admin \"Reset sync checkpoint\" (Phase 3)", Q2). A checkpoint for a
+ * different scope says nothing about the current one: a user moved to a
+ * new org unit must pull its full history, not only changes since the old
+ * org unit's checkpoint.
+ */
+export function pullScopeKey(program: string, orgUnit: string): string {
+    return `${program}:${orgUnit}`;
+}
+
+/**
+ * The stored checkpoint, if it belongs to `scope`. Rows written before
+ * scopes were recorded carry none and are trusted — forcing every device
+ * into a full re-download on upgrade would be the very load this avoids.
+ */
+export function checkpointForScope(
+    syncState: { lastPullAt?: string; pullScope?: string } | undefined,
+    scope: string,
+): string | undefined {
+    if (!syncState?.lastPullAt) return undefined;
+    if (syncState.pullScope !== undefined && syncState.pullScope !== scope) {
+        return undefined;
+    }
+    return syncState.lastPullAt;
+}
+

@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { extractServerDate, resolveNextDataPull } from ".././sync-metadata-mode";
+import {
+    checkpointForScope,
+    extractServerDate,
+    pullScopeKey,
+    resolveNextDataPull,
+} from ".././sync-metadata-mode";
 
 /**
  * These two helpers make the incremental data pull use the `updatedAfter`
@@ -45,3 +50,27 @@ describe("resolveNextDataPull", () => {
         expect(resolveNextDataPull(undefined, undefined)).toBeUndefined();
     });
 });
+
+describe("checkpointForScope", () => {
+    const scope = pullScopeKey("prog", "ou-1");
+
+    it("returns the checkpoint taken for the same scope", () => {
+        expect(checkpointForScope({ lastPullAt: "C1", pullScope: scope }, scope)).toBe("C1");
+    });
+
+    it("ignores a checkpoint taken for another org unit", () => {
+        expect(
+            checkpointForScope({ lastPullAt: "C1", pullScope: pullScopeKey("prog", "ou-2") }, scope),
+        ).toBeUndefined();
+    });
+
+    it("trusts a legacy checkpoint recorded before scopes existed", () => {
+        expect(checkpointForScope({ lastPullAt: "C1" }, scope)).toBe("C1");
+    });
+
+    it("has nothing without a checkpoint", () => {
+        expect(checkpointForScope(undefined, scope)).toBeUndefined();
+        expect(checkpointForScope({ pullScope: scope }, scope)).toBeUndefined();
+    });
+});
+
