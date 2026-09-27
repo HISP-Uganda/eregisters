@@ -5,6 +5,9 @@ import type { MetadataStore } from "../../db/metadata-store";
 import { sqliteMetadataStore } from "../../db/sqlite/metadata-store";
 import { createSchema } from "../../db/sqlite/schema";
 import { createNodeSqliteDriver } from "../../db/sqlite/test-support/node-sqlite-driver";
+import { FetchError } from "@dhis2/app-runtime";
+import { initCollections } from "../../db/collections";
+import { resetTrackerCollectionsForTests } from "../../db/sqlite/tracker-collections-instance";
 import { syncMachine } from "../sync";
 
 /**
@@ -17,6 +20,8 @@ import { syncMachine } from "../sync";
 const TIMEOUT = { timeout: 1000 };
 
 type Overrides = Partial<{
+    /** Run the real pullData actor against this engine instead of faking it. */
+    engine: { query: (q: Record<string, { resource: string; params?: Record<string, unknown> }>) => Promise<unknown> };
     checkIndexDB: () => Promise<CheckMetadataInfoResult>;
     pullData: (input: { lastDataPull?: string; dataPullMode: string }) => Promise<string | undefined>;
     processBatchSync: () => Promise<unknown>;
@@ -45,6 +50,7 @@ async function setUp(overrides: Overrides, store?: MetadataStore) {
         Object.keys(syncMachine.implementations.actors)
             // The real checkpoint write is what these tests are about.
             .filter((name) => name !== "persistCheckpoint")
+            .filter((name) => !(overrides.engine && name === "pullData"))
             .map((name) => [name, never]),
     );
     if (overrides.checkIndexDB) actors.checkIndexDB = fromPromise(overrides.checkIndexDB);
@@ -56,12 +62,17 @@ async function setUp(overrides: Overrides, store?: MetadataStore) {
     }
     if (overrides.processBatchSync) actors.processBatchSync = fromPromise(overrides.processBatchSync);
 
+    if (overrides.engine) {
+        // The SQLite collections are a once-per-process singleton — rebind them to this test's driver.
+        resetTrackerCollectionsForTests();
+        initCollections("sqlite", driver);
+    }
     const actor = createActor(syncMachine.provide({ actors } as never), {
         input: {
-            engine: {} as never,
+            engine: (overrides.engine ?? {}) as never,
             backend: "sqlite",
             metadataStore,
-            sqlDriver: undefined,
+            sqlDriver: overrides.engine ? driver : undefined,
             message: {} as never,
             userInfo: {
                 id: "user-1",
@@ -212,3 +223,101 @@ describe("sync machine — data checkpoint (Phase 1)", () => {
         expect(stored.lastPushAt).toBe(s.context.lastDataPush);
     });
 });
+
+describe("sync.pullData log line (Phase 2)", () => {
+    let cleanup: (() => void) | undefined;
+    afterEach(() => {
+        cleanup?.();
+        cleanup = undefined;
+        vi.restoreAllMocks();
+    });
+
+    function pullLines(info: { mock: { calls: unknown[][] } }) {
+        return info.mock.calls.filter((call) => call[0] === "sync.pullData").map((call) => call[1]);
+    }
+
+    it("logs one incremental line with the checkpoint sent and returned", async () => {
+        const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+        vi.spyOn(console, "log").mockImplementation(() => undefined);
+        const queries: Record<string, unknown>[] = [];
+        const engine = {
+            query: async (q: Record<string, { resource: string; params?: Record<string, unknown> }>) => {
+                const [key, { resource, params }] = Object.entries(q)[0];
+                if (resource === "system/info") return { info: { serverDate: "C2" } };
+                if (resource === "tracker/trackedEntities") {
+                    queries.push(params ?? {});
+                    return { [key]: { trackedEntities: [], pager: { total: 0 } } };
+                }
+                throw new Error(`unexpected ${resource}`);
+            },
+        };
+        const { actor, close } = await setUp({ checkIndexDB: async () => checkResult({}), engine });
+        cleanup = close;
+        await waitFor(actor, (snap) => snap.context.lastDataPull === "C1", TIMEOUT);
+
+        actor.send({ type: "START_DATA_SYNC" });
+        await waitFor(actor, (snap) => snap.matches({ dataPull: "waiting" }), TIMEOUT);
+
+        expect(queries[0]?.updatedAfter).toBe("C1");
+        const lines = pullLines(info);
+        expect(lines).toHaveLength(1);
+        expect(lines[0]).toMatchObject({
+            outcome: "ok",
+            mode: "incremental",
+            checkpointFrom: "C1",
+            checkpointTo: "C2",
+            serverTotal: 0,
+            fetched: { trackedEntities: 0, enrollments: 0, events: 0 },
+            pages: 1,
+        });
+        expect(lines[0]).not.toHaveProperty("error");
+    });
+
+    it("logs a full pull as mode full when there is no checkpoint", async () => {
+        const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+        const engine = {
+            query: async (q: Record<string, { resource: string }>) => {
+                const [key, { resource }] = Object.entries(q)[0];
+                if (resource === "system/info") return { info: { serverDate: "C1" } };
+                return { [key]: { trackedEntities: [] } };
+            },
+        };
+        const { actor, close } = await setUp({
+            checkIndexDB: async () => checkResult({ syncState: undefined }),
+            engine,
+        });
+        cleanup = close;
+        await waitFor(actor, (snap) => snap.matches({ metadataSync: "queryingIndexDB" }), TIMEOUT);
+
+        actor.send({ type: "START_DATA_SYNC" });
+        await waitFor(actor, (snap) => snap.matches({ dataPull: "waiting" }), TIMEOUT);
+
+        expect(pullLines(info)[0]).toMatchObject({ outcome: "ok", mode: "full", checkpointFrom: null, checkpointTo: "C1" });
+    });
+
+    it("logs an offline pull and advances nothing", async () => {
+        const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+        vi.spyOn(console, "error").mockImplementation(() => undefined);
+        const engine = {
+            query: async () => {
+                throw new FetchError({ type: "network", message: "Failed to fetch", details: {} });
+            },
+        };
+        const { actor, close } = await setUp({ checkIndexDB: async () => checkResult({}), engine });
+        cleanup = close;
+        await waitFor(actor, (snap) => snap.context.lastDataPull === "C1", TIMEOUT);
+
+        actor.send({ type: "START_DATA_SYNC" });
+        const s = await waitFor(actor, (snap) => snap.matches({ dataPull: "failure" }), TIMEOUT);
+
+        expect(pullLines(info)[0]).toMatchObject({
+            outcome: "offline",
+            error: "Failed to fetch",
+            checkpointFrom: "C1",
+            checkpointTo: null,
+            pages: 0,
+        });
+        expect(s.context.lastDataPull).toBe("C1");
+    });
+});
+

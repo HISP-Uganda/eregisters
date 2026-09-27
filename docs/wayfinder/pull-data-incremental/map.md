@@ -64,6 +64,7 @@ historical records.
 <!-- one line per closed ticket -->
 
 - [Load and persist the data checkpoint correctly on every boot path (Phase 1)](tickets/001-checkpoint-fix.md) — both boot branches load pull+push checkpoints with no metadata-driven reset; checkpoints advance only after an awaited single-field `patchSyncState` write (serialized, so parallel pull/push can't clobber or erase each other); first whole-machine sync tests (failing-then-passing); real server: second pull sends the saved boundary and returns 0 of 1 records, and the needsSyncing boot path keeps both checkpoints.
+- [What does the sync.pullData log line record? (Phase 2)](tickets/003-pull-observability.md) — one `console.info("sync.pullData", …)` per attempt from inside the actor: outcome (offline only for real network FetchErrors), mode as actually sent, checkpoint from/to, server total, fetched TE/enrollment/event counts, pages, duration.
 - [How does the DHIS2 tracker API interpret updatedAfter?](tickets/002-updatedafter-semantics.md) — server is 2.41+; a zone-less `updatedAfter` is read in server time, inclusive, ms precision, filtered on the TE's own lastUpdated (child changes bump it) — so the app's verbatim-`serverDate` checkpoint is correct as-is; deletes need `includeDeleted` (R5); an optional overlap window would close a small import-commit gap the Android SDK also accepts.
 
 ## Not yet specified

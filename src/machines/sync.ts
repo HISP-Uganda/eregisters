@@ -67,6 +67,12 @@ import {
     shouldUseLastDataPull,
     shouldUseLastUpdatedFilter,
 } from "./sync-metadata-mode";
+import {
+    countFetched,
+    logPullData,
+    pullFailureOutcome,
+    type PullDataSummary,
+} from "./pull-log";
 import { processBatchSync as processBatchSyncImpl } from "./sync-tracker-actors";
 
 /**
@@ -315,108 +321,138 @@ export const syncMachine = setup({
                     dataPullMode,
                 },
             }) => {
-                // Mirror the DHIS2 Android SDK: the incremental `updatedAfter`
-                // boundary is the SERVER's clock captured BEFORE the pull
-                // starts, never the device clock captured after it. Reading
-                // system/info up front (a) avoids client/server clock skew and
-                // (b) guarantees that any record edited on the server *during*
-                // this (paged, possibly long-running) pull is re-fetched next
-                // time instead of being skipped. This value is only persisted
-                // once the pull below completes successfully.
-                const serverDate = extractServerDate(
-                    (await engine.query({
-                        info: { resource: "system/info" },
-                    })) as { info?: { serverDate?: string } },
-                );
-
-                let currentPage = 1;
-                // Fetch fresh from the DHIS2 dataStore (not the local mirror
-                // or machine context) so a pageSize change made from any
-                // device takes effect on the very next pull. Fall back to
-                // the local mirror, then the hardcoded default, when the
-                // dataStore is unreachable (offline pull).
-                const configuredPageSize = await getConfiguredPageSize(
-                    metadataStore,
-                    engine,
-                );
-                const pageSize =
-                    configuredPageSize ?? DEFAULT_DATA_PULL_PAGE_SIZE;
-                let hasMoreData = true;
-
-                console.log(
-                    "Starting data pull for program:",
-                    program,
-                    "orgUnit:",
-                    orgUnit,
-                    "lastDataPull:",
-                    lastDataPull,
-                    "dataPullMode:",
+                const startedAt = Date.now();
+                const checkpointFrom = shouldUseLastDataPull(
                     dataPullMode,
-                );
-
-                while (hasMoreData) {
-                    let params: Record<string, any> = {
-                        program,
-                        orgUnits: orgUnit,
-                        ouMode: "SELECTED",
-                        fields: "trackedEntity,createdAt,updatedAt,createdAtClient,updatedAtClient,orgUnit,trackedEntityType,inactive,deleted,potentialDuplicate,createdBy[uid,username,firstName,surname],updatedBy[uid,username,firstName,surname],attributes[attribute,value,createdAt,updatedAt],enrollments[enrollment,createdAt,updatedAt,createdAtClient,updatedAtClient,orgUnit,program,enrolledAt,occurredAt,completedAt,followUp,status,trackedEntity,geometry,attributeOptionCombo,deleted,createdBy[uid,username,firstName,surname],updatedBy[uid,username,firstName,surname],attributes[attribute,value,createdAt,updatedAt],events[event,enrollment,createdAt,updatedAt,createdAtClient,updatedAtClient,status,geometry,program,programStage,orgUnit,trackedEntity,occurredAt,completedAt,scheduledAt,attributeOptionCombo,assignedUser,completedBy,followUp,deleted,createdBy[uid,username,firstName,surname],updatedBy[uid,username,firstName,surname],dataValues[dataElement,createdBy,value,createdAt,updatedAt,providedElsewhere]]]",
-                        page: currentPage,
-                        pageSize: pageSize,
-                    };
-                    if (shouldUseLastDataPull(dataPullMode, lastDataPull)) {
-                        params = { ...params, updatedAfter: lastDataPull };
-                    }
-
-                    const response = (await engine.query({
-                        trackedEntities: {
-                            resource: "tracker/trackedEntities",
-                            params,
-                        },
-                    })) as {
-                        trackedEntities: {
-                            pager?: {
-                                page?: number;
-                                pageSize?: number;
-                                pageCount?: number;
-                                nextPage?: string;
-                                total?: number;
-                            };
-                            trackedEntities: TrackedEntity[];
-                        };
-                    };
-                    const { trackedEntities: instances } =
-                        response.trackedEntities;
-                    const pager = response.trackedEntities.pager;
-
-                    // Flatten, merge (local-wins-per-key against the
-                    // already-stored row), and write this page — see
-                    // pull-page.ts's own doc comment for why the merge
-                    // logic and write order live there, standalone-tested.
-                    const collections = {
-                        trackedEntities: getTrackedEntitiesCollection(),
-                        enrollments: getEnrollmentsCollection(),
-                        events: getEventsCollection(),
-                    };
-                    await writePulledTrackedEntityPage(
-                        instances,
-                        collections,
-                        backend === "sqlite"
-                            ? sqlLocalLookups(sqlDriver!)
-                            : dexieLocalLookups(collections as any),
+                    lastDataPull,
+                )
+                    ? lastDataPull
+                    : undefined;
+                const fetched = { trackedEntities: 0, enrollments: 0, events: 0 };
+                let pages = 0;
+                let pageSize = DEFAULT_DATA_PULL_PAGE_SIZE;
+                let serverTotal: number | undefined;
+                const summary = (
+                    outcome: PullDataSummary["outcome"],
+                    checkpointTo: string | undefined,
+                    error?: unknown,
+                ): PullDataSummary => ({
+                    outcome,
+                    ...(error === undefined
+                        ? {}
+                        : { error: error instanceof Error ? error.message : String(error) }),
+                    mode: checkpointFrom ? "incremental" : "full",
+                    checkpointFrom: checkpointFrom ?? null,
+                    checkpointTo: checkpointTo ?? null,
+                    serverTotal,
+                    fetched,
+                    pages,
+                    pageSize,
+                    durationMs: Date.now() - startedAt,
+                });
+                try {
+                    // Mirror the DHIS2 Android SDK: the incremental `updatedAfter`
+                    // boundary is the SERVER's clock captured BEFORE the pull
+                    // starts, never the device clock captured after it. Reading
+                    // system/info up front (a) avoids client/server clock skew and
+                    // (b) guarantees that any record edited on the server *during*
+                    // this (paged, possibly long-running) pull is re-fetched next
+                    // time instead of being skipped. This value is only persisted
+                    // once the pull below completes successfully.
+                    const serverDate = extractServerDate(
+                        (await engine.query({
+                            info: { resource: "system/info" },
+                        })) as { info?: { serverDate?: string } },
                     );
 
-                    hasMoreData = shouldContinueDataPull({
-                        receivedCount: instances.length,
-                        pageSize,
-                        pager,
-                    });
-                    currentPage++;
-                }
+                    let currentPage = 1;
+                    // Fetch fresh from the DHIS2 dataStore (not the local mirror
+                    // or machine context) so a pageSize change made from any
+                    // device takes effect on the very next pull. Fall back to
+                    // the local mirror, then the hardcoded default, when the
+                    // dataStore is unreachable (offline pull).
+                    const configuredPageSize = await getConfiguredPageSize(
+                        metadataStore,
+                        engine,
+                    );
+                    pageSize =
+                        configuredPageSize ?? DEFAULT_DATA_PULL_PAGE_SIZE;
+                    let hasMoreData = true;
 
-                // The pull succeeded: advance the boundary to the server time
-                // captured before it started. If system/info gave us nothing,
-                // keep the previous boundary rather than the device clock.
-                return resolveNextDataPull(serverDate, lastDataPull);
+
+                    while (hasMoreData) {
+                        let params: Record<string, any> = {
+                            program,
+                            orgUnits: orgUnit,
+                            ouMode: "SELECTED",
+                            fields: "trackedEntity,createdAt,updatedAt,createdAtClient,updatedAtClient,orgUnit,trackedEntityType,inactive,deleted,potentialDuplicate,createdBy[uid,username,firstName,surname],updatedBy[uid,username,firstName,surname],attributes[attribute,value,createdAt,updatedAt],enrollments[enrollment,createdAt,updatedAt,createdAtClient,updatedAtClient,orgUnit,program,enrolledAt,occurredAt,completedAt,followUp,status,trackedEntity,geometry,attributeOptionCombo,deleted,createdBy[uid,username,firstName,surname],updatedBy[uid,username,firstName,surname],attributes[attribute,value,createdAt,updatedAt],events[event,enrollment,createdAt,updatedAt,createdAtClient,updatedAtClient,status,geometry,program,programStage,orgUnit,trackedEntity,occurredAt,completedAt,scheduledAt,attributeOptionCombo,assignedUser,completedBy,followUp,deleted,createdBy[uid,username,firstName,surname],updatedBy[uid,username,firstName,surname],dataValues[dataElement,createdBy,value,createdAt,updatedAt,providedElsewhere]]]",
+                            page: currentPage,
+                            pageSize: pageSize,
+                        };
+                        if (checkpointFrom) {
+                            params = { ...params, updatedAfter: checkpointFrom };
+                        }
+
+                        const response = (await engine.query({
+                            trackedEntities: {
+                                resource: "tracker/trackedEntities",
+                                params,
+                            },
+                        })) as {
+                            trackedEntities: {
+                                pager?: {
+                                    page?: number;
+                                    pageSize?: number;
+                                    pageCount?: number;
+                                    nextPage?: string;
+                                    total?: number;
+                                };
+                                trackedEntities: TrackedEntity[];
+                            };
+                        };
+                        const { trackedEntities: instances } =
+                            response.trackedEntities;
+                        const pager = response.trackedEntities.pager;
+                        pages += 1;
+                        countFetched(fetched, instances);
+                        if (pages === 1) serverTotal = pager?.total;
+
+                        // Flatten, merge (local-wins-per-key against the
+                        // already-stored row), and write this page — see
+                        // pull-page.ts's own doc comment for why the merge
+                        // logic and write order live there, standalone-tested.
+                        const collections = {
+                            trackedEntities: getTrackedEntitiesCollection(),
+                            enrollments: getEnrollmentsCollection(),
+                            events: getEventsCollection(),
+                        };
+                        await writePulledTrackedEntityPage(
+                            instances,
+                            collections,
+                            backend === "sqlite"
+                                ? sqlLocalLookups(sqlDriver!)
+                                : dexieLocalLookups(collections as any),
+                        );
+
+                        hasMoreData = shouldContinueDataPull({
+                            receivedCount: instances.length,
+                            pageSize,
+                            pager,
+                        });
+                        currentPage++;
+                    }
+
+                    // The pull succeeded: advance the boundary to the server
+                    // time captured before it started. If system/info gave
+                    // us nothing, keep the previous boundary rather than the
+                    // device clock.
+                    const next = resolveNextDataPull(serverDate, lastDataPull);
+                    logPullData(summary("ok", next));
+                    return next;
+                } catch (error) {
+                    logPullData(summary(pullFailureOutcome(error), undefined, error));
+                    throw error;
+                }
             },
         ),
         saveMetadata: fromPromise<
