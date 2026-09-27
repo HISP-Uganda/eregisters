@@ -255,6 +255,20 @@ function __patch7AddCoiHeaders(response) {
     headers.set('Cross-Origin-Embedder-Policy', 'require-corp')
     return new Response(response.body, { status: response.status, statusText: response.statusText, headers })
 }
+// Precached copy of a navigation or worker request. Workbox's precache
+// keys carry a ?__WB_REVISION__= query (hence ignoreSearch), and stores the
+// app page as index.html — so a directory URL (the PWA's start_url "."
+// resolves to one) must fall back to it, as Workbox's own navigation route
+// does. Without that, an installed app launched offline didn't open at all.
+async function __patch7Cached(request) {
+    const exact = await caches.match(request, { ignoreSearch: true })
+    if (exact) return exact
+    const url = new URL(request.url)
+    if (request.mode === 'navigate' && url.pathname.endsWith('/')) {
+        return caches.match(new URL('index.html', url).href, { ignoreSearch: true })
+    }
+    return undefined
+}
 self.addEventListener('fetch', function (event) {
     const isNavigation = event.request.mode === 'navigate'
     const isWorkerScript = event.request.destination === 'worker' || event.request.destination === 'sharedworker'
@@ -262,11 +276,23 @@ self.addEventListener('fetch', function (event) {
     event.stopImmediatePropagation()
 
     if (isWorkerScript) {
-        // No timeout/cache-fallback story needed here — a worker script is
-        // either fetched successfully (then just needs COEP added) or it
-        // fails, in which case the normal Worker "error" event already
-        // surfaces that to the page (see App.tsx's initSqlDriver .catch()).
-        event.respondWith(fetch(event.request).then(__patch7AddCoiHeaders))
+        // Network first, then the precached copy. Network-only (as this
+        // was) meant an offline cold start couldn't start the wa-sqlite
+        // Worker: SQLite failed to open and the app fell back to an empty
+        // Dexie store until it was back online — wayfinder ticket "Does an
+        // offline cold start fail to load the wa-sqlite worker?".
+        event.respondWith((async function () {
+            try {
+                const response = await fetch(event.request)
+                if (response && response.ok) return __patch7AddCoiHeaders(response)
+                const cached = await __patch7Cached(event.request)
+                return __patch7AddCoiHeaders(cached || response)
+            } catch (err) {
+                const cached = await __patch7Cached(event.request)
+                if (cached) return __patch7AddCoiHeaders(cached)
+                throw err
+            }
+        })())
         return
     }
 
@@ -282,7 +308,7 @@ self.addEventListener('fetch', function (event) {
             // the file itself has no content hash in its name) — a plain
             // caches.match() on the exact request URL (no query) would miss
             // that precached entry entirely.
-            const cached = await caches.match(request, { ignoreSearch: true })
+            const cached = await __patch7Cached(request)
             return __patch7AddCoiHeaders(cached || response)
         } catch (err) {
             // ignoreSearch: Workbox's precache stores index.html with a
@@ -290,7 +316,7 @@ self.addEventListener('fetch', function (event) {
             // the file itself has no content hash in its name) — a plain
             // caches.match() on the exact request URL (no query) would miss
             // that precached entry entirely.
-            const cached = await caches.match(request, { ignoreSearch: true })
+            const cached = await __patch7Cached(request)
             if (cached) return __patch7AddCoiHeaders(cached)
             throw err
         }
