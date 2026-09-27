@@ -146,16 +146,43 @@ export function wrapWaSqliteWorker(
     };
 }
 
+/**
+ * Waits between open attempts. A same-tab navigation can leave the
+ * previous page's Worker briefly holding OPFS access handles, so the
+ * first open fails transiently — and on "auto" one failure used to mean
+ * a Dexie fallback plus a full store copy each way. Wayfinder ticket "Why
+ * does the first SQLite open sometimes fail on a reload, and should it
+ * trigger a full store copy?".
+ */
+export const OPEN_RETRY_DELAYS_MS: readonly number[] = [300, 1000];
+
 export async function createWaSqliteDriver(
     name: string,
     workerFactory: () => WaSqliteWorkerLike = defaultWorkerFactory,
+    retryDelaysMs: readonly number[] = OPEN_RETRY_DELAYS_MS,
 ): Promise<SqlDriver> {
-    const driver = wrapWaSqliteWorker(name, workerFactory());
-    // The former op-sqlite driver's initSqlDriver() did this on the app's
-    // behalf; wa-sqlite has no equivalent built-in schema bootstrap, so
-    // this driver must call it itself. CREATE TABLE IF NOT EXISTS
-    // throughout schema.ts makes this idempotent — safe on every call,
-    // not just first-ever open.
-    await createSchema(driver);
-    return driver;
+    let lastError: unknown;
+    for (let attempt = 0; attempt <= retryDelaysMs.length; attempt++) {
+        if (attempt > 0) {
+            await new Promise((resolve) =>
+                setTimeout(resolve, retryDelaysMs[attempt - 1]),
+            );
+        }
+        // A fresh Worker per attempt: one whose VFS failed to start is
+        // unusable.
+        const driver = wrapWaSqliteWorker(name, workerFactory());
+        try {
+            // The former op-sqlite driver's initSqlDriver() did this on the
+            // app's behalf; wa-sqlite has no equivalent built-in schema
+            // bootstrap, so this driver must call it itself. CREATE TABLE
+            // IF NOT EXISTS throughout schema.ts makes this idempotent —
+            // safe on every call, not just first-ever open.
+            await createSchema(driver);
+            return driver;
+        } catch (error) {
+            lastError = error;
+            await driver.close?.();
+        }
+    }
+    throw lastError;
 }

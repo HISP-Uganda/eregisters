@@ -204,4 +204,56 @@ describe("wa-sqlite-driver", () => {
             ).toBe(true);
         },
     );
+
+    describe("createWaSqliteDriver retries a transient open failure", () => {
+        /** Answers every request on its own: fails the first `failFirst` of them, then succeeds. */
+        class AutoWorker implements WaSqliteWorkerLike {
+            terminated = false;
+            private listener?: (event: MessageEvent<WaSqliteResponse>) => void;
+            constructor(private failFirst: number) {}
+            postMessage(message: { name: string; request: WaSqliteRequest }): void {
+                const { id } = message.request;
+                const fail = this.failFirst > 0;
+                if (fail) this.failFirst -= 1;
+                queueMicrotask(() =>
+                    this.listener?.({
+                        data: fail
+                            ? { id, ok: false, error: "NoModificationAllowedError" }
+                            : { id, ok: true, result: { rows: [], rowsAffected: 0, insertId: undefined } },
+                    } as MessageEvent<WaSqliteResponse>),
+                );
+            }
+            addEventListener(type: "message" | "error", listener: any): void {
+                if (type === "message") this.listener = listener;
+            }
+            terminate(): void {
+                this.terminated = true;
+            }
+        }
+
+        it("opens on a fresh Worker after the first one fails, terminating the failed one", async () => {
+            const workers = [new AutoWorker(1), new AutoWorker(0)];
+            let i = 0;
+
+            const driver = await createWaSqliteDriver("test-db", () => workers[i++], [0, 0]);
+
+            expect(i).toBe(2);
+            expect(workers[0].terminated).toBe(true);
+            expect(workers[1].terminated).toBe(false);
+            await expect(driver.execute("SELECT 1")).resolves.toMatchObject({ rows: [] });
+        });
+
+        it("gives up with the last error after every attempt fails", async () => {
+            let made = 0;
+
+            await expect(
+                createWaSqliteDriver("test-db", () => {
+                    made += 1;
+                    return new AutoWorker(Infinity);
+                }, [0, 0]),
+            ).rejects.toThrow("NoModificationAllowedError");
+            expect(made).toBe(3);
+        });
+    });
 });
+

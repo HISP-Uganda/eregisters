@@ -149,10 +149,10 @@ describe("backend", () => {
                 JSON.parse(
                     localStorage.getItem("eregisters.opfsInitFailed") ?? "{}",
                 ),
-            ).toEqual({ version: OPFS_PROBE_CACHE_VERSION });
+            ).toEqual({ version: OPFS_PROBE_CACHE_VERSION, failures: 1 });
         });
 
-        it("auto: a cached failure at the current version skips re-attempting init", async () => {
+        it("auto: a single cached failure (or a pre-counting entry) re-attempts init", async () => {
             vi.stubGlobal("navigator", {
                 storage: { getDirectory: async () => undefined },
             });
@@ -162,6 +162,37 @@ describe("backend", () => {
             localStorage.setItem(
                 "eregisters.opfsInitFailed",
                 JSON.stringify({ version: OPFS_PROBE_CACHE_VERSION }),
+            );
+            const attemptSqliteInit = vi.fn().mockResolvedValue(undefined);
+
+            expect(await resolveBackend("auto", attemptSqliteInit)).toBe("sqlite");
+            expect(attemptSqliteInit).toHaveBeenCalledTimes(1);
+            expect(localStorage.getItem("eregisters.opfsInitFailed")).toBeNull();
+        });
+
+        it("auto: counts consecutive failures; the second one sticks", async () => {
+            vi.stubGlobal("navigator", {
+                storage: { getDirectory: async () => undefined },
+            });
+            const { resolveBackend, getCachedOpfsFailure } = await import("../backend");
+            const failing = vi.fn().mockRejectedValue(new Error("boom"));
+
+            await resolveBackend("auto", failing);
+            expect(getCachedOpfsFailure()).toBe(false);
+            await resolveBackend("auto", failing);
+            expect(getCachedOpfsFailure()).toBe(true);
+        });
+
+        it("auto: two cached failures at the current version skip re-attempting init", async () => {
+            vi.stubGlobal("navigator", {
+                storage: { getDirectory: async () => undefined },
+            });
+            const { resolveBackend, OPFS_PROBE_CACHE_VERSION } = await import(
+                "../backend"
+            );
+            localStorage.setItem(
+                "eregisters.opfsInitFailed",
+                JSON.stringify({ version: OPFS_PROBE_CACHE_VERSION, failures: 2 }),
             );
             const attemptSqliteInit = vi.fn().mockResolvedValue(undefined);
 
@@ -204,6 +235,7 @@ describe("backend", () => {
             opfs();
             const { shouldAttemptSqliteToDexieCopy, setCachedOpfsFailure } =
                 await import("../backend");
+            setCachedOpfsFailure();
             setCachedOpfsFailure();
             expect(shouldAttemptSqliteToDexieCopy("auto")).toBe(false);
         });

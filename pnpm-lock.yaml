@@ -7,6 +7,11 @@ settings:
 overrides:
   '@tanstack/db': ^0.8.7
 
+patchedDependencies:
+  '@journeyapps/wa-sqlite@2.0.4':
+    hash: be3021d369358f4755f895d99c2cb5398391c88586693517a64f3df99a2ed076
+    path: patches/@journeyapps__wa-sqlite@2.0.4.patch
+
 importers:
 
   .:
@@ -19,7 +24,7 @@ importers:
         version: 3.17.4(react-dom@19.2.8(react@19.2.8))(react-native@0.87.1(@babel/core@7.29.7)(@types/react@19.2.18)(react@19.2.8))(react@19.2.8)
       '@journeyapps/wa-sqlite':
         specifier: 2.0.4
-        version: 2.0.4
+        version: 2.0.4(patch_hash=be3021d369358f4755f895d99c2cb5398391c88586693517a64f3df99a2ed076)
       '@tanstack/db':
         specifier: ^0.8.7
         version: 0.8.7(typescript@7.0.2)
@@ -8924,7 +8929,7 @@ snapshots:
       '@types/yargs': 17.0.35
       chalk: 4.1.2
 
-  '@journeyapps/wa-sqlite@2.0.4': {}
+  '@journeyapps/wa-sqlite@2.0.4(patch_hash=be3021d369358f4755f895d99c2cb5398391c88586693517a64f3df99a2ed076)': {}
 
   '@jridgewell/gen-mapping@0.3.13':
     dependencies:

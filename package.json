@@ -46,6 +46,9 @@
     "pnpm": {
         "overrides": {
             "@tanstack/db": "^0.8.7"
+        },
+        "patchedDependencies": {
+            "@journeyapps/wa-sqlite@2.0.4": "patches/@journeyapps__wa-sqlite@2.0.4.patch"
         }
     }
 }

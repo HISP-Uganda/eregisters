@@ -51,25 +51,44 @@ export function setBackendSetting(setting: BackendSetting): void {
 
 interface CachedOpfsFailure {
     version: string;
+    /** Consecutive failed boots. Absent on entries written before counting (treated as 1). */
+    failures?: number;
 }
 
-export function getCachedOpfsFailure(): boolean {
+/**
+ * Consecutive failed SQLite opens before "auto" stops trying. One is not
+ * enough: a same-tab reload can fail the first open transiently, and a
+ * single failure used to pin a working device to Dexie — wayfinder ticket
+ * "Why does the first SQLite open sometimes fail on a reload, and should
+ * it trigger a full store copy?". A truly incapable device pays for one
+ * extra failed attempt.
+ */
+export const OPFS_FAILURES_TO_CACHE = 2;
+
+function readCachedOpfsFailure(): CachedOpfsFailure | undefined {
     try {
         const raw = localStorage.getItem(OPFS_FAILURE_CACHE_KEY);
-        if (!raw) return false;
+        if (!raw) return undefined;
         const parsed = JSON.parse(raw) as CachedOpfsFailure;
-        return parsed.version === OPFS_PROBE_CACHE_VERSION;
+        return parsed.version === OPFS_PROBE_CACHE_VERSION ? parsed : undefined;
     } catch {
-        return false;
+        return undefined;
     }
 }
 
+export function getCachedOpfsFailure(): boolean {
+    return (readCachedOpfsFailure()?.failures ?? 0) >= OPFS_FAILURES_TO_CACHE;
+}
+
+/** Records one more consecutive failure; `clearCachedOpfsFailure` resets the count on success. */
 export function setCachedOpfsFailure(): void {
+    const previous = readCachedOpfsFailure();
     try {
         localStorage.setItem(
             OPFS_FAILURE_CACHE_KEY,
             JSON.stringify({
                 version: OPFS_PROBE_CACHE_VERSION,
+                failures: (previous ? (previous.failures ?? 1) : 0) + 1,
             } satisfies CachedOpfsFailure),
         );
     } catch {
