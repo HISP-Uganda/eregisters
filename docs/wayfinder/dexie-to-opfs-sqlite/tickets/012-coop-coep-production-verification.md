@@ -1,7 +1,7 @@
 ---
 title: Verify COOP/COEP Header-Injection on Real Production DHIS2 and Safari
 type: wayfinder:task
-status: open
+status: closed
 assignee: claude-session
 blocked_by: []
 ---
@@ -284,3 +284,72 @@ fix applied. If anything in items 3, 5, 6 fails in a way that changes the
 approach (not just a small patch tweak), flag it against the map's
 Destination note about COOP/COEP being "the one thing that could still
 redraw the destination" rather than silently patching around it here.
+
+## Update (2026-09-27) — items 3 and 6 verified in Chrome against the production build
+
+Driven by an agent session with the maintainer (Chrome via the browser
+extension). Method: a local stand-in for DHIS2's servlet
+(`standin-server.mjs`, scratch — not committed) serving the real
+`pnpm build` output with **no COOP/COEP headers**, so isolation can only
+come from patch 7; `/api/*` passed through to the d2 dev proxy
+(`eregisters.health.go.ug`) so the app can sign in and boot. Swapping a
+`current` symlink between two builds simulates a deployment.
+
+- **Item 3 — PWA update flow: PASS (Chrome).** Build A
+  (`assets/main-BjGoUa4-.js`) installed → cold load controlled and
+  `crossOriginIsolated === true`. Stand-in switched to build B
+  (`assets/main-Dm0T_v1d.js`, different `service-worker.js`) with the tab
+  open → `registration.update()` installed B as **waiting** (no
+  auto-activation) → `SKIP_WAITING` (exactly what `App.tsx`'s MyApp /
+  the shell's update prompt send) → new worker took control, the page
+  reloaded itself, came back on build B, **still isolated**, no waiting
+  worker, no manual close/reopen. Patch 7's `stopImmediatePropagation()`
+  navigation ownership did not interfere with `controllerchange`.
+- **Item 6 — revised: PASS (Chrome).** `single-tab-lock.ts` no longer
+  exists — the wa-sqlite map replaced it (OPFSCoopSyncVFS supports
+  concurrent tabs natively), so this item now tests concurrent tabs, not
+  a lock. Two tabs on the production build, both signed in, both isolated
+  and SW-controlled, both running the app with no storage error; each
+  tab's wa-sqlite Worker held its own `.ahp-*` pool lock, the database
+  file lock (`ahp:/eregisters-wa-v1-eregisters-metadata.sqlite3`) held by
+  one at a time, nothing pending. Closed the tab holding the database
+  lock → its locks were released; a fresh third tab booted isolated and
+  took the database lock while the other tab stayed open. (The same
+  concurrency, including cross-tab Web-Lock serialization of store
+  copies, was also verified in dev by the storage-migration map's cutover
+  smoke, scenario 7.)
+- **Item 5 — Safari: handed to the maintainer** with a checklist against
+  the same stand-in (Safari on the same Mac can open `localhost:4173`).
+  Pending.
+
+## Resolution (2026-09-27)
+
+All remaining items (3, 5, 6) verified — Chrome by the agent, **Safari
+26.6.2 on macOS by the maintainer** — against the real production build
+served by the local no-COOP/COEP stand-in (see the 2026-09-27 update
+above), API passed through to production via the d2 dev proxy.
+
+| Item | Chrome | Safari 26.6.2 (macOS) |
+|---|---|---|
+| Cold load: SW-controlled, `crossOriginIsolated`, on SQLite | ✅ | ✅ `isolated:true, controlled:true, opfs:function, sqliteUsed:"1", opfsFailed:null` |
+| 3 — update flow (build B → build A while open) | ✅ SKIP_WAITING → controllerchange → self-reload, still isolated | ✅ on new build `main-BjGoUa4-.js`, isolated, `waiting:null`, `storage.boot` ready on sqlite |
+| 5 — Safari at all | n/a | ✅ OPFS available, isolation works, SQLite chosen (no Dexie fallback) |
+| 6 — two tabs (revised: concurrent wa-sqlite, no lock) | ✅ both isolated & running; closing the DB-lock holder released it; a fresh tab took over | ✅ second tab isolated, on SQLite, no error |
+
+**Stand-in artefacts, not app issues**: in Safari, the shell's
+unauthenticated startup probes (`/api/42/me?fields=id`,
+`/api/42/userSettings`) logged "access control checks" errors — the
+stand-in's pass-through answers them with a 302 to
+`http://localhost:8080/dhis-web-login/`, a cross-origin (other-port)
+redirect Safari's `fetch` refuses. On real DHIS2 the login page is
+same-origin, so this can't occur; the app booted regardless. The
+`logo_banner` 404 is the stand-in lacking DHIS2 login assets.
+
+**Residual, not verified** (recorded, not blocking): iOS Safari
+(needs the stand-in exposed on the LAN or a staging deploy); the update
+flow through DHIS2's *real* servlet (verified only through the stand-in,
+which reproduces the no-COOP/COEP condition but not DHIS2's other
+headers — real-servlet cold load was verified reactively in ticket 018).
+The COOP/COEP mechanism is no longer the thing most likely to "redraw
+the destination": it holds in Chrome and desktop Safari, fresh install
+and update.
