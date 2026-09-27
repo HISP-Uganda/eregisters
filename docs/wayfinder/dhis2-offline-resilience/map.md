@@ -80,12 +80,6 @@ just unit tests.
   migration's pending COOP/COEP `patch-sw.js` patch (`task/coi-sw-patch-
   integration`) beyond "don't clobber each other's sentinels" — not sharp
   enough to ticket until both are closer to landing.
-- Retrofitting `sync.ts`'s/`sync-metadata-actors.ts`'s other 12+
-  unprotected `engine.query`/`engine.mutate` call sites (metadata pulls,
-  the tracker-import submission itself) to use the new `withAbortTimeout`
-  helper from ticket 003 — confirmed as in-scope/desirable, not yet
-  ticketed since it's a mechanical follow-up rather than an open
-  decision.
 - Whether the SW-broadcast connection status (ticket 002's fixed
   `dhis2ConnectionStatusPlugin`) is worth wiring into the app UI as a
   second signal later, now that ticket 004 has deliberately deferred it —

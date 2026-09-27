@@ -121,6 +121,8 @@ being redirected away.
 - [Port the wa-sqlite driver adapter into eregisters' SqlDriver interface](tickets/001-port-wa-sqlite-driver-adapter.md) — built (commit `056b9ad`): `wa-sqlite-adapter.ts`/`wa-sqlite-worker.ts`/`wa-sqlite-worker-request.ts`/`wa-sqlite-protocol.ts`/`wa-sqlite-driver.ts`, sitting alongside `op-sqlite-driver.ts`, not yet wired into `App.tsx`. Reentrant `transaction()` matches `op-sqlite-driver.ts`'s shape; `begin`/`commit`/`rollback` message types (new, not in mohw-nas's own protocol) let a transaction span several `execute` round-trips, since eregisters' row-adapters call `tx.execute()` multiple times per transaction unlike mohw-nas's opaque-message transactions. Deliberately did NOT remove `single-tab-lock.ts` or touch `App.tsx` — op-sqlite is still the live driver, that swap belongs with ticket 002. Also fixed an unrelated `@tanstack/db` transitive-dependency regression (pinned via `pnpm.overrides`), and a real worker transaction-state bug `/code-review` caught (failing `COMMIT`/`ROLLBACK` wedged `inTransaction` permanently).
 - [Design the op-sqlite -> wa-sqlite migration procedure](tickets/002-migration-procedure-design.md) — mirrors `migrate-from-dexie.ts`/`migrate-from-sqlite.ts` exactly, no divergence: completion flag on the destination (wa-sqlite) side, fire-and-forget on first boot reusing the existing `migration-progress.ts` banner, retry-from-scratch on failure, drop the old op-sqlite data immediately on success, no staged/canary rollout. Corrected this map's stated premise in the process: **op-sqlite has not actually shipped to production yet — the live production backend today is still Dexie.js** — so this migration carries the same risk profile the original Dexie→SQLite migration took, not a harder one (see the Destination/Notes correction above).
 - [Browser support gate — what happens on Safari/WebKit](tickets/003-browser-support-gate.md) — a failed wa-sqlite init is treated exactly like a failed op-sqlite init today (automatic fallback to Dexie, cached via the existing `OPFS_FAILURE_CACHE_KEY` mechanism, zero new `backend.ts` code). No real Safari/iOS users exist in eregisters' current user base, confirmed directly — Safari's `OPFSCoopSyncVFS` failure isn't a consequence to flag or mitigate right now.
+- [Does wa-sqlite's OPFSCoopSyncVFS still need cross-origin isolation?](tickets/004-coi-still-needed.md) — no: sync build + OPFSCoopSyncVFS use non-shared memory and no SharedArrayBuffer/Atomics (the package itself lists "no COOP/COEP requirements"), and nothing else in the app needs isolation; retire the header injection in two releases but keep patch 7's navigation handling. Surfaced a possible offline-cold-start bug in patch 7's worker branch.
+- [Does an offline cold start fail to load the wa-sqlite worker?](tickets/008-offline-cold-start-worker.md) — yes, and worse: patch 7 fetched the worker network-only (offline → empty Dexie store, Total Clients 0) and never matched directory navigations to the precached index.html (an installed app launched offline didn't open at all). Fixed in patch 7 with a precache fallback for both; verified offline. No data lost in recovery. Surfaced a transient first-open failure on same-tab reloads.
 
 ## Implementation progress
 
@@ -164,33 +166,15 @@ doc-comment fixed before commit).
 
 ## Not yet specified
 
-- **Cross-tab config reactivity gap, newly real now that multi-tab
-  actually works**: `src/db/reactive-config.ts`'s same-tab-only pub/sub
-  (backing `useConfigRow.ts`, e.g. `ui_config`/`stage_hierarchy`) means a
-  config change made in one tab isn't live-reflected in another tab's UI
-  until that tab independently re-reads it — previously an accepted,
-  largely-theoretical limitation (op-sqlite's `single-tab-lock.ts` made
-  genuine multi-tab rare), now a real, observable gap on both backends.
-  Not yet sharp enough to ticket (does it need real cross-tab
-  `BroadcastChannel`-based reactivity, or is periodic/visibility-based
-  re-checking — the same pattern `__root.tsx`'s `reloadSignal` polling
-  already uses — good enough?).
 - Whether eregisters' `wa-sqlite`-backed file needs any workspace/user
   scoping in its naming the way mohw-nas's did (multi-tenant across
   DHIS2 servers within one browser profile) — eregisters' current
   op-sqlite usage is a single fixed logical name
   (`"eregisters-metadata"`), so this may just stay simple, but not
   confirmed sharp enough to ticket yet.
-- Whether/when to retire the COOP/COEP header-injection mechanism —
-  explicitly deferred above, revisit once wa-sqlite is verified working
-  in eregisters' own real production deployment.
 - Whether a Playwright-based browser test harness gets built —
   explicitly out of this map's scope; a real, separate future effort if
   wanted.
-- Whether true multi-tab concurrency exposes any cross-tab race
-  eregisters' existing sync/UI model doesn't already handle (flagged
-  above as a real question, not yet sharp enough to specify).
-
 ## Out of scope
 
 - mohw-nas's fresh-start/no-legacy-import approach — does not apply

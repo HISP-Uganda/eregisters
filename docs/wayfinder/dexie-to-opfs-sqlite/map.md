@@ -125,12 +125,9 @@ in production, old Dexie databases are gone, and `pnpm test:vitest` /
 
 ## Not yet specified
 
-- Removing `scripts/patch-sw.js`'s patches 2, 5, and 6 now that patch 7
-  (ticket 018) makes them permanently unreachable dead code for
-  navigation requests — not urgent, deliberately deferred rather than
-  touched mid-incident; not yet sharp enough to ticket (needs deciding
-  whether to remove all three together or verify each is truly dead
-  first).
+<!-- The "remove dead patch-sw.js patches 2/5/6" item moved to the wa-sqlite
+multi-tab map's ticket "Retire the COOP/COEP header injection if wa-sqlite
+doesn't need it", which decides it together with the COI patches. -->
 
 ## Out of scope
 
