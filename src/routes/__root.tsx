@@ -168,6 +168,9 @@ function SplitSyncButton({
     danger?: boolean;
     disabled?: boolean;
 }) {
+    // Running: the button and its menu (e.g. "Re-download all data…",
+    // "Full Metadata Sync") can't start another run of the same sync.
+    const busy = disabled || isLoading;
     return (
         <Space.Compact>
             <Tooltip
@@ -179,7 +182,7 @@ function SplitSyncButton({
                     onClick={primaryAction}
                     type={type}
                     danger={danger}
-                    disabled={disabled}
+                    disabled={busy}
                     style={{ height: "auto", padding: "4px 12px" }}
                 >
                     <Flex vertical align="flex-start" gap={0}>
@@ -195,8 +198,8 @@ function SplitSyncButton({
                     </Flex>
                 </Button>
             </Tooltip>
-            <Dropdown
-                disabled={disabled}
+            {/* <Dropdown
+                disabled={busy}
                 menu={{
                     items: dropdownItems.map((item) => ({
                         key: item.key,
@@ -208,11 +211,11 @@ function SplitSyncButton({
                 <Button
                     type={type}
                     danger={danger}
-                    disabled={disabled}
+                    disabled={busy}
                     icon={<DownOutlined />}
                     style={{ height: "auto", padding: "4px 6px" }}
                 />
-            </Dropdown>
+            </Dropdown> */}
         </Space.Compact>
     );
 }
@@ -561,9 +564,14 @@ function LayoutWithDrafts() {
         );
     });
 
+    // The whole pull flow — clearing the checkpoint for a re-download,
+    // the pull itself, and saving the new checkpoint — so Pull Data stays
+    // disabled until it's over.
     const syncingData = SyncContext.useSelector((snapshot) =>
         isDataPullLoading(
-            snapshot.matches({ dataPull: "syncing" }),
+            snapshot.matches({ dataPull: "resettingCheckpoint" }) ||
+                snapshot.matches({ dataPull: "syncing" }) ||
+                snapshot.matches({ dataPull: "updateLastDataPull" }),
             snapshot.context.lastDataPull,
         ),
     );
