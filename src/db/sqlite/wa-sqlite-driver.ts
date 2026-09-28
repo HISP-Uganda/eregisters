@@ -121,24 +121,64 @@ export function wrapWaSqliteWorker(
     worker: WaSqliteWorkerLike,
 ): SqlDriver {
     const client = new WaSqliteWorkerClient(name, worker);
+
+    // The Worker holds ONE connection, and a transaction on it spans many
+    // round-trips. Without this queue a second `transaction()` started
+    // meanwhile (two saves at once — e.g. the maternity newborn popup)
+    // sent its own `begin` into the open one and failed ("begin requested
+    // while a transaction is already open"), and a plain `execute` sent
+    // meanwhile ran inside it — undone if it rolled back. So each
+    // top-level `execute` / `transaction` waits its turn; statements
+    // inside a transaction go through its tx driver and don't queue.
+    // (Nothing inside a transaction calls this outer driver — it would
+    // wait on itself.)
+    // Idle → runs at once (no added latency); busy → waits, in order.
+    let tail: Promise<void> = Promise.resolve();
+    let queued = 0;
+    function exclusive<T>(run: () => Promise<T>): Promise<T> {
+        const invoke = (): Promise<T> => {
+            try {
+                return run();
+            } catch (error) {
+                return Promise.reject(error);
+            }
+        };
+        const result = queued === 0 ? invoke() : tail.then(invoke);
+        queued++;
+        tail = result.then(
+            () => {
+                queued--;
+            },
+            () => {
+                queued--;
+            },
+        );
+        return result;
+    }
+
     return {
         execute: <TRow = Record<string, unknown>>(
             sql: string,
             params?: ReadonlyArray<unknown>,
-        ) => client.request({ type: "execute", sql, params }) as Promise<
-            SqlExecuteResult<TRow>
-        >,
-        transaction: async (fn) => {
-            await client.request({ type: "begin" });
-            try {
-                const result = await fn(makeTxDriver(client));
-                await client.request({ type: "commit" });
-                return result;
-            } catch (error) {
-                await client.request({ type: "rollback" });
-                throw error;
-            }
-        },
+        ) =>
+            exclusive(
+                () =>
+                    client.request({ type: "execute", sql, params }) as Promise<
+                        SqlExecuteResult<TRow>
+                    >,
+            ),
+        transaction: (fn) =>
+            exclusive(async () => {
+                await client.request({ type: "begin" });
+                try {
+                    const result = await fn(makeTxDriver(client));
+                    await client.request({ type: "commit" });
+                    return result;
+                } catch (error) {
+                    await client.request({ type: "rollback" });
+                    throw error;
+                }
+            }),
         // Terminating the Worker releases its OPFS access handles, which
         // is what a discarded driver (the reverse store copy's read-only
         // one) must not keep holding.

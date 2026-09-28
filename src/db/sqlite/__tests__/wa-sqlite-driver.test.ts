@@ -56,6 +56,110 @@ async function tick(): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
+/**
+ * Answers every request on its own, asynchronously, with the real
+ * worker's transaction rule (`wa-sqlite-worker-request.ts`): a `begin`
+ * while a transaction is open fails. Records whether each statement ran
+ * inside a transaction.
+ */
+class TransactionalFakeWorker implements WaSqliteWorkerLike {
+    inTransaction = false;
+    log: Array<{ sql: string; inTransaction: boolean }> = [];
+    private listener?: (event: MessageEvent<WaSqliteResponse>) => void;
+
+    addEventListener(type: "message" | "error", listener: any): void {
+        if (type === "message") this.listener = listener;
+    }
+
+    postMessage({ request }: { name: string; request: WaSqliteRequest }): void {
+        setTimeout(() => {
+            let response: WaSqliteResponse;
+            if (request.type === "begin" && this.inTransaction) {
+                response = {
+                    id: request.id,
+                    ok: false,
+                    error: "wa-sqlite worker: begin requested while a transaction is already open",
+                };
+            } else {
+                if (request.type === "begin") this.inTransaction = true;
+                if (request.type === "commit" || request.type === "rollback") {
+                    this.inTransaction = false;
+                }
+                this.log.push({
+                    sql: request.type === "execute" ? request.sql : request.type.toUpperCase(),
+                    inTransaction: this.inTransaction,
+                });
+                response = {
+                    id: request.id,
+                    ok: true,
+                    result: { rows: [], rowsAffected: 0, insertId: undefined },
+                };
+            }
+            this.listener?.({ data: response } as MessageEvent<WaSqliteResponse>);
+        }, 0);
+    }
+}
+
+describe("wa-sqlite-driver: one connection per tab, used by one transaction at a time", () => {
+    it("runs two transactions started together one after the other, instead of failing the second begin", async () => {
+        // e.g. the maternity newborn popup saving while another save runs.
+        const worker = new TransactionalFakeWorker();
+        const driver = wrapWaSqliteWorker("test.db", worker);
+
+        await Promise.all([
+            driver.transaction(async (tx) => {
+                await tx.execute("INSERT A1");
+                await tx.execute("INSERT A2");
+            }),
+            driver.transaction(async (tx) => {
+                await tx.execute("INSERT B1");
+            }),
+        ]);
+
+        expect(worker.log.map((l) => l.sql)).toEqual([
+            "BEGIN", "INSERT A1", "INSERT A2", "COMMIT",
+            "BEGIN", "INSERT B1", "COMMIT",
+        ]);
+    });
+
+    it("keeps a statement from outside the transaction out of it (a rollback must not undo it)", async () => {
+        const worker = new TransactionalFakeWorker();
+        const driver = wrapWaSqliteWorker("test.db", worker);
+
+        let releaseTx!: () => void;
+        const tx = driver.transaction(async (t) => {
+            await t.execute("INSERT IN TX");
+            await new Promise<void>((resolve) => {
+                releaseTx = resolve;
+            });
+        });
+        await tick();
+        await tick();
+        const outside = driver.execute("UPDATE OUTSIDE");
+        await tick();
+        releaseTx();
+        await Promise.all([tx, outside]);
+
+        expect(worker.log.find((l) => l.sql === "UPDATE OUTSIDE")).toEqual({
+            sql: "UPDATE OUTSIDE",
+            inTransaction: false,
+        });
+    });
+
+    it("keeps working after a transaction fails", async () => {
+        const worker = new TransactionalFakeWorker();
+        const driver = wrapWaSqliteWorker("test.db", worker);
+
+        await expect(
+            driver.transaction(async () => {
+                throw new Error("boom");
+            }),
+        ).rejects.toThrow("boom");
+        await expect(driver.execute("SELECT 1")).resolves.toBeDefined();
+        expect(worker.inTransaction).toBe(false);
+    });
+});
+
 describe("wa-sqlite-driver", () => {
     it("execute sends one request and resolves with the worker's response", async () => {
         const worker = new FakeWorker();
