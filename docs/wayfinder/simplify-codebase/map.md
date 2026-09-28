@@ -44,14 +44,10 @@ penalty well below today's 10.0, with dead code and cycles still at 0.
 - [Can the unused MOHRegisterDB tables and old migration code go?](tickets/002-legacy-dexie-tables.md) — the 17 unused tables go (Dexie version 5 deletes them on devices; HMIS drafts kept); six dead interfaces removed and `SyncState` moved to `schemas.ts`; the Dexie → SQLite copy's source stays (it's also the Dexie fallback store).
 - [How should utils.ts be split?](tickets/003-split-utils.md) — into six topic modules (program-rule execution and results, flattening, record factories, form fields, record cascades); `utils.ts` deleted, importers updated directly, three dead helpers dropped. A pure move.
 - [How should executeProgramRules be made smaller and safe to change?](tickets/004-program-rules.md) — pinned by a golden test over the real 804 rules (fixture from production) plus unit tests, then split into variables, d2 functions, one shared expression translator, and action handlers; contract unchanged, golden identical. DHIS2 gaps deferred to a new ticket.
+- [What pattern should the giant screens be split into?](tickets/005-screen-pattern.md) — `src/screens/<screen>/` with data hooks, unit-tested pure helpers, presentational sections and a plain `actions.ts`; route files only bind the URL; ≤ ~150 lines per component. Proven on the client page (971 → 61 + 11 small files), fixing its hook-order bug; one ticket per remaining screen.
 
 ## Not yet specified
 
-- Breaking up each giant screen (`tracked-entity.tsx`,
-  `program-stage-capture.tsx`, `main-event-capture.tsx`,
-  `admin.section-layout.tsx`, `analytics.tsx`, `__root.tsx`) — one
-  ticket each once "What pattern should the giant screens be split into?"
-  settles the approach.
 - The three real duplicated blocks fallow reports (`column-registry.ts`,
   the SQLite row adapters' `loadByKeys`, the admin settings pages).
 - Commented-out code (e.g. the Pull/Sync split button's `<Dropdown>`,
