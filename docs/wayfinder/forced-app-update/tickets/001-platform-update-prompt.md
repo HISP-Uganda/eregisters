@@ -2,7 +2,7 @@
 title: What does the DHIS2 app platform do on an app update, and can its own prompt be turned off?
 type: wayfinder:research
 status: open
-assignee:
+assignee: claude-research-agent
 blocked_by: []
 ---
 
