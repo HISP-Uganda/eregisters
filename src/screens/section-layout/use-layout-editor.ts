@@ -1,4 +1,5 @@
 import { useDataEngine } from "@dhis2/app-runtime";
+import { saveToDataStore } from "../../db/app-data-store";
 import { message } from "antd";
 import { useEffect, useMemo, useState } from "react";
 import { useMetadataStore } from "../../hooks/useMetadataStore";
@@ -59,20 +60,7 @@ export function useLayoutEditor(sectionId: string | null) {
                 formLayouts: { ...(uiConfig.formLayouts ?? {}), [sectionId]: layout },
                 subsections: { ...uiConfig.subsections, [sectionId]: layoutToSubsections(layout) },
             };
-            try {
-                await engine.mutate({
-                    type: "update",
-                    resource: "dataStore/eregisters",
-                    id: "ui-config",
-                    data: updated,
-                });
-            } catch {
-                await engine.mutate({
-                    type: "create",
-                    resource: "dataStore/eregisters",
-                    data: { key: "ui-config", value: updated },
-                });
-            }
+            await saveToDataStore(engine, "ui-config", updated);
             await metadataStore.putRow("ui_config", { id: "main", config: updated });
             message.success("Form layout saved");
         } catch {

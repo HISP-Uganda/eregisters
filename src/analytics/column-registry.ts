@@ -250,6 +250,37 @@ function column(
     };
 }
 
+/**
+ * A stage's data elements in form order, each with what every stage's
+ * columns need. A data element in no programStageSection, or in a section
+ * the service filter leaves out, is omitted (not put in an "Ungrouped"
+ * bucket).
+ */
+function* stageDataElements(
+    stage: ProgramStage,
+    metadata: AnalyticsMetadata,
+    uiConfig: Parameters<typeof orderDataElementsBySection>[2],
+    sectionAllowed: (section: string | undefined) => boolean,
+) {
+    for (const { item: psde, sectionLabel, subsectionLabel } of orderDataElementsBySection(
+        stage,
+        stage.programStageDataElements ?? [],
+        uiConfig,
+    )) {
+        if (sectionLabel === undefined) continue;
+        if (!sectionAllowed(sectionLabel)) continue;
+        const de = metadata.dataElements.get(psde.dataElement.id) ?? psde.dataElement;
+        const valueKind = valueKindFromDhis2(de.valueType);
+        yield {
+            de,
+            valueKind,
+            label: labelFrom(de.name, de.formName, de.id),
+            groupPath: subsectionLabel ? [stage.name, sectionLabel, subsectionLabel] : [stage.name, sectionLabel],
+            canMeasure: valueKind === "number",
+        };
+    }
+}
+
 export function buildColumnRegistry({
     metadata,
     mainStageId,
@@ -322,30 +353,22 @@ export function buildColumnRegistry({
         );
     }
 
-    for (const { item: psde, sectionLabel, subsectionLabel } of orderDataElementsBySection(
+    for (const { de, valueKind, label, groupPath, canMeasure } of stageDataElements(
         mainStage,
-        mainStage.programStageDataElements ?? [],
+        metadata,
         uiConfig,
+        sectionAllowed,
     )) {
-        const de = metadata.dataElements.get(psde.dataElement.id) ?? psde.dataElement;
-        // For now, a data element not in any programStageSection is simply
-        // omitted rather than falling into an "Ungrouped" bucket.
-        if (sectionLabel === undefined) continue;
-        if (!sectionAllowed(sectionLabel)) continue;
-        const section = sectionLabel;
-        const valueKind = valueKindFromDhis2(de.valueType);
         columns.push(
             column({
                 key: `parentEvent.dataValue.${de.id}`,
-                label: labelFrom(de.name, de.formName, de.id),
+                label,
                 source: "parentEvent",
                 sourceFieldId: de.id,
                 valueKind,
                 optionSetId: de.optionSet?.id,
-                groupPath: subsectionLabel
-                    ? [mainStage.name, section, subsectionLabel]
-                    : [mainStage.name, section],
-                canMeasure: valueKind === "number",
+                groupPath,
+                canMeasure,
             }),
         );
     }
@@ -367,35 +390,24 @@ export function buildColumnRegistry({
                 }),
             );
 
-            for (const { item: psde, sectionLabel, subsectionLabel } of orderDataElementsBySection(
+            for (const { de, valueKind, label, groupPath, canMeasure } of stageDataElements(
                 stage,
-                stage.programStageDataElements ?? [],
+                metadata,
                 uiConfig,
+                sectionAllowed,
             )) {
-                const de =
-                    metadata.dataElements.get(psde.dataElement.id) ??
-                    psde.dataElement;
-                // For now, a data element not in any programStageSection is
-                // simply omitted rather than falling into an "Ungrouped" bucket.
-                if (sectionLabel === undefined) continue;
-                if (!sectionAllowed(sectionLabel)) continue;
-                const section = sectionLabel;
-                const valueKind = valueKindFromDhis2(de.valueType);
-                const deLabel = labelFrom(de.name, de.formName, de.id);
                 columns.push(
                     column({
                         key: `childEvent.${stageId}.${slot}.dataValue.${de.id}`,
-                        label: `${deLabel} (${slot})`,
+                        label: `${label} (${slot})`,
                         source: "childEvent",
                         sourceFieldId: de.id,
                         valueKind,
                         optionSetId: de.optionSet?.id,
-                        groupPath: subsectionLabel
-                            ? [stage.name, section, subsectionLabel]
-                            : [stage.name, section],
-                        canMeasure: valueKind === "number",
+                        groupPath,
+                        canMeasure,
                         chooserKey: `childEvent.${stageId}.dataValue.${de.id}`,
-                        chooserLabel: deLabel,
+                        chooserLabel: label,
                     }),
                 );
             }
@@ -422,33 +434,22 @@ export function buildColumnRegistry({
             }),
         );
 
-        for (const { item: psde, sectionLabel, subsectionLabel } of orderDataElementsBySection(
+        for (const { de, valueKind, label, groupPath, canMeasure } of stageDataElements(
             stage,
-            stage.programStageDataElements ?? [],
+            metadata,
             uiConfig,
+            sectionAllowed,
         )) {
-            const de =
-                metadata.dataElements.get(psde.dataElement.id) ??
-                psde.dataElement;
-            // For now, a data element not in any programStageSection is
-            // simply omitted rather than falling into an "Ungrouped" bucket.
-            if (sectionLabel === undefined) continue;
-            if (!sectionAllowed(sectionLabel)) continue;
-            const section = sectionLabel;
-            const valueKind = valueKindFromDhis2(de.valueType);
-            const deLabel = labelFrom(de.name, de.formName, de.id);
             columns.push(
                 column({
                     key: `linkedParent.${stageId}.dataValue.${de.id}`,
-                    label: deLabel,
+                    label,
                     source: "parentEvent",
                     sourceFieldId: de.id,
                     valueKind,
                     optionSetId: de.optionSet?.id,
-                    groupPath: subsectionLabel
-                        ? [stage.name, section, subsectionLabel]
-                        : [stage.name, section],
-                    canMeasure: valueKind === "number",
+                    groupPath,
+                    canMeasure,
                 }),
             );
         }

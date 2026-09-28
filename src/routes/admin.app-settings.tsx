@@ -1,4 +1,5 @@
 import { useDataEngine } from "@dhis2/app-runtime";
+import { saveToDataStore } from "../db/app-data-store";
 import { createRoute } from "@tanstack/react-router";
 import {
     Button,
@@ -42,20 +43,7 @@ function AppSettings() {
 
     async function saveConfig(patch: Partial<typeof uiConfig>) {
         const updated = { ...uiConfig, ...patch };
-        try {
-            await engine.mutate({
-                type: "update",
-                resource: "dataStore/eregisters",
-                id: "ui-config",
-                data: updated,
-            });
-        } catch {
-            await engine.mutate({
-                type: "create",
-                resource: "dataStore/eregisters",
-                data: { key: "ui-config", value: updated },
-            });
-        }
+        await saveToDataStore(engine, "ui-config", updated);
         await metadataStore.putRow("ui_config", {
             id: "main",
             config: updated,
@@ -87,20 +75,7 @@ function AppSettings() {
                     [type]: { timestamp },
                 },
             };
-            try {
-                await engine.mutate({
-                    type: "update",
-                    resource: "dataStore/eregisters",
-                    id: "ui-config",
-                    data: updated,
-                });
-            } catch {
-                await engine.mutate({
-                    type: "create",
-                    resource: "dataStore/eregisters",
-                    data: { key: "ui-config", value: updated },
-                });
-            }
+            await saveToDataStore(engine, "ui-config", updated);
             // The sending device already runs what it announces: mark the
             // app signal as seen here so the forced update
             // (src/app-update/update-controller.ts) doesn't reload the

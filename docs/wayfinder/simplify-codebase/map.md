@@ -60,6 +60,7 @@ still at 0. (fallow's `unit_size` penalty was dropped as a goal — see
 - [Split the data set reports page](tickets/018-split-data-set-reports.md) — into `src/screens/data-set-report/`: loading and verify/revoke as modules, the ten form blocks as one table. Found: the ereports API key is hard-coded in the client — moved to its own map.
 - [Do the data set and category option combo pulls miss pages?](tickets/019-metadata-paging.md) — data sets yes past 50 (11 today): `paging: false` added; the category option combo endpoint isn't paged.
 - [What should the function-size target be?](tickets/020-unit-size-target.md) — the ~300-line rule (met) is the finish line; fallow's `unit_size` (functions over 60 lines) dropped as a goal; tests stay in fallow's health.
+- [Which duplicated blocks should be merged?](tickets/021-duplicated-blocks.md) — `buildColumnRegistry`'s three stage loops share one generator (pinned by a snapshot); the dataStore update-else-create is one `saveToDataStore` (×4); the row adapters' small overlap left.
 
 ## Not yet specified
 

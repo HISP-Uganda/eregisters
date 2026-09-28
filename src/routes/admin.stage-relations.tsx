@@ -1,4 +1,5 @@
 import { useDataEngine } from "@dhis2/app-runtime";
+import { saveToDataStore } from "../db/app-data-store";
 import { createRoute } from "@tanstack/react-router";
 import { Button, Flex, message, Select, Table, Typography } from "antd";
 import React, { useState } from "react";
@@ -70,20 +71,7 @@ function StageRelations() {
     const save = async () => {
         setSaving(true);
         try {
-            try {
-                await engine.mutate({
-                    type: "update",
-                    resource: "dataStore/eregisters",
-                    id: "stage-hierarchy",
-                    data: pairs,
-                });
-            } catch {
-                await engine.mutate({
-                    type: "create",
-                    resource: "dataStore/eregisters",
-                    data: { key: "stage-hierarchy", value: pairs },
-                });
-            }
+            await saveToDataStore(engine, "stage-hierarchy", pairs);
             await metadataStore.putRow("stage_hierarchy", {
                 id: "main",
                 config: pairs,

@@ -1,8 +1,8 @@
 ---
 title: Which duplicated blocks should be merged?
 type: wayfinder:grilling
-status: open
-assignee:
+status: closed
+assignee: claude-session
 blocked_by: []
 ---
 
@@ -18,3 +18,27 @@ local copy" (`admin.app-settings.tsx` ×2, `admin.stage-relations.tsx`,
 how — noting the admin broadcast must record the signal as seen
 *before* the local copy is saved (see `admin.app-settings.tsx`), so a
 shared helper can't just do both steps.
+
+## Resolution
+
+Decided 2026-09-28 (the user took the recommendations):
+
+1. **`column-registry.ts` — merged.** The three per-stage loops (main
+   stage, child-stage slots, linked parent stages) share one generator,
+   `stageDataElements`, which owns the rule that ungrouped or
+   service-filtered-out data elements are omitted and yields each data
+   element's label, value kind and group path. Pinned first (own commit):
+   a snapshot of the full 42-column list across all three kinds —
+   unchanged after.
+2. **SQLite row adapters' `loadByKeys` — left.** The shared part is a
+   signature and a two-line preamble; the bodies read different tables.
+   It's now fallow's only non-generated clone group.
+3. **dataStore saving — merged the server step.** `saveToDataStore(engine,
+   key, value)` (`src/db/app-data-store.ts`: update, else create) replaces
+   four copies — `ui-config` in App Settings (×2) and Section Layout, and
+   `stage-hierarchy` in Stage Relations. Callers still save their local
+   copy themselves, so the admin's reload broadcast still marks the
+   signal as seen before that.
+
+Checked: typecheck clean; 83 test files / 566 tests pass (3 new); fallow:
+no dead code, one clone group left (item 2).
