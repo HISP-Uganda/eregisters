@@ -57,3 +57,4 @@ penalty well below today's 10.0, with dead code and cycles still at 0.
 ## Out of scope
 
 - The generated HMIS form configs.
+- [Should each device report its storage backend to the server?](tickets/007-report-storage-backend.md) — a new feature (device id, dataStore report, admin view); Dexie's removal is already decided (kept as the fallback), so gathering evidence for removing it later is a separate effort.
