@@ -61,12 +61,6 @@ penalty well below today's 10.0, with dead code and cycles still at 0.
 
 ## Not yet specified
 
-- The three real duplicated blocks fallow reports (`column-registry.ts`,
-  the SQLite row adapters' `loadByKeys`, the admin settings pages).
-- Commented-out code (e.g. the Pull/Sync split button's `<Dropdown>`,
-  the storage banner, the client list's "Delete client" column and its
-  dead "Patient Dashboard / Summary" menu) — keep, restore or delete.
-
 ## Out of scope
 
 - The generated HMIS form configs.
