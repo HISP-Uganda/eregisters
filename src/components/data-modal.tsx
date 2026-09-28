@@ -18,6 +18,7 @@ import {
     FlattenedEvent,
     FlattenedTrackedEntity,
 } from "../schemas";
+import { useUnsavedWork } from "../app-update/unsaved-work";
 
 function renderBlockTooltip(block: SaveBlock): React.ReactNode {
     const lines: string[] = [];
@@ -267,6 +268,9 @@ export function DataModal<T extends FlattenedTrackedEntity | FlattenedEvent>({
     const isMobile = !screens.md;
     const [loading, setLoading] = useState(false);
     const [openCount, setOpenCount] = useState(0);
+    // An open popup's record is a hidden draft until saved — a reload now
+    // would strand it (forced app update waits for it).
+    useUnsavedWork(open, `an open "${title}" form`);
 
     useEffect(() => {
         if (open) {

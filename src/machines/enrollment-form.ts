@@ -10,6 +10,7 @@ import { getEnrollmentsCollection } from "../db/collections";
 import { FlattenedEnrollment, FlattenedTrackedEntity } from "../schemas";
 
 import { FormEvent } from "./common";
+import { whileSaving } from "../app-update/unsaved-work";
 
 const enrollmentFormMachine = setup({
     types: {
@@ -55,10 +56,12 @@ const enrollmentFormMachine = setup({
                     formData: Record<string, any>;
                 };
             }) => {
-                await getEnrollmentsCollection().utils.insertLocally({
-                    ...data,
-                    attributes: { ...data.attributes, ...formData },
-                });
+                await whileSaving("saving an enrollment", () =>
+                    getEnrollmentsCollection().utils.insertLocally({
+                        ...data,
+                        attributes: { ...data.attributes, ...formData },
+                    }),
+                );
             },
         ),
     },

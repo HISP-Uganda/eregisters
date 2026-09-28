@@ -18,6 +18,7 @@ import {
 } from "../utils/utils";
 
 import { applyRuleResultsToForm, FormEvent } from "./common";
+import { whileSaving } from "../app-update/unsaved-work";
 const eventFormMachine = setup({
     types: {
         events: {} as FormEvent,
@@ -115,13 +116,15 @@ const eventFormMachine = setup({
                     formData: Record<string, any>;
                 };
             }) => {
-                await getEventsCollection().utils.insertLocally({
-                    ...event,
-                    dataValues: {
-                        ...event.dataValues,
-                        ...formData,
-                    },
-                });
+                await whileSaving("saving an event", () =>
+                    getEventsCollection().utils.insertLocally({
+                        ...event,
+                        dataValues: {
+                            ...event.dataValues,
+                            ...formData,
+                        },
+                    }),
+                );
             },
         ),
     },

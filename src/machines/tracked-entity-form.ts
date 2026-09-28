@@ -14,6 +14,7 @@ import {
 } from "../utils/utils";
 import { applyRuleResultsToForm, FormEvent } from "./common";
 import { getTrackedEntitiesCollection } from "../db/collections";
+import { whileSaving } from "../app-update/unsaved-work";
 
 const trackedEntityFormMachine = setup({
     types: {
@@ -98,13 +99,15 @@ const trackedEntityFormMachine = setup({
                     formData: Record<string, any>;
                 };
             }) => {
-                await getTrackedEntitiesCollection().utils.insertLocally({
-                    ...data,
-                    attributes: {
-                        ...data.attributes,
-                        ...formData,
-                    },
-                });
+                await whileSaving("saving a client", () =>
+                    getTrackedEntitiesCollection().utils.insertLocally({
+                        ...data,
+                        attributes: {
+                            ...data.attributes,
+                            ...formData,
+                        },
+                    }),
+                );
             },
         ),
     },

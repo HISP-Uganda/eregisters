@@ -7,6 +7,7 @@ import { useMetadata } from "../hooks/useMetadata";
 import { useStageHierarchyConfig } from "../hooks/useStageHierarchyConfig";
 import type { StagePair } from "../schemas";
 import { AdminRoute } from "./admin";
+import { useUnsavedWork } from "../app-update/unsaved-work";
 
 export const AdminStageRelationsRoute = createRoute({
     getParentRoute: () => AdminRoute,
@@ -43,6 +44,7 @@ function StageRelations() {
     const savedConfig = useStageHierarchyConfig();
     const [pairs, setPairs] = useState<StagePair[]>(savedConfig);
     const [dirty, setDirty] = useState(false);
+    useUnsavedWork(dirty, "unsaved stage relations");
     const [saving, setSaving] = useState(false);
     const stages: Stage[] = program.programStages;
 

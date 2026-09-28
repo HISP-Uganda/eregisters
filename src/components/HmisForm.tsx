@@ -28,6 +28,7 @@ import type {
     HmisSectionConfig,
     setValue,
 } from "../form-configs/types";
+import { holdUnsavedWork } from "../app-update/unsaved-work";
 
 export type { HmisFormValues } from "../form-configs/types";
 
@@ -760,6 +761,9 @@ const InnerHmisForm: React.FC<HmisFormProps> = ({
         null,
     );
     const latestValuesRef = React.useRef<HmisFormValues>(values);
+    // Set while a debounced draft save is pending — the forced app update
+    // treats it as unsaved work and can flush it before reloading.
+    const releaseUnsavedRef = React.useRef<(() => void) | null>(null);
 
     // Keep the latest-values ref in sync so the unmount flush writes fresh data.
     React.useEffect(() => {
@@ -802,6 +806,8 @@ const InnerHmisForm: React.FC<HmisFormProps> = ({
                 draftTimerRef.current = null;
                 void flushDraft(latestValuesRef.current);
             }
+            releaseUnsavedRef.current?.();
+            releaseUnsavedRef.current = null;
         };
         // Intentionally not depending on flushDraft — this effect is a lifecycle
         // hook, not a data effect. flushDraft is closed over via useRef pattern.
@@ -830,9 +836,27 @@ const InnerHmisForm: React.FC<HmisFormProps> = ({
                 if (draftTimerRef.current !== null) {
                     clearTimeout(draftTimerRef.current);
                 }
+                const saveNow = async () => {
+                    if (draftTimerRef.current !== null) {
+                        clearTimeout(draftTimerRef.current);
+                        draftTimerRef.current = null;
+                    }
+                    try {
+                        await flushDraft(latestValuesRef.current);
+                    } finally {
+                        releaseUnsavedRef.current?.();
+                        releaseUnsavedRef.current = null;
+                    }
+                };
+                if (!releaseUnsavedRef.current) {
+                    releaseUnsavedRef.current = holdUnsavedWork(
+                        "an HMIS report draft",
+                        saveNow,
+                    );
+                }
+                latestValuesRef.current = next;
                 draftTimerRef.current = setTimeout(() => {
-                    draftTimerRef.current = null;
-                    void flushDraft(next);
+                    void saveNow();
                 }, 500);
                 return next;
             });
