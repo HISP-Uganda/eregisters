@@ -45,11 +45,14 @@ included.
 - [How do open tabs share one forced update?](tickets/004-tab-coordination.md) — one shared deadline across tabs; unsaved work (a shared Web Lock) or a running sync (the sync locks) in any tab holds the update back until the deadline + extension; then any tab posts `SKIP_WAITING` and the platform reloads every tab. `App.tsx`'s immediate `SKIP_WAITING` goes; an already-waiting worker is picked up on load; the platform's menu prompt is hidden with CSS.
 - [How does an open app learn of the admin's reload broadcast promptly?](tickets/005-broadcast-freshness.md) — re-read `ui-config` on the version-check tick; "already acted on" = recorded as seen (the signal current at page load counts as seen) instead of comparing two devices' clocks, which would loop a forced reload; a broadcast gets the same popup and countdown, ending in a plain reload per tab. The metadata broadcast stays a dismissible banner.
 - [Should a Full Metadata Sync replace metadata in one step instead of deleting it first?](tickets/007-atomic-full-metadata-sync.md) — yes: a new `MetadataStore.transaction` runs the full sync's delete + save as one step on both backends; a failure rolls back and keeps the old metadata (no more wiping the store via `resetIndexDB`).
+- [Build the forced update and verify it against a stand-in server](tickets/006-build-and-verify.md) — built: all-or-nothing Full Metadata Sync, the unsaved-work registry (+ shared lock), the update controller (deploy + broadcast, shared deadline, holds, sync block) and its notice. Verified with real builds on a stand-in: a waiting worker applied after the notice; two tabs held by an open popup, then both reloaded when it closed. Broadcast path unit-tested (not against the real server).
 
 ## Not yet specified
 
-- The popup's exact wording and look, and the grace-period length —
-  settle once the mechanics are decided (possibly a prototype ticket).
+- The notice's wording and look were set while building (a banner that
+  can't be dismissed during the grace period, a blocking popup when the
+  reload is due; 30 s / 10 min / +5 min) — revisit once field users have
+  seen it.
 - Showing the running app version somewhere (e.g. the profile menu), so
   support can tell which build a device is on.
 

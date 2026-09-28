@@ -154,6 +154,17 @@ function AppSettings() {
                     data: { key: "ui-config", value: updated },
                 });
             }
+            // The sending device already runs what it announces: mark the
+            // app signal as seen here so the forced update
+            // (src/app-update/update-controller.ts) doesn't reload the
+            // admin's own app.
+            if (type === "app") {
+                try {
+                    localStorage.setItem("eregisters.lastSeenAppSignal", timestamp);
+                } catch {
+                    // Unavailable storage: the admin's app reloads too.
+                }
+            }
             await metadataStore.putRow("ui_config", {
                 id: "main",
                 config: updated,
