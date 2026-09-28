@@ -1,4 +1,4 @@
-import type { SyncState } from "../db";
+import type { SyncState } from "../schemas";
 import {
     checkMetadataInfoGeneric,
     deleteMetadataForResyncGeneric,

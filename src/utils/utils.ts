@@ -26,7 +26,6 @@ export type EventForRules = {
     dataValues: Record<string, any>;
 };
 
-import { db } from "../db";
 import {
     getEnrollmentsCollection,
     getEventsCollection,

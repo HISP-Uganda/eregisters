@@ -1,5 +1,5 @@
 import Dexie from "dexie";
-import type { SyncState } from "../index";
+import type { SyncState } from "../../schemas";
 import type {
     FlattenedEnrollment,
     FlattenedEvent,

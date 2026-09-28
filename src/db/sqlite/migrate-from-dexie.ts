@@ -4,7 +4,7 @@ import type {
     FlattenedTrackedEntity,
     MetadataVersion,
 } from "../../schemas";
-import type { SyncState } from "../index";
+import type { SyncState } from "../../schemas";
 import {
     distinctMetadataKeys,
     replaceMetadataTables,

@@ -867,3 +867,22 @@ export interface Access2 {
 }
 
 export type Engine = ReturnType<typeof useDataEngine>;
+
+/** The `sync_state` row: sync checkpoints and status (see `patchSyncState`). */
+export interface SyncState {
+    id: string;
+    status: "idle" | "syncing" | "online" | "offline";
+    isOnline: boolean;
+    isSyncing: boolean;
+    lastSyncAt?: string;
+    lastPullAt?: string;
+    lastPushAt?: string;
+    /** Program + org unit `lastPullAt` was taken for (see `pullScopeKey`). */
+    pullScope?: string;
+    lastSyncDuration?: number;
+    lastSyncCount?: number;
+    lastError?: string;
+    pendingCount: number;
+    updatedAt: string;
+    pullVersions?: Record<string, string>;
+}

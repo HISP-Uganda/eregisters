@@ -5,7 +5,7 @@ import type {
     FlattenedTrackedEntity,
     MetadataVersion,
 } from "../../../schemas";
-import type { SyncState } from "../../index";
+import type { SyncState } from "../../../schemas";
 import { createNodeSqliteDriver } from ".././test-support/node-sqlite-driver";
 import { createSchema } from ".././schema";
 import { getConfigRow, putConfigRow } from ".././config-rows";

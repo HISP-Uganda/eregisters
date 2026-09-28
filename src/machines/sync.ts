@@ -28,7 +28,7 @@ import {
 import { createActorContext } from "@xstate/react";
 import { MessageInstance } from "antd/es/message/interface";
 import { isEmpty } from "lodash";
-import type { SyncState } from "../db";
+import type { SyncState } from "../schemas";
 import type { StorageBackend } from "../db/backend";
 import { crossTabBus } from "../db/cross-tab";
 import { subscribeConfigChanged } from "../db/reactive-config";
