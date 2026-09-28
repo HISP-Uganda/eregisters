@@ -57,6 +57,7 @@ penalty well below today's 10.0, with dead code and cycles still at 0.
 - [Split the client search page](tickets/016-split-client-search.md) — into `src/screens/client-search/`; the two copies of "Register New Client" became one flow that deletes the draft on Cancel (the results page used to leak drafts).
 - [Split the HMIS form renderer](tickets/017-split-hmis-form.md) — 1,082 → 160 + 6 small modules; the dead antd-table prototype, per-keystroke debug logging and an unused `syncStatus` prop removed; a rowspan/sticky-column off-by-one found and pinned, not fixed.
 - [Split the data set reports page](tickets/018-split-data-set-reports.md) — into `src/screens/data-set-report/`: loading and verify/revoke as modules, the ten form blocks as one table. Found: the ereports API key is hard-coded in the client — moved to its own map.
+- [Do the data set and category option combo pulls miss pages?](tickets/019-metadata-paging.md) — data sets yes past 50 (11 today): `paging: false` added; the category option combo endpoint isn't paged.
 
 ## Not yet specified
 

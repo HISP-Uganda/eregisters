@@ -26,6 +26,7 @@ exports[`the metadata pull > adds a lastUpdated filter to the incremental resour
     "dataSets": {
       "params": {
         "fields": "id,name,code,periodType",
+        "paging": false,
       },
       "resource": "dataSets.json",
     },
@@ -158,6 +159,7 @@ exports[`the metadata pull > requests every resource in full 1`] = `
     "dataSets": {
       "params": {
         "fields": "id,name,code,periodType",
+        "paging": false,
       },
       "resource": "dataSets.json",
     },

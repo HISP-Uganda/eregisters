@@ -95,7 +95,9 @@ export const METADATA_RESOURCES: Partial<Record<Resource, ResourceDefinition>> =
         query: () => ({
             dataSets: {
                 resource: "dataSets.json",
-                params: { fields: "id,name,code,periodType" },
+                // The list is paged (50) unless told otherwise; the category
+                // option combos endpoint above isn't.
+                params: { fields: "id,name,code,periodType", paging: false },
             },
         }),
         read: (r: { dataSets: { dataSets: DataSet[] } }) => ({
