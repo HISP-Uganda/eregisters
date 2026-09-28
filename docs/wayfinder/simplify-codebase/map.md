@@ -51,6 +51,7 @@ penalty well below today's 10.0, with dead code and cycles still at 0.
 - [Split MainEventCapture](tickets/010-split-main-event-capture.md) — into `src/screens/main-event-capture/` (5 files): newborn pre-fill as a tested table, the newborn popup, visit tabs, visit header; behaviour unchanged.
 - [Split the section layout admin page](tickets/011-split-section-layout.md) — into `src/screens/section-layout/` (6 files): the layout edits as a tested pure module, an editor hook, the group card in pieces, one shared name popup; behaviour unchanged.
 - [Split the analytics page](tickets/012-split-analytics.md) — into `src/screens/analytics/` (9 files): the dataset build, line-list columns and return snapshot as hooks/pure code, `ComputedColumnModal` moved in with its validation as a tested pure module. Checked in the browser (saved list, pivot, record round trip, computed-column editor).
+- [Split the root layout](tickets/013-split-root-layout.md) — into `src/screens/root-layout/` (6 files): sync-state hooks, the failures preview as tested pure code, sync buttons, nav items, shell; the route keeps only `RootRoute`. Browser check owed (hidden tab).
 
 ## Not yet specified
 
