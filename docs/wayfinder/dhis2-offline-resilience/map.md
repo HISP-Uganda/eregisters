@@ -77,10 +77,6 @@ just unit tests.
 
 ## Not yet specified
 
-- Whether any of this needs coordinating with the Dexie-to-SQLite
-  migration's pending COOP/COEP `patch-sw.js` patch (`task/coi-sw-patch-
-  integration`) beyond "don't clobber each other's sentinels" — not sharp
-  enough to ticket until both are closer to landing.
 - Whether the SW-broadcast connection status (ticket 002's fixed
   `dhis2ConnectionStatusPlugin`) is worth wiring into the app UI as a
   second signal later, now that ticket 004 has deliberately deferred it —

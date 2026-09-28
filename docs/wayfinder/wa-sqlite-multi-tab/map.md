@@ -173,17 +173,13 @@ doc-comment fixed before commit).
 
 ## Not yet specified
 
-- Whether eregisters' `wa-sqlite`-backed file needs any workspace/user
-  scoping in its naming the way mohw-nas's did (multi-tenant across
-  DHIS2 servers within one browser profile) — eregisters' current
-  op-sqlite usage is a single fixed logical name
-  (`"eregisters-metadata"`), so this may just stay simple, but not
-  confirmed sharp enough to ticket yet.
-- Whether a Playwright-based browser test harness gets built —
-  explicitly out of this map's scope; a real, separate future effort if
-  wanted.
+(none — the per-user naming question graduated to "What should happen
+  to local data when a different DHIS2 user signs in on the same device?")
+
 ## Out of scope
 
+- A Playwright-based browser test harness — a separate future effort,
+  not this map's destination.
 - mohw-nas's fresh-start/no-legacy-import approach — does not apply
   cleanly; even though op-sqlite has no real production data yet either
   (see ticket 002's correction), eregisters keeps its copy-and-verify
