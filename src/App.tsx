@@ -12,6 +12,7 @@ import {
     startRememberedFacilityBoot,
     watchFacilityAcrossTabs,
 } from "./facility-store";
+import { setLocalAuthor } from "./db/local-author";
 import { getStorageBootActor } from "./machines/storage-boot-actor";
 import { SyncContext } from "./machines/sync";
 import { router } from "./router";
@@ -171,6 +172,12 @@ const MyApp: FC = () => {
     // Storage belongs to the user's facility (org unit): open it now if it
     // wasn't opened before `me`, or reload into it if another facility's
     // store was opened — see facility-store.ts.
+    setLocalAuthor({
+        uid: data.me.id,
+        username: data.me.username,
+        firstName: data.me.firstName,
+        surname: data.me.surname,
+    });
     if (ensureFacilityBoot(data.me.organisationUnits[0].id) === "reloading") {
         return (
             <Spinner

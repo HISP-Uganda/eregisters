@@ -6,6 +6,7 @@ import type {
     RuleResult,
 } from "../../schemas";
 import { dexieTrackerCollectionOptions } from "./dexie-collection-adapter";
+import { localEditStamp } from "../local-author";
 
 /**
  * Revived Dexie/IndexedDB tracker collections — the parallel implementation
@@ -32,6 +33,7 @@ export function createTrackedEntitiesDexieCollection() {
             id: "trackedEntities",
             dbName: "MOHRegister_TrackedEntities",
             tableName: "trackedEntities",
+            stampEdit: localEditStamp,
             getKey: (row) => row.trackedEntity,
         }),
     );
@@ -43,6 +45,7 @@ export function createEnrollmentsDexieCollection() {
             id: "enrollments",
             dbName: "MOHRegister_Enrollments",
             tableName: "enrollments",
+            stampEdit: localEditStamp,
             getKey: (row) => row.enrollment,
         }),
     );
@@ -54,6 +57,7 @@ export function createEventsDexieCollection() {
             id: "events",
             dbName: "MOHRegister_Events",
             tableName: "events",
+            stampEdit: localEditStamp,
             getKey: (row) => row.event,
         }),
     );

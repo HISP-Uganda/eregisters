@@ -43,6 +43,13 @@ export interface SqliteCollectionOptions<
     persistence?: SafeCallPersistenceOptions;
     /** Defaults to the app's bus; tests pass their own per simulated tab. */
     crossTab?: CrossTabBus;
+    /**
+     * Fields a user's edit (`collection.update` → `onUpdate`) also sets —
+     * the tracker collections pass `localEditStamp` (who and when; see
+     * `db/local-author.ts`). Pulls and push bookkeeping don't go through
+     * `onUpdate`, so they never stamp.
+     */
+    stampEdit?: () => Partial<TRow>;
 }
 
 export function sqliteCollectionOptions<
@@ -291,7 +298,13 @@ export function sqliteCollectionOptions<
         }: {
             transaction: { mutations: Array<{ modified: TRow }> };
         }) => {
-            await updateLocally(transaction.mutations.map((m) => m.modified));
+            await updateLocally(
+                transaction.mutations.map((m) =>
+                    options.stampEdit
+                        ? { ...m.modified, ...options.stampEdit() }
+                        : m.modified,
+                ),
+            );
             if (onUpdate) {
                 for (const m of transaction.mutations) {
                     await safeCallPersistence(

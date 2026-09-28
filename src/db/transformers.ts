@@ -58,6 +58,34 @@ function filterValidOptionCodes(
     return validTokens.length > 0 ? validTokens.join(",") : undefined;
 }
 
+/**
+ * Who made the record and when, as the tracker importer can take them —
+ * wayfinder tickets "Which author fields does DHIS2 2.42's tracker importer
+ * take from the payload?" / "Should records created on the device record
+ * their author, and how is it sent to DHIS2?":
+ *
+ * - `storedBy`: the local author's username. DHIS2 2.42.0–2.42.5.x keep it
+ *   on create (the eRegistry build is 2.42.5.1); 2.42.6+ replace it with
+ *   the session user. Omitted for records with no known author — never
+ *   guessed.
+ * - `createdAtClient` / `updatedAtClient`: the record's own times. The
+ *   importer rewrites both on every write and nulls any left out.
+ *
+ * `createdBy` / `updatedBy` are sent too (spread from the row) but the
+ * importer always overwrites them with the session user.
+ */
+function authorFields(row: {
+    createdBy?: { username?: string };
+    createdAt?: string;
+    updatedAt?: string;
+}): { storedBy?: string; createdAtClient?: string; updatedAtClient?: string } {
+    return {
+        ...(row.createdBy?.username ? { storedBy: row.createdBy.username } : {}),
+        ...(row.createdAt ? { createdAtClient: row.createdAt } : {}),
+        ...(row.updatedAt ? { updatedAtClient: row.updatedAt } : {}),
+    };
+}
+
 export function transformTrackedEntity(
     te: FlattenedTrackedEntity,
     validAttributeIds?: Set<string>,
@@ -73,6 +101,7 @@ export function transformTrackedEntity(
 
     return {
         ...rest,
+        ...authorFields(te),
         attributes: Object.entries(finalAttributes).flatMap(
             ([attribute, value]: [string, any]) => {
                 if (
@@ -106,6 +135,7 @@ export function transformEnrollment(
 
     return {
         ...rest,
+        ...authorFields(enrollment),
         enrolledAt: enrolledAt || rest.enrolledAt,
         attributes: Object.entries(enrollmentAttributes).flatMap(
             ([attribute, value]: [string, any]) => {
@@ -150,6 +180,7 @@ export function transformEvent(
 
     return {
         ...eventRest,
+        ...authorFields(event),
         dataValues: Object.entries(finalDataValues).flatMap(
             ([dataElement, value]: [string, any]) => {
                 if (

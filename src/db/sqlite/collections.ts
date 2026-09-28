@@ -6,6 +6,7 @@ import { enrollmentsRowAdapter } from "./row-adapters/enrollments";
 import { eventsRowAdapter } from "./row-adapters/events";
 import { ruleResultsRowAdapter } from "./row-adapters/rule-results";
 import { trackedEntitiesRowAdapter } from "./row-adapters/tracked-entities";
+import { localEditStamp } from "../local-author";
 
 /**
  * Factory functions (not module-level singletons, unlike
@@ -25,6 +26,7 @@ export function createTrackedEntitiesSqliteCollection(db: SqlDriver) {
             db,
             getKey: (row) => row.trackedEntity,
             row: trackedEntitiesRowAdapter,
+            stampEdit: localEditStamp,
         }),
     );
 }
@@ -36,6 +38,7 @@ export function createEnrollmentsSqliteCollection(db: SqlDriver) {
             db,
             getKey: (row) => row.enrollment,
             row: enrollmentsRowAdapter,
+            stampEdit: localEditStamp,
         }),
     );
 }
@@ -47,6 +50,7 @@ export function createEventsSqliteCollection(db: SqlDriver) {
             db,
             getKey: (row) => row.event,
             row: eventsRowAdapter,
+            stampEdit: localEditStamp,
         }),
     );
 }

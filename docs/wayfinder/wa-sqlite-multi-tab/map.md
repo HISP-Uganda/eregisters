@@ -135,6 +135,8 @@ being redirected away.
 
 - [Which author fields does DHIS2 2.42's tracker importer take from the payload?](tickets/011-dhis2-author-fields.md) — only `storedBy` (on create) is taken from the payload, and only on 2.42.0–2.42.5.x (2.42.6+ uses the session user); every created/updated-by and change-log author is always the session user. The eRegistry build looks like 2.42.5.1 — to confirm.
 
+- [Should records created on the device record their author, and how is it sent to DHIS2?](tickets/012-record-local-author.md) — yes: the signed-in user is recorded as `createdBy`/`updatedBy` on local creates and edits, and pushes send `storedBy` (kept on create by the 2.42.5.1 production build) plus `createdAtClient`/`updatedAtClient` (no longer nulled). Verified on the 2.43 test server; fixed a same-tab transaction-overlap bug on the way.
+
 ## Implementation progress
 
 All three tickets' decisions are now fully wired and built (commit

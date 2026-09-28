@@ -48,13 +48,15 @@ export interface DexieCollectionOptions<
     dbName: string;
     tableName: string;
     getKey: (row: TRow) => TKey;
+    /** Fields a user's edit also sets — see the SQLite adapter's `stampEdit`. */
+    stampEdit?: () => Partial<TRow>;
 }
 
 export function dexieTrackerCollectionOptions<
     TRow extends object,
     TKey extends string | number,
 >(options: DexieCollectionOptions<TRow, TKey>) {
-    const { id, dbName, tableName, getKey } = options;
+    const { id, dbName, tableName, getKey, stampEdit } = options;
 
     const base = dexieCollectionOptions<TRow>({
         id,
@@ -97,6 +99,24 @@ export function dexieTrackerCollectionOptions<
 
     return {
         ...base,
+        // A user's edit also records who and when (see stampEdit).
+        onUpdate:
+            stampEdit && base.onUpdate
+            ? (params: Parameters<NonNullable<typeof base.onUpdate>>[0]) => {
+                  const stamp = stampEdit();
+                  return base.onUpdate!({
+                      ...params,
+                      transaction: {
+                          ...params.transaction,
+                          mutations: params.transaction.mutations.map((m) => ({
+                              ...m,
+                              changes: { ...m.changes, ...stamp },
+                              modified: { ...m.modified, ...stamp },
+                          })),
+                      },
+                  } as typeof params);
+              }
+            : base.onUpdate,
         utils: {
             insertLocally,
             bulkInsertLocally,

@@ -33,6 +33,7 @@ import {
     getEventsCollection,
     getTrackedEntitiesCollection,
 } from "../db/collections";
+import { getLocalAuthor } from "../db/local-author";
 
 const GRID_TOTAL = 24;
 
@@ -919,6 +920,15 @@ const isNumber = (valueType: string | undefined) => {
     ].includes(valueType || "");
 };
 
+/**
+ * The signed-in user as the new record's author — kept locally and sent as
+ * `storedBy` (see `db/local-author.ts`). Omitted when unknown.
+ */
+function localAuthorship() {
+    const author = getLocalAuthor();
+    return author ? { createdBy: author, updatedBy: author } : {};
+}
+
 export const createEmptyTrackedEntity = ({
     orgUnit,
     attributes = {},
@@ -944,6 +954,7 @@ export const createEmptyTrackedEntity = ({
         syncStatus: "draft",
         version: 1,
         parentEntity,
+        ...localAuthorship(),
     };
 };
 
@@ -973,6 +984,7 @@ export const createEmptyEnrollment = ({
         syncStatus: "draft",
         version: 1,
         attributes,
+        ...localAuthorship(),
     };
 };
 
@@ -1016,6 +1028,7 @@ export const createEmptyEvent = ({
         syncStatus: "draft",
         version: 1,
         parentEvent,
+        ...localAuthorship(),
     };
 };
 
