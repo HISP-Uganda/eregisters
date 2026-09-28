@@ -46,6 +46,7 @@ penalty well below today's 10.0, with dead code and cycles still at 0.
 - [How should executeProgramRules be made smaller and safe to change?](tickets/004-program-rules.md) — pinned by a golden test over the real 804 rules (fixture from production) plus unit tests, then split into variables, d2 functions, one shared expression translator, and action handlers; contract unchanged, golden identical. DHIS2 gaps deferred to a new ticket.
 - [What pattern should the giant screens be split into?](tickets/005-screen-pattern.md) — `src/screens/<screen>/` with data hooks, unit-tested pure helpers, presentational sections and a plain `actions.ts`; route files only bind the URL; ≤ ~150 lines per component. Proven on the client page (971 → 61 + 11 small files), fixing its hook-order bug; one ticket per remaining screen.
 - [How should the metadata pull (pullResource) be broken up?](tickets/006-pull-resource.md) — requests pinned by snapshot first, then a table of resource definitions (`metadata-resources.ts`) driven by `pullMetadataResources`; `sync.ts` −394 lines, requests identical. Possible missing pages deferred to a new ticket.
+- [Which program-rule gaps against DHIS2 should be fixed?](tickets/008-program-rule-gaps.md) — HIDEPROGRAMSTAGE stays ignored on purpose (its one rule would block all visits after a TB outcome; flagged for the metadata admins); newest-event variable sources and priority order now match DHIS2 (golden: 13 reorder-only changes); the unreached gaps left.
 
 ## Not yet specified
 

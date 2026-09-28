@@ -194,15 +194,24 @@ describe("variables", () => {
         { event: "o1", programStage: "other", occurredAt: "2026-03-01", dataValues: { deA: "other" } },
     ];
 
-    function withSource(programRuleVariableSourceType: string, occurredAt: string) {
+    function withSource(
+        programRuleVariableSourceType: string,
+        occurredAt: string,
+        current: Record<string, any> = {},
+        programStage?: string,
+    ) {
         return executeProgramRules({
             programRules: [rule("true", [assign("out", "#{p}")])],
             programRuleVariables: [
-                variable("p", { de: "deA", programRuleVariableSourceType }),
+                variable("p", {
+                    de: "deA",
+                    programRuleVariableSourceType,
+                    ...(programStage ? { programStage: { id: programStage } } : {}),
+                }),
             ],
             program: PROGRAM,
             programStage: "stage",
-            dataValues: { occurredAt },
+            dataValues: { occurredAt, ...current },
             allEnrollmentEvents: [
                 ...events,
                 { event: "cur", programStage: "stage", occurredAt, dataValues: {} },
@@ -216,12 +225,20 @@ describe("variables", () => {
         expect(withSource("DATAELEMENT_PREVIOUS_EVENT", "2025-12-01")).toBe(null);
     });
 
-    it("DATAELEMENT_NEWEST_EVENT_PROGRAM: the newest other event with a value, any stage", () => {
+    it("DATAELEMENT_NEWEST_EVENT_PROGRAM: the newest event with a value, any stage", () => {
         expect(withSource("DATAELEMENT_NEWEST_EVENT_PROGRAM", "2026-03-15")).toBe("later");
     });
 
-    it("DATAELEMENT_NEWEST_EVENT_PROGRAM_STAGE falls back to the current event (unhandled)", () => {
-        expect(withSource("DATAELEMENT_NEWEST_EVENT_PROGRAM_STAGE", "2026-03-15")).toBe(null);
+    it("the newest-event sources count the event being filled, as DHIS2 does", () => {
+        expect(withSource("DATAELEMENT_NEWEST_EVENT_PROGRAM", "2026-05-01", { deA: "now" })).toBe("now");
+        expect(withSource("DATAELEMENT_NEWEST_EVENT_PROGRAM", "2026-03-15", { deA: "now" })).toBe("later");
+    });
+
+    it("DATAELEMENT_NEWEST_EVENT_PROGRAM_STAGE: the newest event of the variable's stage", () => {
+        expect(withSource("DATAELEMENT_NEWEST_EVENT_PROGRAM_STAGE", "2026-03-15", {}, "other")).toBe("other");
+        expect(withSource("DATAELEMENT_NEWEST_EVENT_PROGRAM_STAGE", "2026-03-15", {}, "stage")).toBe("later");
+        // Without a stage on the variable: the stage being filled.
+        expect(withSource("DATAELEMENT_NEWEST_EVENT_PROGRAM_STAGE", "2026-03-15")).toBe("later");
     });
 
     it("attribute variables read attributeValues in an event", () => {
@@ -321,6 +338,35 @@ describe("which rules and actions apply", () => {
                 { key: "de", content: "warn" },
             ],
         });
+    });
+
+    it("runs rules by priority, those without one last in their given order", () => {
+        const result = inEvent(
+            [
+                rule("true", [assign("x", "'none'")]),
+                rule("1 == 1", [assign("x", "'second'")], { priority: 2 }),
+                rule("2 == 2", [assign("x", "'first'")], { priority: 1 }),
+            ],
+            {},
+        );
+        // Last to run wins: the unprioritized rule.
+        expect(result.assignments.x).toBe("none");
+        const prioritizedOnly = inEvent(
+            [
+                rule("1 == 1", [assign("x", "'second'")], { priority: 2 }),
+                rule("2 == 2", [assign("x", "'first'")], { priority: 1 }),
+            ],
+            {},
+        );
+        expect(prioritizedOnly.assignments.x).toBe("second");
+    });
+
+    it("ignores HIDEPROGRAMSTAGE on purpose", () => {
+        const result = inEvent(
+            [rule("true", [{ programRuleActionType: "HIDEPROGRAMSTAGE" as any, programStage: { id: "stage", displayName: "" } }])],
+            {},
+        );
+        expect(result).toEqual(inEvent([], {}));
     });
 
     it("a later ASSIGN to the same field wins", () => {

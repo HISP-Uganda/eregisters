@@ -11,8 +11,13 @@ function addOnceUnder(map: Record<string, string[]>, key: string, id: string) {
 
 /**
  * Applies one action of a rule whose condition held. `targetId` is the
- * action's data element or attribute. Action types not listed here (e.g.
- * `HIDEPROGRAMSTAGE`) are ignored.
+ * action's data element or attribute. Action types not listed here are
+ * ignored — including `HIDEPROGRAMSTAGE`, deliberately: the one real rule
+ * using it ("TB- If TB treatment outcome has value. block future events or
+ * encounters", YFZmzMxHfAx) would hide the Medical Visit stage, the only
+ * visit stage, so a client with a TB outcome could never be seen again.
+ * See wayfinder ticket "Which program-rule gaps against DHIS2 should be
+ * fixed?".
  */
 export function applyAction(
     result: ProgramRuleResult,

@@ -37,26 +37,40 @@ function previousEventValue(
     return prev?.dataValues[dataElement] ?? null;
 }
 
-/** The newest other event in the enrollment, any stage, that has a value. */
+/**
+ * The newest event with a value — the one being filled included, as in
+ * DHIS2 — among the enrollment's events, or only those of `stage`.
+ */
 function newestEventValue(
     dataElement: string,
-    { allEnrollmentEvents = [], currentEventId }: RuleContext,
+    { dataValues, programStage, allEnrollmentEvents = [], currentEventId }: RuleContext,
+    stage?: string,
 ) {
-    const sorted = [...allEnrollmentEvents]
-        .filter((e) => e.event !== currentEventId)
-        .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt));
-    const found = sorted.find(
-        (e) =>
-            e.dataValues[dataElement] !== null &&
-            e.dataValues[dataElement] !== undefined,
-    );
+    const current: EventForRules[] = dataValues
+        ? [
+              {
+                  event: currentEventId ?? "",
+                  programStage: programStage ?? "",
+                  occurredAt: dataValues.occurredAt ?? "",
+                  dataValues,
+              },
+          ]
+        : [];
+    const found = [
+        ...allEnrollmentEvents.filter((e) => e.event !== currentEventId),
+        ...current,
+    ]
+        .filter((e) => stage === undefined || e.programStage === stage)
+        .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt))
+        .find(
+            (e) =>
+                e.dataValues[dataElement] !== null &&
+                e.dataValues[dataElement] !== undefined,
+        );
     return found?.dataValues[dataElement] ?? null;
 }
 
-/**
- * Any other source type — including `DATAELEMENT_NEWEST_EVENT_PROGRAM_STAGE`,
- * not handled yet — reads the form being filled.
- */
+/** Any other source type reads the form being filled. */
 function currentValue(
     variable: ProgramRuleVariable,
     { dataValues, attributeValues }: RuleContext,
@@ -85,6 +99,14 @@ function variableValue(variable: ProgramRuleVariable, context: RuleContext) {
         case "DATAELEMENT_NEWEST_EVENT_PROGRAM":
             return variable.dataElement
                 ? newestEventValue(variable.dataElement.id, context)
+                : null;
+        case "DATAELEMENT_NEWEST_EVENT_PROGRAM_STAGE":
+            return variable.dataElement
+                ? newestEventValue(
+                      variable.dataElement.id,
+                      context,
+                      variable.programStage?.id ?? context.programStage,
+                  )
                 : null;
         default:
             return currentValue(variable, context);

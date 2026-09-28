@@ -15,10 +15,22 @@ function ruleApplies(rule: ProgramRule, program: string, programStage?: string) 
 }
 
 /**
+ * Rules by `priority`, lowest first, then those without one in their given
+ * order — as DHIS2 runs them.
+ */
+function byPriority(rules: ProgramRule[]): ProgramRule[] {
+    const rank = (rule: ProgramRule) => rule.priority ?? Number.POSITIVE_INFINITY;
+    return [...rules].sort((a, b) =>
+        rank(a) === rank(b) ? 0 : rank(a) - rank(b),
+    );
+}
+
+/**
  * Runs a program's rules against one form — the registration form when
  * `programStage` is undefined, otherwise an event of that stage — and
  * collects what they do: assignments, hidden and mandatory fields, messages.
- * Rules run in the order given; a later ASSIGN to the same field wins.
+ * Rules run by priority (see `byPriority`); a later ASSIGN to the same
+ * field wins.
  */
 export function executeProgramRules({
     programRules,
@@ -52,7 +64,7 @@ export function executeProgramRules({
     );
 
     const result = createEmptyProgramRuleResult();
-    for (const rule of programRules) {
+    for (const rule of byPriority(programRules)) {
         if (!ruleApplies(rule, program, programStage)) continue;
         if (!evaluateCondition(rule.condition)) continue;
 

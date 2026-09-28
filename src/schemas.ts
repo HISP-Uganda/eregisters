@@ -283,6 +283,8 @@ const ProgramRuleVariableSchema = z.object({
     id: UID,
     attributeValues: z.array(z.unknown()),
     trackedEntityAttribute: z.object({ id: UID }).optional(),
+    /** The stage a `DATAELEMENT_NEWEST_EVENT_PROGRAM_STAGE` variable reads. */
+    programStage: z.object({ id: UID }).optional(),
     programRuleVariableSourceType: z.string(),
     valueType: z.enum(["TEXT", "NUMBER", "BOOLEAN", "DATE"]),
 });
