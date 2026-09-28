@@ -178,9 +178,6 @@ doc-comment fixed before commit).
 - Telling a user that this device holds **unsent records for another
   facility** (they wait, untouched, until that facility signs in again) —
   no notice today; wanted only if devices really move between facilities.
-- Recording a local record's **author** (`storedBy` / `createdBy` at
-  creation) so a same-facility colleague's unsent rows keep their real
-  author when pushed under someone else's session.
 
 ## Out of scope
 
