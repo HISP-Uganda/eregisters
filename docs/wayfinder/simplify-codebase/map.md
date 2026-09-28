@@ -50,7 +50,7 @@ penalty well below today's 10.0, with dead code and cycles still at 0.
 - [Split ProgramStageCapture](tickets/009-split-program-stage-capture.md) — into `src/screens/program-stage-capture/` (9 files); the never-used inline modes kept and Medicines and Supplies wired to inline-row (user's call), with a row-remount bug fixed. Inline editing not yet tried hands-on.
 - [Split MainEventCapture](tickets/010-split-main-event-capture.md) — into `src/screens/main-event-capture/` (5 files): newborn pre-fill as a tested table, the newborn popup, visit tabs, visit header; behaviour unchanged.
 - [Split the section layout admin page](tickets/011-split-section-layout.md) — into `src/screens/section-layout/` (6 files): the layout edits as a tested pure module, an editor hook, the group card in pieces, one shared name popup; behaviour unchanged.
-- [Split the analytics page](tickets/012-split-analytics.md) — into `src/screens/analytics/` (9 files): the dataset build, line-list columns and return snapshot as hooks/pure code, `ComputedColumnModal` moved in with its validation as a tested pure module. Browser walk-through still owed.
+- [Split the analytics page](tickets/012-split-analytics.md) — into `src/screens/analytics/` (9 files): the dataset build, line-list columns and return snapshot as hooks/pure code, `ComputedColumnModal` moved in with its validation as a tested pure module. Checked in the browser (saved list, pivot, record round trip, computed-column editor).
 
 ## Not yet specified
 

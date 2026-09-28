@@ -36,8 +36,12 @@ Split into `src/screens/analytics/` (617 + 456 lines → 9 files, largest
   (list + shell).
 
 Checked: typecheck clean; 76 test files / 540 tests pass (6 new); fallow
-clean, no cycles. **Browser check not done**: after a reload the dev app
-stayed on the DHIS2 platform's loading screen (only 5 source modules
-fetched, no build error overlay) — the platform start, before any app
-code, so not this change; to be walked through once the dev session
-loads again.
+clean, no cycles. **Browser check** (test server, 2026-09-28, after a reload): idle
+placeholder; loading the saved list "Malaria cascade" set its filters and
+built the line list (78 rows, 11 columns incl. a computed one); the Pivot
+tab shows only its pane (count 78); opening a client from the list
+carried the snapshot in the URL, the `?edit=client` link opened the
+client form, and Cancel came back to `#/analytics` with the snapshot
+cleared and the same filters, columns and rows; the computed-column
+editor opened an existing definition with its ranges. No console errors.
+Nothing saved.

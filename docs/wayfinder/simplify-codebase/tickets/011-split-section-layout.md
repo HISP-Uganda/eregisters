@@ -43,3 +43,11 @@ work, no console errors. The browser tool then stopped responding
 (screenshots and element lookups timed out), so moving, renaming,
 colouring and adding into an active section weren't clicked through —
 they're covered by the `layout.ts` tests.
+
+**Follow-up (same day):** a second walk-through added a section
+("Alpha") fine, then the tab froze again right after the next click —
+the renderer stopped answering even plain JavaScript. The first freeze
+cleared by itself, so it isn't an endless loop; whether it comes from
+this page or from app-wide work on the main thread (a background sync)
+is **not yet known**. Worth reproducing by hand before release: on
+Section Layout, add a section, then click it / add another.
