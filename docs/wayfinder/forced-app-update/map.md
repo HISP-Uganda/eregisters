@@ -46,6 +46,7 @@ included.
 - [How does an open app learn of the admin's reload broadcast promptly?](tickets/005-broadcast-freshness.md) — re-read `ui-config` on the version-check tick; "already acted on" = recorded as seen (the signal current at page load counts as seen) instead of comparing two devices' clocks, which would loop a forced reload; a broadcast gets the same popup and countdown, ending in a plain reload per tab. The metadata broadcast stays a dismissible banner.
 - [Should a Full Metadata Sync replace metadata in one step instead of deleting it first?](tickets/007-atomic-full-metadata-sync.md) — yes: a new `MetadataStore.transaction` runs the full sync's delete + save as one step on both backends; a failure rolls back and keeps the old metadata (no more wiping the store via `resetIndexDB`).
 - [Build the forced update and verify it against a stand-in server](tickets/006-build-and-verify.md) — built: all-or-nothing Full Metadata Sync, the unsaved-work registry (+ shared lock), the update controller (deploy + broadcast, shared deadline, holds, sync block) and its notice. Verified with real builds on a stand-in: a waiting worker applied after the notice; two tabs held by an open popup, then both reloaded when it closed. Broadcast path unit-tested (not against the real server).
+- [Where should the app show which version it is running?](tickets/008-show-app-version.md) — `v1.1.7` next to the app title, with a tooltip naming the storage backend and the local store; the update banner doesn't name the new version.
 
 ## Not yet specified
 
@@ -53,8 +54,6 @@ included.
   can't be dismissed during the grace period, a blocking popup when the
   reload is due; 30 s / 10 min / +5 min) — revisit once field users have
   seen it.
-- Showing the running app version somewhere (e.g. the profile menu), so
-  support can tell which build a device is on.
 
 ## Out of scope
 

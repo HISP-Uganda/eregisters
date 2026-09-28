@@ -47,6 +47,7 @@ import { getStorageBootActor } from "../machines/storage-boot-actor";
 import { Spinner } from "../components/spinner";
 import { SyncFailuresModal } from "../components/sync-failures-modal";
 import { getBackendSetting, setBackendSetting } from "../db/backend";
+import { getStoreKey } from "../db/store-names";
 import { useMetadata } from "../hooks/useMetadata";
 import { useUIConfig } from "../hooks/useUIConfig";
 import { SyncContext } from "../machines/sync";
@@ -581,7 +582,15 @@ function LayoutWithDrafts() {
     const lastMetadataPull = SyncContext.useSelector(
         (a) => a.context.lastMetadataPull,
     );
-    const serverTimeZoneId = useConfig().systemInfo?.serverTimeZoneId;
+    const { systemInfo, appVersion } = useConfig();
+    const serverTimeZoneId = systemInfo?.serverTimeZoneId;
+    // Which build and local store this device runs — for testers and
+    // support (wayfinder "Where should the app show which version it is
+    // running?").
+    const storageBackend = SyncContext.useSelector(
+        (snapshot) => snapshot.context.backend,
+    );
+    const facilityStore = getStoreKey();
     const fromServerTime = (serverTimestamp: string) =>
         parseServerTime(serverTimestamp, serverTimeZoneId).fromNow();
     const isAdmin = SyncContext.useSelector((a) =>
@@ -923,6 +932,32 @@ function LayoutWithDrafts() {
                         Medical{" "}
                         <Text style={{ fontWeight: 300 }}>eRegistry</Text>
                     </Title>
+                    {appVersion?.full && (
+                        <Tooltip
+                            title={
+                                <>
+                                    Version {appVersion.full}
+                                    <br />
+                                    Storage:{" "}
+                                    {storageBackend === "sqlite"
+                                        ? "SQLite"
+                                        : "IndexedDB"}
+                                    <br />
+                                    Local store:{" "}
+                                    {facilityStore
+                                        ? `facility ${facilityStore}`
+                                        : "default (first facility on this device)"}
+                                </>
+                            }
+                        >
+                            <Text
+                                type="secondary"
+                                style={{ fontSize: 12, cursor: "default" }}
+                            >
+                                v{appVersion.full}
+                            </Text>
+                        </Tooltip>
+                    )}
                 </Flex>
 
                 {isMobile || isLarge ? (
