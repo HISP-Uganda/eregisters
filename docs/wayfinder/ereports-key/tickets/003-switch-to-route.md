@@ -2,8 +2,8 @@
 title: Switch the report page to the DHIS2 route
 type: wayfinder:task
 status: open
-assignee:
-blocked_by: [001-rotate-key, 002-route-api-research]
+assignee: claude-session
+blocked_by: [002-route-api-research]
 ---
 
 ## Question

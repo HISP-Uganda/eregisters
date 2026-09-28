@@ -807,31 +807,6 @@ export type FlattenedOptionGroup = {
     sortOrder: number;
 };
 
-export interface AggregateData {
-    count: number;
-    rows_fetched: number;
-    rows_invalid: number;
-    rows_duplicate: number;
-    pager: Pager;
-    dataValues: AggregateDataValue[];
-}
-
-export interface Pager {
-    page: number;
-    pageSize: number;
-    pageCount: number;
-    total: number;
-}
-
-export interface AggregateDataValue {
-    dataElement: string;
-    period: string;
-    orgUnit: string;
-    categoryOptionCombo: string;
-    attributeOptionCombo: string;
-    value: string;
-}
-
 export interface CategoryOptionCombo {
   name: string
   categoryOptions: CategoryOption[]

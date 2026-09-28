@@ -34,3 +34,8 @@ Checklist (the user's):
 
 Stays open until the new key exists; this ticket then closes and unblocks
 the switch-over.
+
+**Update (2026-09-29, the user):** "use the same key for now" — the
+rotation is deferred; the current key goes into the DHIS2 route, so it
+leaves the app's code and bundle now. Rotating it (and revoking the old
+one, still in git history and old bundles) stays on this ticket.

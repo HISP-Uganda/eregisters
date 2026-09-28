@@ -61,25 +61,28 @@ export function toFormValues(dataValues: ServerDataValue[], defaultAttribution?:
 }
 
 /**
- * The report's submitted values, from the separate "ereports" query
- * service. SECURITY: its URL (always production) and API key are
- * hard-coded here and so shipped to every browser — see wayfinder ticket
- * "Split the data set reports page". Unreachable or failing: no values.
+ * The DHIS2 route that forwards to the "ereports" query service. DHIS2
+ * adds the service's API key on the server, so the browser never holds it
+ * — see wayfinder map "Keep the ereports API key out of the browser".
  */
+export const EREPORTS_ROUTE = "ereports-query";
+
+/** The report's submitted values, via the ereports route. Unreachable or failing: no values. */
 async function fetchServerValues(
+    engine: DataEngineLike,
     dataSet: string,
     orgUnit: string,
     period: string,
     defaultAttribution?: string,
 ): Promise<Map<string, string>> {
-    const params = new URLSearchParams({ source: "hmis_dvs", period, dataset: dataSet, orgunit: orgUnit });
     try {
-        const response = await fetch(`https://eregisters.health.go.ug/ereports/query?${params.toString()}`, {
-            headers: { "x-api-key": "LnwYPc0EnRKIqjKaQabQWGIN31ranjYt" },
+        const result = await engine.query({
+            values: {
+                resource: `routes/${EREPORTS_ROUTE}/run`,
+                params: { source: "hmis_dvs", period, dataset: dataSet, orgunit: orgUnit },
+            },
         });
-        if (!response.ok) return new Map();
-        const data = await response.json();
-        return toFormValues(data.dataValues, defaultAttribution);
+        return toFormValues(result?.values?.dataValues ?? [], defaultAttribution);
     } catch {
         return new Map();
     }
@@ -127,7 +130,7 @@ export async function loadReport(engine: DataEngineLike, { dataSet, orgUnit, per
         return { initialValues: new Map(), isVerified: false };
     }
     const effectiveAttribution = resolveAttribution(dataSet, attribution);
-    const serverValues = await fetchServerValues(dataSet, orgUnit, period, effectiveAttribution);
+    const serverValues = await fetchServerValues(engine, dataSet, orgUnit, period, effectiveAttribution);
     if (!effectiveAttribution) {
         return { initialValues: serverValues, isVerified: false };
     }
