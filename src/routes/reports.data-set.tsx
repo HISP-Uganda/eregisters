@@ -219,7 +219,6 @@ export const DataSetReportRoute = createRoute({
             isVerified: serverVerified.verified,
             verifiedAt: serverVerified.verifiedAt,
             verifiedBy: serverVerified.verifiedBy,
-            syncStatus: draft?.syncStatus ?? "draft",
         };
     },
 });
@@ -234,7 +233,6 @@ function Reports() {
         isVerified,
         verifiedAt,
         verifiedBy,
-        syncStatus,
     } = DataSetReportRoute.useLoaderData();
     const router = useRouter();
 
@@ -382,7 +380,6 @@ function Reports() {
                 isVerified={isVerified}
                 verifiedAt={verifiedAt}
                 verifiedBy={verifiedBy}
-                syncStatus={syncStatus}
                 period={period}
                 onSave={onSave}
                 onRevoke={onRevoke}
@@ -397,7 +394,6 @@ function Reports() {
                 isVerified={isVerified}
                 verifiedAt={verifiedAt}
                 verifiedBy={verifiedBy}
-                syncStatus={syncStatus}
                 period={period}
                 onSave={onSave}
                 onRevoke={onRevoke}
@@ -412,7 +408,6 @@ function Reports() {
                 isVerified={isVerified}
                 verifiedAt={verifiedAt}
                 verifiedBy={verifiedBy}
-                syncStatus={syncStatus}
                 period={period}
                 onSave={onSave}
                 onRevoke={onRevoke}
@@ -427,7 +422,6 @@ function Reports() {
                 isVerified={isVerified}
                 verifiedAt={verifiedAt}
                 verifiedBy={verifiedBy}
-                syncStatus={syncStatus}
                 period={period}
                 onSave={onSave}
                 onRevoke={onRevoke}
@@ -442,7 +436,6 @@ function Reports() {
                 isVerified={isVerified}
                 verifiedAt={verifiedAt}
                 verifiedBy={verifiedBy}
-                syncStatus={syncStatus}
                 period={period}
                 onSave={onSave}
                 onRevoke={onRevoke}
@@ -457,7 +450,6 @@ function Reports() {
                 isVerified={isVerified}
                 verifiedAt={verifiedAt}
                 verifiedBy={verifiedBy}
-                syncStatus={syncStatus}
                 period={period}
                 onSave={onSave}
                 onRevoke={onRevoke}
@@ -472,7 +464,6 @@ function Reports() {
                 isVerified={isVerified}
                 verifiedAt={verifiedAt}
                 verifiedBy={verifiedBy}
-                syncStatus={syncStatus}
                 period={period}
                 onSave={onSave}
                 onRevoke={onRevoke}
@@ -487,7 +478,6 @@ function Reports() {
                 isVerified={isVerified}
                 verifiedAt={verifiedAt}
                 verifiedBy={verifiedBy}
-                syncStatus={syncStatus}
                 period={period}
                 onSave={onSave}
                 onRevoke={onRevoke}
@@ -502,7 +492,6 @@ function Reports() {
                 isVerified={isVerified}
                 verifiedAt={verifiedAt}
                 verifiedBy={verifiedBy}
-                syncStatus={syncStatus}
                 period={period}
                 onSave={onSave}
                 onRevoke={onRevoke}
@@ -517,7 +506,6 @@ function Reports() {
                 isVerified={isVerified}
                 verifiedAt={verifiedAt}
                 verifiedBy={verifiedBy}
-                syncStatus={syncStatus}
                 period={period}
                 onSave={onSave}
                 onRevoke={onRevoke}

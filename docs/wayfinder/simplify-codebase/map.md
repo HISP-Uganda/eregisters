@@ -55,6 +55,7 @@ penalty well below today's 10.0, with dead code and cycles still at 0.
 - [Split DataElementField](tickets/014-split-data-element-field.md) — which input a field gets is now a tested pure `fieldKind` (numeric limits as one table), inputs in `FieldInput`; Form.Item's `onChange` chained explicitly; a latent conditional-hooks bug gone. Select/radio/date inputs still to click through.
 - [Split SyncFailuresModal](tickets/015-split-sync-failures-modal.md) — moved under the root layout: error-name lookup as tested pure code, shared failure columns, and the failed rows passed in instead of queried twice. Also a flaky update-controller test fixed.
 - [Split the client search page](tickets/016-split-client-search.md) — into `src/screens/client-search/`; the two copies of "Register New Client" became one flow that deletes the draft on Cancel (the results page used to leak drafts).
+- [Split the HMIS form renderer](tickets/017-split-hmis-form.md) — 1,082 → 160 + 6 small modules; the dead antd-table prototype, per-keystroke debug logging and an unused `syncStatus` prop removed; a rowspan/sticky-column off-by-one found and pinned, not fixed.
 
 ## Not yet specified
 

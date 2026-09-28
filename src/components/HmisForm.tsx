@@ -1,44 +1,14 @@
-import { CheckCircleOutlined } from "@ant-design/icons";
-import {
-    App,
-    Button,
-    Card,
-    ConfigProvider,
-    InputNumber,
-    Popconfirm,
-    Table,
-    Tabs,
-    Typography,
-} from "antd";
-import type { ColumnType } from "antd/es/table";
+import { App, Card, ConfigProvider, Tabs, Typography } from "antd";
 import React, { useState } from "react";
-import {
-    draftId,
-    getHmisDraft,
-    upsertHmisDraft,
-} from "../db/hmis-drafts";
-import type { HmisDraft } from "../db/hmis-drafts";
-import { isPeriodFullyPast } from "../utils/periods";
-import type {
-    HmisCellConfig,
-    HmisEditableScope,
-    HmisFormConfig,
-    HmisFormValues,
-    HmisRowConfig,
-    HmisSectionConfig,
-    setValue,
-} from "../form-configs/types";
-import { holdUnsavedWork } from "../app-update/unsaved-work";
+import type { HmisFormConfig, HmisFormValues } from "../form-configs/types";
+import { HMIS_FORM_CSS } from "./hmis-form/hmis-form-css";
+import { SectionTable } from "./hmis-form/section-table";
+import { TEAL } from "./hmis-form/theme";
+import { useHmisDraft } from "./hmis-form/use-hmis-draft";
+import { toDataValues } from "./hmis-form/values";
+import { VerifyActions } from "./hmis-form/verify-actions";
 
 export type { HmisFormValues } from "../form-configs/types";
-
-const { Title } = Typography;
-
-const TEAL = "#66a5ad";
-const LIGHT_BLUE = "#c4dfe6";
-const COC_SEPARATOR = "_";
-
-const USE_ANTD_TABLE_PROTOTYPE = false;
 
 export interface HmisFormProps {
     period?: string;
@@ -59,671 +29,12 @@ export interface HmisFormProps {
     }) => void | Promise<void>;
     attributeOptionCombo: string;
     isVerified?: boolean;
-    syncStatus?: HmisDraft["syncStatus"];
     onRevoke?: () => void | Promise<void>;
     verifiedAt?: string | number;
     verifiedBy?: string;
 }
 
-function dataValueKey(
-    dataElement: string,
-    categoryOptionCombo: string,
-    attributeOptionCombo: string,
-) {
-    return `${dataElement}${COC_SEPARATOR}${categoryOptionCombo}${COC_SEPARATOR}${attributeOptionCombo}`;
-}
-
-function cleanNumericValue(raw: unknown) {
-    if (raw === null || raw === undefined) return "";
-    return String(raw).replace(/[^\d]/g, "");
-}
-
-function formatVerifiedAt(verifiedAt: string | number): string {
-    const d = new Date(verifiedAt);
-    if (Number.isNaN(d.getTime())) return String(verifiedAt);
-    const yyyy = d.getFullYear();
-    const mm = String(d.getMonth() + 1).padStart(2, "0");
-    const dd = String(d.getDate()).padStart(2, "0");
-    return `${yyyy}-${mm}-${dd}`;
-}
-
-function isCellEditable(
-    cell: HmisCellConfig,
-    scope: HmisEditableScope | undefined,
-): boolean {
-    if (!scope || scope.mode === "all") return true;
-    if (scope.mode === "none") return false;
-    if (typeof cell.title !== "string" || cell.title.length === 0) return false;
-    return scope.allow.some((re) => re.test(cell.title!));
-}
-
-function getRowClassName(row: HmisRowConfig) {
-    switch (row.type) {
-        case "section":
-            return "hmis105-section-row";
-        case "subhead":
-            return "hmis105-subhead-row";
-        case "label":
-            return "hmis105-label-row";
-        default:
-            return "hmis105-data-row";
-    }
-}
-
-function getCellStyle(cell: HmisCellConfig): React.CSSProperties {
-    return {
-        textAlign: cell.style?.align as React.CSSProperties["textAlign"],
-        background: cell.style?.background,
-        width: cell.style?.width,
-        verticalAlign: cell.style?.verticalAlign,
-    };
-}
-
-const HmisFormStyles = () => (
-    <style>
-        {`
-      .hmis105-form-table {
-        width: auto;
-        border-collapse: separate;
-        border-spacing: 0;
-        margin-bottom: 16px;
-        border-left: 1px solid ${TEAL};
-        border-top: 1px solid ${TEAL};
-      }
-
-      .hmis105-form-table th,
-      .hmis105-form-table td {
-        border-right: 1px solid ${TEAL};
-        border-bottom: 1px solid ${TEAL};
-        padding: 4px;
-        vertical-align: middle;
-        min-width: 80px;
-      }
-
-      .hmis105-form-table thead th,
-      .hmis105-form-table thead td {
-        position: sticky;
-        top: 0;
-        z-index: 3;
-      }
-
-      .hmis105-form-table .hmis105-sticky-col {
-        position: sticky;
-        z-index: 2;
-        background: #ffffff;
-      }
-
-      .hmis105-form-table thead .hmis105-sticky-col {
-        z-index: 4;
-      }
-
-      .hmis105-section-title-row td,
-      .hmis105-section-row td {
-        background: ${TEAL} !important;
-        color: #ffffff;
-        font-weight: 700;
-      }
-
-      .hmis105-subhead-row td,
-      .hmis105-subhead-row th {
-        background: ${LIGHT_BLUE} !important;
-        font-weight: 700;
-        text-align: center;
-      }
-
-      .hmis105-data-row:hover td,
-      .hmis105-label-row:hover td {
-        background: ${LIGHT_BLUE} !important;
-      }
-
-      .hmis105-data-row:hover .hmis105-sticky-col,
-      .hmis105-label-row:hover .hmis105-sticky-col {
-        background: ${LIGHT_BLUE} !important;
-      }
-
-      .hmis105-field {
-        min-width: 80px;
-        width: 80px;
-        text-align: center;
-      }
-
-      /* antd v6 InputNumber uses .ant-input-number-disabled on the wrapper
-         and .ant-input-number-input on the actual <input>. Its default
-         disabled color is rgba(0,0,0,0.25) which is unreadable on our grey
-         background — override both selectors. */
-      .hmis105-field.ant-input-number-disabled,
-      .hmis105-field.ant-input-disabled {
-        background-color: #e6e6e6 !important;
-        cursor: not-allowed !important;
-      }
-
-      .hmis105-field.ant-input-number-disabled .ant-input-number-input,
-      .hmis105-field.ant-input-disabled .ant-input-number-input,
-      .hmis105-field.ant-input-number-disabled input,
-      .hmis105-field.ant-input-disabled input {
-        color: #000 !important;
-        -webkit-text-fill-color: #000 !important;
-        cursor: not-allowed !important;
-      }
-
-      .hmis105-tabs {
-        min-height: 0;
-      }
-
-      .hmis105-tabs > .ant-tabs {
-        height: 100% !important;
-        min-height: 0 !important;
-        display: flex !important;
-        overflow: hidden !important;
-      }
-
-      .hmis105-tabs .ant-tabs-nav {
-        background: #f7fafb;
-        border-right: 1px solid #d5e3e6;
-        // padding: 8px 6px;
-        flex: 0 0 auto !important;
-        align-self: stretch !important;
-      }
-
-      .hmis105-tabs .ant-tabs-content-holder {
-        flex: 1 1 0 !important;
-        min-width: 0 !important;
-        min-height: 0 !important;
-        overflow: hidden !important;
-        // padding: 0 0 0 12px;
-      }
-
-      .hmis105-tab-scroll::-webkit-scrollbar {
-        width: 8px;
-      }
-
-      .hmis105-tab-scroll::-webkit-scrollbar-thumb {
-        background: #c5d5d9;
-        border-radius: 4px;
-      }
-
-      .hmis105-tabs .ant-tabs-content-holder::-webkit-scrollbar {
-        width: 8px;
-        height: 8px;
-      }
-
-      .hmis105-tabs .ant-tabs-content-holder::-webkit-scrollbar-thumb {
-        background: #c5d5d9;
-        border-radius: 4px;
-      }
-
-      .hmis105-tabs .ant-tabs-nav .ant-tabs-nav-wrap {
-        overflow: auto !important;
-        height: 100%;
-      }
-
-      .hmis105-tabs .ant-tabs-nav .ant-tabs-nav-wrap::before,
-      .hmis105-tabs .ant-tabs-nav .ant-tabs-nav-wrap::after {
-        display: none !important;
-      }
-
-      .hmis105-tabs .ant-tabs-nav .ant-tabs-nav-operations {
-        display: none !important;
-      }
-
-      .hmis105-tabs .ant-tabs-nav .ant-tabs-nav-wrap {
-        scrollbar-width: none;
-        -ms-overflow-style: none;
-      }
-
-      .hmis105-tabs .ant-tabs-nav .ant-tabs-nav-wrap::-webkit-scrollbar {
-        display: none;
-      }
-
-      .hmis105-tabs .ant-tabs-tab {
-        height: auto !important;
-        // padding: 10px 12px !important;
-        // margin: 4px 2px !important;
-        border-radius: 6px;
-        transition: background-color 0.15s ease;
-      }
-
-      .hmis105-tabs .ant-tabs-tab .ant-tabs-tab-btn {
-        color: #4a5b60 !important;
-        font-weight: 500;
-        white-space: normal !important;
-        word-break: break-word;
-        line-height: 1.35;
-        text-align: left;
-      }
-
-      .hmis105-tabs .ant-tabs-tab:not(.ant-tabs-tab-active):hover {
-        background: #e6f0f2 !important;
-      }
-
-      .hmis105-tabs .ant-tabs-tab.ant-tabs-tab-active {
-        background: ${TEAL} !important;
-        box-shadow: 0 1px 3px rgba(102, 165, 173, 0.35);
-      }
-
-      .hmis105-tabs .ant-tabs-tab.ant-tabs-tab-active .ant-tabs-tab-btn {
-        color: #ffffff !important;
-        font-weight: 600 !important;
-      }
-
-      .hmis105-tabs .ant-tabs-ink-bar {
-        display: none !important;
-      }
-    `}
-    </style>
-);
-
-const FieldCell: React.FC<{
-    cell: HmisCellConfig;
-    values: HmisFormValues;
-    readOnly: boolean;
-    setValue: setValue;
-    attributeOptionCombo: string;
-    editableScope: HmisEditableScope | undefined;
-}> = ({
-    cell,
-    values,
-    readOnly,
-    setValue,
-    attributeOptionCombo,
-    editableScope,
-}) => {
-    if (!cell.dataElement || !cell.categoryOptionCombo) {
-        return (
-            <InputNumber
-                className="hmis105-field"
-                disabled
-                style={{ width: "100%", textAlign: "center" }}
-            />
-        );
-    }
-
-    const key = dataValueKey(
-        cell.dataElement,
-        cell.categoryOptionCombo,
-        attributeOptionCombo,
-    );
-
-    return (
-        <InputNumber
-            className="hmis105-field"
-            inputMode="numeric"
-            title={cell.title ?? key}
-            value={values.getOrInsert(key, "")}
-            disabled={
-                readOnly ||
-                !!cell.disabled ||
-                !isCellEditable(cell, editableScope)
-            }
-            style={{ width: "100%" }}
-            onChange={(value) => {
-                setValue({
-                    attributeOptionCombo: cell.attributeOptionCombo!,
-                    dataElement: cell.dataElement!,
-                    categoryOptionCombo: cell.categoryOptionCombo!,
-                    value: cleanNumericValue(value),
-                });
-            }}
-        />
-    );
-};
-
-const STICKY_COL_WIDTH = 80;
-
-const RenderCell: React.FC<{
-    cell: HmisCellConfig;
-    values: HmisFormValues;
-    readOnly: boolean;
-    setValue: setValue;
-    attributeOptionCombo: string;
-    stickyLeft?: number;
-    editableScope: HmisEditableScope | undefined;
-}> = ({
-    cell,
-    values,
-    readOnly,
-    setValue,
-    attributeOptionCombo,
-    stickyLeft,
-    editableScope,
-}) => {
-    const stickyStyle: React.CSSProperties =
-        stickyLeft !== undefined ? { left: stickyLeft } : {};
-    const stickyClass =
-        stickyLeft !== undefined ? "hmis105-sticky-col" : undefined;
-
-    if (cell.kind === "field") {
-        return (
-            <td
-                colSpan={cell.colSpan}
-                rowSpan={cell.rowSpan}
-                title={cell.title}
-                className={stickyClass}
-                style={{
-                    ...getCellStyle(cell),
-                    textAlign: "center",
-                    ...stickyStyle,
-                }}
-            >
-                <FieldCell
-                    cell={cell}
-                    values={values}
-                    readOnly={readOnly}
-                    setValue={setValue}
-                    attributeOptionCombo={attributeOptionCombo}
-                    editableScope={editableScope}
-                />
-            </td>
-        );
-    }
-
-    return (
-        <td
-            colSpan={cell.colSpan}
-            rowSpan={cell.rowSpan}
-            title={cell.title}
-            className={stickyClass}
-            style={{ ...getCellStyle(cell), ...stickyStyle }}
-        >
-            {cell.text}
-        </td>
-    );
-};
-
-// Tracks columns occupied by a rowSpan from a previous row.
-// Values are the remaining rows (>=1 means "still occupied for this row").
-type RowSpanCarry = Map<number, number>;
-
-const renderRow = (
-    row: HmisRowConfig,
-    frozenColumns: number,
-    values: HmisFormValues,
-    readOnly: boolean,
-    setValue: setValue,
-    attributeOptionCombo: string,
-    carry: RowSpanCarry,
-    editableScope: HmisEditableScope | undefined,
-) => {
-    let cursor = 0;
-    const advancePastCarry = () => {
-        while (carry.has(cursor)) cursor++;
-    };
-    advancePastCarry();
-
-    const cellNodes = row.cells.map((cell, index) => {
-        const startCol = cursor;
-        const span = cell.colSpan ?? 1;
-        const rSpan = cell.rowSpan ?? 1;
-        for (let i = 0; i < span; i++) {
-            if (rSpan > 1) carry.set(startCol + i, rSpan - 1);
-        }
-        cursor += span;
-        advancePastCarry();
-
-        const stickyLeft =
-            frozenColumns > 0 && startCol < frozenColumns
-                ? startCol * STICKY_COL_WIDTH
-                : undefined;
-        return (
-            <RenderCell
-                key={`${row.key}-${cell.key}-${index}`}
-                cell={cell}
-                values={values}
-                readOnly={readOnly}
-                setValue={setValue}
-                attributeOptionCombo={attributeOptionCombo}
-                stickyLeft={stickyLeft}
-                editableScope={editableScope}
-            />
-        );
-    });
-
-    // Decrement carry counts for next row; drop entries that have expired.
-    for (const [col, remaining] of Array.from(carry.entries())) {
-        if (remaining <= 1) carry.delete(col);
-        else carry.set(col, remaining - 1);
-    }
-
-    return (
-        <tr key={row.key} className={getRowClassName(row)}>
-            {cellNodes}
-        </tr>
-    );
-};
-
-const SectionTable: React.FC<{
-    section: HmisSectionConfig;
-    values: HmisFormValues;
-    readOnly: boolean;
-    setValue: setValue;
-    attributeOptionCombo: string;
-    editableScope: HmisEditableScope | undefined;
-}> = ({
-    section,
-    values,
-    readOnly,
-    setValue,
-    attributeOptionCombo,
-    editableScope,
-}) => {
-    const frozenColumns = section.frozenColumns ?? 1;
-    const carry: RowSpanCarry = new Map();
-
-    const firstNonHead = section.rows.findIndex((r) => r.type !== "subhead");
-    const headRows =
-        firstNonHead === -1
-            ? section.rows
-            : section.rows.slice(0, firstNonHead);
-    const bodyRows =
-        firstNonHead === -1 ? [] : section.rows.slice(firstNonHead);
-
-    return (
-        <table className="hmis105-form-table">
-            <thead>
-                <tr className="hmis105-section-title-row">
-                    <td
-                        colSpan={section.columnCount}
-                        className={
-                            frozenColumns > 0 ? "hmis105-sticky-col" : undefined
-                        }
-                        style={frozenColumns > 0 ? { left: 0 } : undefined}
-                    >
-                        {section.title}
-                    </td>
-                </tr>
-                {headRows.map((row) =>
-                    renderRow(
-                        row,
-                        frozenColumns,
-                        values,
-                        readOnly,
-                        setValue,
-                        attributeOptionCombo,
-                        carry,
-                        { mode: "all" },
-                    ),
-                )}
-            </thead>
-            <tbody>
-                {bodyRows.map((row) =>
-                    renderRow(
-                        row,
-                        frozenColumns,
-                        values,
-                        readOnly,
-                        setValue,
-                        attributeOptionCombo,
-                        carry,
-                        editableScope,
-                    ),
-                )}
-            </tbody>
-        </table>
-    );
-};
-
-// ─────────────────────────────────────────────────────────────
-// Prototype: antd <Table>-based renderer (toggle above)
-// ─────────────────────────────────────────────────────────────
-
-type CellSlot =
-    | {
-          kind: "primary";
-          cell: HmisCellConfig;
-          colSpan: number;
-          rowSpan: number;
-      }
-    | { kind: "colHidden" }
-    | { kind: "rowHidden" }
-    | { kind: "empty" };
-
-function buildSectionGrid(
-    rows: HmisRowConfig[],
-    columnCount: number,
-): CellSlot[][] {
-    const grid: CellSlot[][] = rows.map(() =>
-        Array.from(
-            { length: columnCount },
-            () => ({ kind: "empty" }) as CellSlot,
-        ),
-    );
-
-    for (let r = 0; r < rows.length; r++) {
-        let cursor = 0;
-        const skipRowHidden = () => {
-            while (
-                cursor < columnCount &&
-                grid[r][cursor].kind === "rowHidden"
-            ) {
-                cursor++;
-            }
-        };
-        skipRowHidden();
-        for (const cell of rows[r].cells) {
-            if (cursor >= columnCount) break;
-            const colSpan = Math.max(1, cell.colSpan ?? 1);
-            const rowSpan = Math.max(1, cell.rowSpan ?? 1);
-            grid[r][cursor] = {
-                kind: "primary",
-                cell,
-                colSpan,
-                rowSpan,
-            };
-            for (let c = 1; c < colSpan && cursor + c < columnCount; c++) {
-                grid[r][cursor + c] = { kind: "colHidden" };
-            }
-            for (let rr = 1; rr < rowSpan && r + rr < rows.length; rr++) {
-                for (let c = 0; c < colSpan && cursor + c < columnCount; c++) {
-                    grid[r + rr][cursor + c] = { kind: "rowHidden" };
-                }
-            }
-            cursor += colSpan;
-            skipRowHidden();
-        }
-    }
-
-    return grid;
-}
-
-type AntdRowRecord = {
-    key: string;
-    row: HmisRowConfig;
-    rowIndex: number;
-};
-
-const SectionTableAntd: React.FC<{
-    section: HmisSectionConfig;
-    values: HmisFormValues;
-    readOnly: boolean;
-    setValue: setValue;
-    attributeOptionCombo: string;
-    editableScope: HmisEditableScope | undefined;
-}> = ({
-    section,
-    values,
-    readOnly,
-    setValue,
-    attributeOptionCombo,
-    editableScope,
-}) => {
-    const frozenColumns = section.frozenColumns ?? 1;
-    const grid = React.useMemo(
-        () => buildSectionGrid(section.rows, section.columnCount),
-        [section.rows, section.columnCount],
-    );
-
-    const dataSource: AntdRowRecord[] = section.rows.map((row, rowIndex) => ({
-        key: row.key,
-        row,
-        rowIndex,
-    }));
-
-    const columns: ColumnType<AntdRowRecord>[] = Array.from(
-        { length: section.columnCount },
-        (_, colIdx) => {
-            const configuredWidth = section.columns?.[colIdx]?.width;
-            return {
-                key: `col-${colIdx}`,
-                dataIndex: `col-${colIdx}`,
-                width: configuredWidth,
-                fixed: colIdx < frozenColumns ? ("left" as const) : undefined,
-                onCell: (record) => {
-                    const slot = grid[record.rowIndex][colIdx];
-                    if (slot.kind === "primary") {
-                        return {
-                            colSpan: slot.colSpan,
-                            rowSpan: slot.rowSpan,
-                            style: getCellStyle(slot.cell),
-                        };
-                    }
-                    if (slot.kind === "colHidden") return { colSpan: 0 };
-                    if (slot.kind === "rowHidden") return { rowSpan: 0 };
-                    return {};
-                },
-                render: (_: unknown, record) => {
-                    const slot = grid[record.rowIndex][colIdx];
-                    if (slot.kind !== "primary") return null;
-                    const { cell } = slot;
-                    if (cell.kind === "field") {
-                        // Head rows (rendered above the body via row.type === "subhead")
-                        // stay fully editable-agnostic; scope only gates data rows.
-                        const scope: HmisEditableScope | undefined =
-                            record.row.type === "subhead"
-                                ? { mode: "all" }
-                                : editableScope;
-                        return (
-                            <FieldCell
-                                cell={cell}
-                                values={values}
-                                readOnly={readOnly}
-                                setValue={setValue}
-                                attributeOptionCombo={attributeOptionCombo}
-                                editableScope={scope}
-                            />
-                        );
-                    }
-                    return cell.text;
-                },
-            };
-        },
-    );
-
-    return (
-        <Table<AntdRowRecord>
-            title={() => section.title}
-            columns={columns}
-            dataSource={dataSource}
-            pagination={false}
-            bordered
-            size="small"
-            showHeader={false}
-            rowClassName={(record) => getRowClassName(record.row)}
-            scroll={{ x: "max-content" }}
-        />
-    );
-};
-
-const InnerHmisForm: React.FC<HmisFormProps> = ({
+function InnerHmisForm({
     period,
     orgUnit,
     dataSet,
@@ -733,173 +44,26 @@ const InnerHmisForm: React.FC<HmisFormProps> = ({
     onSave,
     attributeOptionCombo,
     isVerified = false,
-    syncStatus = "draft",
     onRevoke,
     verifiedAt,
     verifiedBy,
-}) => {
-    // A verified report is not read-only — the user can still edit values
-    // and re-submit. The button label communicates the current state.
-    const effectiveReadOnly = readOnly;
-    const [loading, setLoading] = useState<boolean>(false);
+}: HmisFormProps) {
     const { message } = App.useApp();
-    const [values, setValues] = React.useState<HmisFormValues>(
-        initialValues ?? new Map(),
-    );
+    const [saving, setSaving] = useState(false);
+    const { values, setValue } = useHmisDraft({ initialValues, dataSet, period, orgUnit, attributeOptionCombo });
 
-    const draftKey =
-        dataSet && period && orgUnit && attributeOptionCombo
-            ? draftId({
-                  dataSet,
-                  period,
-                  orgUnit,
-                  attributeOptionCombo,
-              })
-            : undefined;
-
-    const draftTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(
-        null,
-    );
-    const latestValuesRef = React.useRef<HmisFormValues>(values);
-    // Set while a debounced draft save is pending — the forced app update
-    // treats it as unsaved work and can flush it before reloading.
-    const releaseUnsavedRef = React.useRef<(() => void) | null>(null);
-
-    // Keep the latest-values ref in sync so the unmount flush writes fresh data.
-    React.useEffect(() => {
-        latestValuesRef.current = values;
-    }, [values]);
-
-    const flushDraft = React.useCallback(
-        async (nextValues: HmisFormValues) => {
-            if (!draftKey || !dataSet || !period || !orgUnit) return;
-            const existing = await getHmisDraft(draftKey);
-            await upsertHmisDraft({
-                id: draftKey,
-                dataSet,
-                period,
-                orgUnit,
-                attributeOptionCombo,
-                values: Object.fromEntries(nextValues),
-                isVerified: existing?.isVerified ?? false,
-                verifiedAt: existing?.verifiedAt,
-                updatedAt: Date.now(),
-                syncStatus:
-                    existing?.syncStatus === "synced"
-                        ? "draft"
-                        : existing?.syncStatus ?? "draft",
-            });
-        },
-        [draftKey, dataSet, period, orgUnit, attributeOptionCombo],
-    );
-
-    // Final flush on unmount — only when there's a pending timer to avoid a
-    // redundant write when the user has already stopped typing for 500 ms.
-    // If an in-flight `flushDraft` promise from an earlier timer is still
-    // resolving when unmount fires, both writes carry the same `values` payload
-    // (via `latestValuesRef`), and Dexie's `put` is last-write-wins on the same
-    // primary key — safe by construction, not by ordering.
-    React.useEffect(() => {
-        return () => {
-            if (draftTimerRef.current !== null) {
-                clearTimeout(draftTimerRef.current);
-                draftTimerRef.current = null;
-                void flushDraft(latestValuesRef.current);
-            }
-            releaseUnsavedRef.current?.();
-            releaseUnsavedRef.current = null;
-        };
-        // Intentionally not depending on flushDraft — this effect is a lifecycle
-        // hook, not a data effect. flushDraft is closed over via useRef pattern.
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
-
-    const setValue = React.useCallback(
-        ({
-            dataElement,
-            categoryOptionCombo,
-            value,
-        }: {
-            dataElement: string;
-            categoryOptionCombo: string;
-            value: string;
-        }) => {
-            setValues((previous) => {
-                const key = dataValueKey(
-                    dataElement,
-                    categoryOptionCombo,
-                    attributeOptionCombo,
-                );
-                const next = new Map(previous).set(key, value);
-                // eslint-disable-next-line no-console
-                console.log("[setValue]", { key, value, size: next.size });
-                if (draftTimerRef.current !== null) {
-                    clearTimeout(draftTimerRef.current);
-                }
-                const saveNow = async () => {
-                    if (draftTimerRef.current !== null) {
-                        clearTimeout(draftTimerRef.current);
-                        draftTimerRef.current = null;
-                    }
-                    try {
-                        await flushDraft(latestValuesRef.current);
-                    } finally {
-                        releaseUnsavedRef.current?.();
-                        releaseUnsavedRef.current = null;
-                    }
-                };
-                if (!releaseUnsavedRef.current) {
-                    releaseUnsavedRef.current = holdUnsavedWork(
-                        "an HMIS report draft",
-                        saveNow,
-                    );
-                }
-                latestValuesRef.current = next;
-                draftTimerRef.current = setTimeout(() => {
-                    void saveNow();
-                }, 500);
-                return next;
-            });
-        },
-        [attributeOptionCombo, flushDraft],
-    );
-
-    const handleSave = async () => {
-        setLoading(() => true);
-        const dataValues = Array.from(values.entries())
-            .filter(([, value]) => value !== "" && value != null)
-            .map(([key, value]) => {
-                const [dataElement, categoryOptionCombo, attributeOptionCombo] =
-                    key.split(COC_SEPARATOR);
-
-                return {
-                    dataElement,
-                    categoryOptionCombo,
-                    attributeOptionCombo,
-                    value,
-                };
-            });
-
+    // Verifying submits every filled-in value. A verified report stays
+    // editable and can be re-submitted.
+    const handleVerify = async () => {
+        setSaving(true);
+        const dataValues = toDataValues(values);
         const payload = { period, orgUnit, dataValues, attributeOptionCombo };
-
-        // eslint-disable-next-line no-console
-        console.log("[handleSave] payload", {
-            valuesSize: values.size,
-            dataValuesLength: dataValues.length,
-            first3: dataValues.slice(0, 3),
-            attributeOptionCombo,
-            period,
-            orgUnit,
-        });
-
         if (onSave) {
             await onSave(payload);
         } else {
-            message.success(
-                `Prepared ${dataValues.length} data value(s) for submission.`,
-            );
+            message.success(`Prepared ${dataValues.length} data value(s) for submission.`);
         }
-        setLoading(() => false);
+        setSaving(false);
     };
 
     const items = config.tabs.map((tab) => ({
@@ -912,135 +76,49 @@ const InnerHmisForm: React.FC<HmisFormProps> = ({
                 style={{
                     maxHeight: "calc(100vh - 260px)",
                     overflow: "auto",
-                    // overflowX: "hidden",
                     overscrollBehavior: "contain",
                     padding: "0 10px",
                     outline: "none",
                 }}
             >
-                {tab.sections.map((section) => {
-                    const SectionRenderer = USE_ANTD_TABLE_PROTOTYPE
-                        ? SectionTableAntd
-                        : SectionTable;
-                    return (
-                        <SectionRenderer
-                            key={section.key}
-                            section={section}
-                            values={values}
-                            readOnly={effectiveReadOnly}
-                            setValue={setValue}
-                            attributeOptionCombo={attributeOptionCombo}
-                            editableScope={config.editableScope}
-                        />
-                    );
-                })}
+                {tab.sections.map((section) => (
+                    <SectionTable
+                        key={section.key}
+                        section={section}
+                        values={values}
+                        readOnly={readOnly}
+                        setValue={setValue}
+                        attributeOptionCombo={attributeOptionCombo}
+                        editableScope={config.editableScope}
+                    />
+                ))}
             </div>
         ),
     }));
 
     return (
         <Card
-            style={{
-                height: "100%",
-                display: "flex",
-                flexDirection: "column",
-            }}
-            styles={{
-                body: {
-                    margin: 0,
-                    padding: "10px 0",
-                },
-                header: { background: TEAL, flexShrink: 0 },
-            }}
+            style={{ height: "100%", display: "flex", flexDirection: "column" }}
+            styles={{ body: { margin: 0, padding: "10px 0" }, header: { background: TEAL, flexShrink: 0 } }}
             title={
-                <Title level={4} style={{ margin: 0, color: "#fff" }}>
+                <Typography.Title level={4} style={{ margin: 0, color: "#fff" }}>
                     {config.title}
-                </Title>
+                </Typography.Title>
             }
-            extra={(() => {
-                const periodFullyPast = period
-                    ? isPeriodFullyPast(period)
-                    : false;
-                const periodBlocked = !period || !periodFullyPast;
-                const disabled = effectiveReadOnly || periodBlocked;
-                const _keepSyncStatus = syncStatus; // reserved for future
-                void _keepSyncStatus;
-
-                const primaryLabel = isVerified
-                    ? "Verified — Re-submit to Update"
-                    : periodBlocked && period
-                      ? "Waiting for period to end"
-                      : "Mark Report as Verified";
-
-                const disabledVisibleStyle: React.CSSProperties = disabled
-                    ? {
-                          background: "#ffffff",
-                          borderColor: "#ffffff",
-                          color: TEAL,
-                          opacity: 1,
-                          cursor: "not-allowed",
-                          fontWeight: 600,
-                      }
-                    : { fontWeight: 600 };
-
-                return (
-                    <div
-                        style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 8,
-                        }}
-                    >
-                        {isVerified && (verifiedBy || verifiedAt) && (
-                            <span
-                                style={{
-                                    color: "#fff",
-                                    fontSize: 12,
-                                    opacity: 0.9,
-                                }}
-                            >
-                                {verifiedBy ? `by ${verifiedBy}` : ""}
-                                {verifiedBy && verifiedAt ? " · " : ""}
-                                {verifiedAt
-                                    ? formatVerifiedAt(verifiedAt)
-                                    : ""}
-                            </span>
-                        )}
-                        <Button
-                            type="default"
-                            icon={
-                                isVerified ? (
-                                    <CheckCircleOutlined />
-                                ) : undefined
-                            }
-                            onClick={handleSave}
-                            disabled={disabled}
-                            loading={loading}
-                            style={disabledVisibleStyle}
-                            title={
-                                periodBlocked && period && !effectiveReadOnly
-                                    ? "This period has not yet fully ended — verification will be enabled once the period is in the past."
-                                    : undefined
-                            }
-                        >
-                            {primaryLabel}
-                        </Button>
-                        {isVerified && onRevoke && !effectiveReadOnly && (
-                            <Popconfirm
-                                title="Revoke verification?"
-                                description="This will mark the report as unverified for everyone. Continue?"
-                                okText="Revoke"
-                                okType="danger"
-                                onConfirm={() => onRevoke()}
-                            >
-                                <Button danger>Revoke verification</Button>
-                            </Popconfirm>
-                        )}
-                    </div>
-                );
-            })()}
+            extra={
+                <VerifyActions
+                    period={period}
+                    readOnly={readOnly}
+                    isVerified={isVerified}
+                    verifiedBy={verifiedBy}
+                    verifiedAt={verifiedAt}
+                    saving={saving}
+                    onVerify={handleVerify}
+                    onRevoke={onRevoke}
+                />
+            }
         >
-            <HmisFormStyles />
+            <style>{HMIS_FORM_CSS}</style>
             <Tabs
                 className="hmis105-tabs"
                 style={{ height: "100%" }}
@@ -1053,15 +131,17 @@ const InnerHmisForm: React.FC<HmisFormProps> = ({
             />
         </Card>
     );
-};
+}
 
+/**
+ * An HMIS aggregate report as its paper form — tabs of sections of
+ * number cells — laid out by `config` (see `src/form-configs`), saved as a
+ * local draft as it's filled in, and submitted by "Mark Report as Verified".
+ */
 const HmisForm: React.FC<HmisFormProps> = (props) => (
     <ConfigProvider
         theme={{
-            token: {
-                colorPrimary: TEAL,
-                borderRadius: 4,
-            },
+            token: { colorPrimary: TEAL, borderRadius: 4 },
             components: {
                 Tabs: {
                     itemColor: "#4a5b60",
@@ -1069,9 +149,7 @@ const HmisForm: React.FC<HmisFormProps> = (props) => (
                     itemSelectedColor: "#ffffff",
                     inkBarColor: "transparent",
                 },
-                Card: {
-                    headerBg: TEAL,
-                },
+                Card: { headerBg: TEAL },
             },
         }}
     >
