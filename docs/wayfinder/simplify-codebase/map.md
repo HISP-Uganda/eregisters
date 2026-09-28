@@ -43,6 +43,7 @@ penalty well below today's 10.0, with dead code and cycles still at 0.
 - [Is the Dexie storage backend still needed?](tickets/001-dexie-backend.md) — only as the fallback where OPFS fails: removed the SQLite → Dexie copy and every way to force a backend (per-device setting, admin policy, the boot machine's forced paths); kept the Dexie → SQLite copy. ~1,265 lines of app code gone. Whether Dexie can go entirely waits on device reports.
 - [Can the unused MOHRegisterDB tables and old migration code go?](tickets/002-legacy-dexie-tables.md) — the 17 unused tables go (Dexie version 5 deletes them on devices; HMIS drafts kept); six dead interfaces removed and `SyncState` moved to `schemas.ts`; the Dexie → SQLite copy's source stays (it's also the Dexie fallback store).
 - [How should utils.ts be split?](tickets/003-split-utils.md) — into six topic modules (program-rule execution and results, flattening, record factories, form fields, record cascades); `utils.ts` deleted, importers updated directly, three dead helpers dropped. A pure move.
+- [How should executeProgramRules be made smaller and safe to change?](tickets/004-program-rules.md) — pinned by a golden test over the real 804 rules (fixture from production) plus unit tests, then split into variables, d2 functions, one shared expression translator, and action handlers; contract unchanged, golden identical. DHIS2 gaps deferred to a new ticket.
 
 ## Not yet specified
 
