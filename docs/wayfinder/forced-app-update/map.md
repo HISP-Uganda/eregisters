@@ -40,6 +40,7 @@ included.
 ## Decisions so far
 
 - [What does a reload do to a push or pull in progress, and must a forced reload wait for sync?](tickets/002-sync-vs-reload.md) — a push or pull cut off by a reload recovers on its own (records stay pending; pages are atomic; the checkpoint moves only after success), but a Full Metadata Sync can leave no metadata. The forced reload waits for a running sync (cap: grace period + 5 min), and no new sync starts once the countdown ends.
+- [How does the app know a form has unsaved changes?](tickets/003-unsaved-changes.md) — one app-wide editing registry (open popups, pending HMIS draft saves, form saves in flight, dirty admin pages); nothing registered → reload after a short notice; something registered → wait the grace period, extended once by 5 min for an open popup, then reload. Pending saves are flushed first.
 
 ## Not yet specified
 
@@ -50,5 +51,9 @@ included.
 
 ## Out of scope
 
+- Resuming or discarding registration drafts abandoned by a reload,
+  crash or closed tab (they stay in the database, hidden from lists) —
+  a gap regardless of forced updates; its own effort ("How does the app
+  know a form has unsaved changes?").
 - Devices that stay offline: they can't learn of a deploy until they
   reconnect; nothing to force meanwhile.
