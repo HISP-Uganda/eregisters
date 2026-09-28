@@ -126,7 +126,7 @@ const SAFE_FALLBACK_RESULT: CheckMetadataInfoResult = {
     program: undefined,
 };
 
-/** Generic equivalent of `src/db/sqlite/metadata-info.ts`'s `checkMetadataInfo`. */
+/** Whether metadata needs syncing, from any backend's `MetadataStore`. */
 export async function checkMetadataInfoGeneric(
     store: MetadataStore,
 ): Promise<CheckMetadataInfoResult> {
@@ -187,8 +187,9 @@ export type QueryMetadataInfoResult = {
 };
 
 /**
- * Generic equivalent of `queryMetadataInfo`. `organisation_units`'s SQL
- * indexed prefix query (`findOrgUnitsByPathPrefix`) becomes an in-memory
+ * Loads the metadata the app runs on, from any backend's `MetadataStore`.
+ * `organisation_units`'s SQL indexed prefix query
+ * (`findOrgUnitsByPathPrefix`) becomes an in-memory
  * filter here — per-device org-unit counts are small (a facility's own
  * tree), so this is a disclosed performance tradeoff, not a correctness
  * gap.

@@ -11,7 +11,7 @@ import { createSchema } from ".././schema";
 import { getConfigRow, putConfigRow } from ".././config-rows";
 import { sqliteMetadataStore } from ".././metadata-store";
 import {
-    getTrackedEntitiesCollection,
+    getSqliteTrackedEntitiesCollection,
     initTrackerCollections,
     resetTrackerCollectionsForTests,
 } from ".././tracker-collections-instance";
@@ -419,7 +419,7 @@ describe("runDexieMigrationIfNeeded", () => {
         try {
             // Leftover from a reverse copy whose SQLite cleanup failed: a
             // tracked entity since deleted on Dexie.
-            await getTrackedEntitiesCollection().utils.bulkInsertLocally(
+            await getSqliteTrackedEntitiesCollection().utils.bulkInsertLocally(
                 [makeTrackedEntity({ trackedEntity: "deleted-since" })],
                 { source: "local" },
             );
@@ -442,7 +442,7 @@ describe("runDexieMigrationIfNeeded", () => {
     it("keeps SQLite data when no reverse copy is current", async () => {
         const { driver, close } = await setUp();
         try {
-            await getTrackedEntitiesCollection().utils.bulkInsertLocally(
+            await getSqliteTrackedEntitiesCollection().utils.bulkInsertLocally(
                 [makeTrackedEntity({ trackedEntity: "live-sqlite-row" })],
                 { source: "local" },
             );
@@ -588,7 +588,7 @@ describe("runDexieMigrationIfNeeded", () => {
         const { driver, close } = await setUp();
         try {
             // A killed tab: some rows written, copy-complete flag never written.
-            await getTrackedEntitiesCollection().utils.bulkInsertLocally(
+            await getSqliteTrackedEntitiesCollection().utils.bulkInsertLocally(
                 [makeTrackedEntity({ trackedEntity: "te-a" })],
                 { source: "local" },
             );

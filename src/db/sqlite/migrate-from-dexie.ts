@@ -34,9 +34,9 @@ import {
     type StoreCopySteps,
 } from "../store-copy";
 import {
-    getEnrollmentsCollection,
-    getEventsCollection,
-    getTrackedEntitiesCollection,
+    getSqliteEnrollmentsCollection,
+    getSqliteEventsCollection,
+    getSqliteTrackedEntitiesCollection,
 } from "./tracker-collections-instance";
 
 /**
@@ -316,7 +316,7 @@ export function forwardCopySteps(
                             { table: "tracked_entities", idColumn: "tracked_entity" },
                             rows,
                             (r) => r.trackedEntity,
-                            () => getTrackedEntitiesCollection().utils.refresh(),
+                            () => getSqliteTrackedEntitiesCollection().utils.refresh(),
                         ),
                     idOf: (r) => r.trackedEntity,
                 }),
@@ -337,7 +337,7 @@ export function forwardCopySteps(
                             { table: "enrollments", idColumn: "enrollment" },
                             rows,
                             (r) => r.enrollment,
-                            () => getEnrollmentsCollection().utils.refresh(),
+                            () => getSqliteEnrollmentsCollection().utils.refresh(),
                         ),
                     idOf: (r) => r.enrollment,
                     required: ["trackedEntity"],
@@ -359,7 +359,7 @@ export function forwardCopySteps(
                             { table: "events", idColumn: "event" },
                             rows,
                             (r) => r.event,
-                            () => getEventsCollection().utils.refresh(),
+                            () => getSqliteEventsCollection().utils.refresh(),
                         ),
                     idOf: (r) => r.event,
                     required: ["enrollment", "trackedEntity"],

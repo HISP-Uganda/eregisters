@@ -1,7 +1,7 @@
 import {
-    getEnrollmentsCollection as getSqliteEnrollmentsCollection,
-    getEventsCollection as getSqliteEventsCollection,
-    getTrackedEntitiesCollection as getSqliteTrackedEntitiesCollection,
+    getSqliteEnrollmentsCollection,
+    getSqliteEventsCollection,
+    getSqliteTrackedEntitiesCollection,
     initTrackerCollections,
 } from "./sqlite/tracker-collections-instance";
 import type { SqlDriver } from "./sqlite/driver-types";

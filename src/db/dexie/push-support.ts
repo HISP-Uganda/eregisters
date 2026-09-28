@@ -3,6 +3,7 @@ import type {
     FlattenedEvent,
     FlattenedTrackedEntity,
 } from "../../schemas";
+import type { PushResultUpdate } from "../sqlite/push-results";
 
 /**
  * Dexie-backend equivalents of the SQL-only push-side helpers
@@ -130,12 +131,6 @@ export async function deleteEventCascadeDexie(
         eventId,
     ]);
 }
-
-export type PushResultUpdate = {
-    key: string;
-    syncStatus: "synced" | "failed";
-    syncError: string | null;
-};
 
 /**
  * Mirrors `applyPushResults` — writes back server-assigned sync status via

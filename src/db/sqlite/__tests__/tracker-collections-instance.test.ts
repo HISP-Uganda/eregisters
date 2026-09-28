@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import { createNodeSqliteDriver } from ".././test-support/node-sqlite-driver";
 import { createSchema } from ".././schema";
 import {
-    getEnrollmentsCollection,
-    getEventsCollection,
-    getTrackedEntitiesCollection,
+    getSqliteEnrollmentsCollection,
+    getSqliteEventsCollection,
+    getSqliteTrackedEntitiesCollection,
     initTrackerCollections,
 } from ".././tracker-collections-instance";
 
@@ -13,11 +13,11 @@ import {
 // singleton-identity-after-init) rather than independent.
 describe("tracker-collections-instance", () => {
     it("throws if a getter is called before initTrackerCollections()", () => {
-        expect(() => getTrackedEntitiesCollection()).toThrow(
+        expect(() => getSqliteTrackedEntitiesCollection()).toThrow(
             /not initialized/,
         );
-        expect(() => getEnrollmentsCollection()).toThrow(/not initialized/);
-        expect(() => getEventsCollection()).toThrow(/not initialized/);
+        expect(() => getSqliteEnrollmentsCollection()).toThrow(/not initialized/);
+        expect(() => getSqliteEventsCollection()).toThrow(/not initialized/);
     });
 
     it("initTrackerCollections() makes all three getters resolve, and repeated calls are idempotent (same instances)", async () => {
@@ -26,9 +26,9 @@ describe("tracker-collections-instance", () => {
 
         initTrackerCollections(driver);
 
-        const te = getTrackedEntitiesCollection();
-        const enr = getEnrollmentsCollection();
-        const evt = getEventsCollection();
+        const te = getSqliteTrackedEntitiesCollection();
+        const enr = getSqliteEnrollmentsCollection();
+        const evt = getSqliteEventsCollection();
         expect(te).toBeDefined();
         expect(enr).toBeDefined();
         expect(evt).toBeDefined();
@@ -40,8 +40,8 @@ describe("tracker-collections-instance", () => {
         await createSchema(otherDriver);
         initTrackerCollections(otherDriver);
 
-        expect(getTrackedEntitiesCollection()).toBe(te);
-        expect(getEnrollmentsCollection()).toBe(enr);
-        expect(getEventsCollection()).toBe(evt);
+        expect(getSqliteTrackedEntitiesCollection()).toBe(te);
+        expect(getSqliteEnrollmentsCollection()).toBe(enr);
+        expect(getSqliteEventsCollection()).toBe(evt);
     });
 });

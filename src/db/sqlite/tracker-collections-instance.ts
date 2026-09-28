@@ -49,18 +49,18 @@ function requireInitialized<T>(value: T | null, name: string): T {
     return value;
 }
 
-export function getTrackedEntitiesCollection(): TrackedEntitiesCollection {
+export function getSqliteTrackedEntitiesCollection(): TrackedEntitiesCollection {
     return requireInitialized(
         trackedEntitiesCollection,
         "trackedEntitiesCollection",
     );
 }
 
-export function getEnrollmentsCollection(): EnrollmentsCollection {
+export function getSqliteEnrollmentsCollection(): EnrollmentsCollection {
     return requireInitialized(enrollmentsCollection, "enrollmentsCollection");
 }
 
-export function getEventsCollection(): EventsCollection {
+export function getSqliteEventsCollection(): EventsCollection {
     return requireInitialized(eventsCollection, "eventsCollection");
 }
 
