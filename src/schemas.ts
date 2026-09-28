@@ -704,7 +704,7 @@ export type Metadata = {
     /**
      * Set of resources that the last pull attempt actually fetched
      * successfully. NOT persisted — used only in-flight between
-     * `pullResource` and `saveMetadata` / `deleteAllMetadata` so those actors
+     * `pullResource` and `saveMetadata` / `replaceAllMetadata` so those actors
      * skip failed resources instead of wiping local tables.
      */
     succeededResources?: Set<Resource>;

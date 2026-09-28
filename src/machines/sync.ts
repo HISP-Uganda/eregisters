@@ -50,7 +50,7 @@ import { type ConnectivityStatus } from "./network-reachability";
 import { queryWithTimeout, SYNC_TIMEOUTS_MS } from "./network-reachability";
 import {
     checkMetadataSyncStatus,
-    deleteMetadataForResync,
+    replaceMetadataForResync,
     getConfiguredPageSize,
     getMetadataVersionRecord,
     patchSyncState,
@@ -975,11 +975,11 @@ export const syncMachine = setup({
             }
             return results;
         }),
-        deleteAllMetadata: fromPromise<
+        replaceAllMetadata: fromPromise<
             void,
             { metadataStore: MetadataStore; metadata: Metadata }
         >(async ({ input: { metadataStore, metadata } }) => {
-            await deleteMetadataForResync(metadataStore, metadata);
+            await replaceMetadataForResync(metadataStore, metadata);
         }),
         resetDatabase: fromPromise<void, { metadataStore: MetadataStore }>(
             async ({ input: { metadataStore } }) => {
@@ -1347,7 +1347,7 @@ export const syncMachine = setup({
                                                     .lastSync,
                                             rawMetadata: event.output,
                                         })),
-                                        target: "deletingMetadata",
+                                        target: "replacingMetadata",
                                     },
                                 ],
 
@@ -1362,17 +1362,29 @@ export const syncMachine = setup({
                                 },
                             },
                         },
-                        deletingMetadata: {
+                        // Full sync: delete + save as one all-or-nothing
+                        // change. A failure rolls back and keeps the old
+                        // metadata — never the store wipe (resetIndexDB)
+                        // an incremental save's failure leads to.
+                        replacingMetadata: {
                             invoke: {
-                                src: "deleteAllMetadata",
+                                src: "replaceAllMetadata",
                                 input: ({
                                     context: { metadataStore, rawMetadata },
                                 }) => ({
                                     metadataStore,
                                     metadata: rawMetadata,
                                 }),
-                                onDone: "savingMetadata",
-                                onError: "#metadataSync.failure",
+                                onDone: "pullingUIConfig",
+                                onError: {
+                                    target: "#metadataSync.failure",
+                                    actions: ({ event }) => {
+                                        console.error(
+                                            "Full metadata replacement failed; old metadata kept:",
+                                            event.error,
+                                        );
+                                    },
+                                },
                             },
                         },
                         savingMetadata: {

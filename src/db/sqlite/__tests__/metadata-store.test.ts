@@ -156,3 +156,42 @@ describe("sqliteMetadataStore", () => {
         });
     });
 });
+
+describe("sqliteMetadataStore.transaction (wayfinder ticket \"Should a Full Metadata Sync replace metadata in one step instead of deleting it first?\")", () => {
+    it("commits every write made inside it", async () => {
+        const { driver, close } = createNodeSqliteDriver();
+        try {
+            await createSchema(driver);
+            const store = sqliteMetadataStore(driver);
+            await store.transaction(async (tx) => {
+                await tx.putRows("programs", [{ id: "p1" }, { id: "p2" }]);
+                await tx.putRow("data_sets", { id: "d1" });
+            });
+            expect(await store.listRows("programs")).toHaveLength(2);
+            expect(await store.getRow("data_sets", "d1")).toEqual({ id: "d1" });
+        } finally {
+            close();
+        }
+    });
+
+    it("rolls every write back when it throws — the old rows survive", async () => {
+        const { driver, close } = createNodeSqliteDriver();
+        try {
+            await createSchema(driver);
+            const store = sqliteMetadataStore(driver);
+            await store.putRows("programs", [{ id: "old" }]);
+
+            await expect(
+                store.transaction(async (tx) => {
+                    await tx.clearTable("programs");
+                    await tx.putRows("programs", [{ id: "new" }]);
+                    throw new Error("save failed half-way");
+                }),
+            ).rejects.toThrow("save failed half-way");
+
+            expect(await store.listRows("programs")).toEqual([{ id: "old" }]);
+        } finally {
+            close();
+        }
+    });
+});

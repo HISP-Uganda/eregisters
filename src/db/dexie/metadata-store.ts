@@ -44,7 +44,10 @@ function getDb(): MetadataDexieDatabase {
 
 export function dexieMetadataStore(): MetadataStore {
     const db = getDb();
-    return {
+    const store: MetadataStore = {
+        // Every metadata row lives in `rows`, so one read-write transaction
+        // covers any change; the store's calls inside it join it.
+        transaction: (fn) => db.transaction("rw", db.rows, () => fn(store)),
         async getRow<T extends object>(table: string, id: string) {
             const row = await db.rows.get([table, id]);
             return row ? (row.data as T) : undefined;
@@ -90,5 +93,6 @@ export function dexieMetadataStore(): MetadataStore {
             await db.rows.where("table").equals(table).delete();
         },
     };
+    return store;
 }
 

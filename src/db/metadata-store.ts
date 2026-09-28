@@ -73,4 +73,13 @@ export interface MetadataStore {
     deleteRow: (table: string, key: string) => Promise<void>;
     /** Deletes every row of `table` in one operation. */
     clearTable: (table: string) => Promise<void>;
+    /**
+     * Runs `fn` as one all-or-nothing change: every write made through the
+     * store it receives commits together, or none does if `fn` throws — so
+     * a Full Metadata Sync's delete + save can't leave a device with no
+     * metadata (wayfinder ticket "Should a Full Metadata Sync replace
+     * metadata in one step instead of deleting it first?"). Only store
+     * calls belong inside (no network).
+     */
+    transaction: <T>(fn: (store: MetadataStore) => Promise<T>) => Promise<T>;
 }

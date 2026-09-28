@@ -35,7 +35,20 @@ function inMemoryMetadataStore(): MetadataStore {
         }
         return t;
     };
-    return {
+    const store: MetadataStore = {
+        // All or nothing, like the real stores: restore a snapshot on throw.
+        async transaction(fn) {
+            const snapshot = new Map(
+                Array.from(rows, ([t, m]) => [t, new Map(m)] as const),
+            );
+            try {
+                return await fn(store);
+            } catch (error) {
+                rows.clear();
+                for (const [t, m] of snapshot) rows.set(t, m);
+                throw error;
+            }
+        },
         async getRow<T extends object>(table: string, id: string) {
             return tableFor(table).get(id) as T | undefined;
         },
@@ -65,6 +78,7 @@ function inMemoryMetadataStore(): MetadataStore {
             tableFor(table).clear();
         },
     };
+    return store;
 }
 
 function makeMetadata(overrides: Partial<Metadata> = {}): Metadata {

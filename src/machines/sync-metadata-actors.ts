@@ -102,11 +102,21 @@ export function saveMetadataToSqlite(
     return saveMetadataGeneric(store, input);
 }
 
-export function deleteMetadataForResync(
+/**
+ * A Full Metadata Sync's replacement: delete the old metadata and save
+ * the new copy as ONE all-or-nothing change, so an interruption (a forced
+ * reload, a closed tab, a crash) or a failed save leaves the old metadata
+ * intact instead of none — wayfinder ticket "Should a Full Metadata Sync
+ * replace metadata in one step instead of deleting it first?".
+ */
+export function replaceMetadataForResync(
     store: MetadataStore,
     input: Metadata,
 ): Promise<void> {
-    return deleteMetadataForResyncGeneric(store, input);
+    return store.transaction(async (tx) => {
+        await deleteMetadataForResyncGeneric(tx, input);
+        await saveMetadataGeneric(tx, input);
+    });
 }
 
 export function resetMetadataForRecovery(store: MetadataStore): Promise<void> {

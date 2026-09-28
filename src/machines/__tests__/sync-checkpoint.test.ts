@@ -634,3 +634,68 @@ describe("two open tabs (wayfinder ticket \"Do two open tabs' sync machines conf
         await waitFor(actor, (snap) => snap.matches({ metadataSync: "waiting" }), TIMEOUT);
     });
 });
+
+describe("Full Metadata Sync (wayfinder ticket \"Should a Full Metadata Sync replace metadata in one step instead of deleting it first?\")", () => {
+    let cleanup: (() => void) | undefined;
+    afterEach(() => {
+        cleanup?.();
+        cleanup = undefined;
+        vi.restoreAllMocks();
+    });
+
+    it("keeps the old metadata when saving the new copy fails half-way, and ends in failure", async () => {
+        vi.spyOn(console, "error").mockImplementation(() => undefined);
+        const own = createNodeSqliteDriver();
+        await createSchema(own.driver);
+        const real = sqliteMetadataStore(own.driver);
+        await real.putRows("programs", [{ id: "old-program" }]);
+
+        // The real SQLite store, except that writing option sets fails —
+        // after programs were already rewritten inside the transaction.
+        const failOnOptionSets = (store: MetadataStore): MetadataStore => ({
+            ...store,
+            putRows: async (table, rows, keyOf) => {
+                if (table === "option_sets") throw new Error("disk full");
+                return store.putRows(table, rows, keyOf);
+            },
+            transaction: (fn) => store.transaction((tx) => fn(failOnOptionSets(tx))),
+        });
+
+        const { actor, close } = await setUp(
+            {
+                checkIndexDB: async () => checkResult({}),
+                actors: {
+                    // The real replacement is what this test is about.
+                    replaceAllMetadata: syncMachine.implementations.actors.replaceAllMetadata as AnyActorLogic,
+                    queryIndexDB: fromPromise(async () => ({ program: undefined })),
+                    pullResource: fromPromise(async () => ({
+                        metadataVersion: [{ id: "metadata-version", lastSync: "2026-09-28T10:00:00.000" }],
+                        organisationUnits: [],
+                        programs: [{ id: "new-program" }],
+                        dataElements: [],
+                        programIndicators: [],
+                        trackedEntityAttributes: [],
+                        programRules: [],
+                        programRuleVariables: [],
+                        optionSets: [{ id: "os1", optionSet: "os1", code: "a" }],
+                        optionGroups: [],
+                        dataSets: [],
+                        categoryOptionCombos: [],
+                    })),
+                },
+            },
+            failOnOptionSets(real),
+        );
+        cleanup = () => {
+            close();
+            own.close();
+        };
+        await waitFor(actor, (snap) => snap.matches({ metadataSync: "waiting" }), TIMEOUT);
+
+        actor.send({ type: "FULL_METADATA_SYNC" });
+        await waitFor(actor, (snap) => snap.matches({ metadataSync: "failure" }), TIMEOUT);
+
+        expect(await real.listRows("programs")).toEqual([{ id: "old-program" }]);
+    });
+});
+

@@ -75,6 +75,10 @@ async function insertManyRows(
  */
 export function sqliteMetadataStore(db: SqlDriver): MetadataStore {
     return {
+        // The driver's transaction is reentrant, so each method's own
+        // transaction nests inside this one.
+        transaction: (fn) =>
+            db.transaction((tx) => fn(sqliteMetadataStore(tx))),
         async getRow<T extends object>(table: string, id: string) {
             if (table === "organisation_units") {
                 const result = await db.execute<OrganisationUnitSqlRow>(
