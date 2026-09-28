@@ -49,6 +49,7 @@ penalty well below today's 10.0, with dead code and cycles still at 0.
 - [Which program-rule gaps against DHIS2 should be fixed?](tickets/008-program-rule-gaps.md) — HIDEPROGRAMSTAGE stays ignored on purpose (its one rule would block all visits after a TB outcome; flagged for the metadata admins); newest-event variable sources and priority order now match DHIS2 (golden: 13 reorder-only changes); the unreached gaps left.
 - [Split ProgramStageCapture](tickets/009-split-program-stage-capture.md) — into `src/screens/program-stage-capture/` (9 files); the never-used inline modes kept and Medicines and Supplies wired to inline-row (user's call), with a row-remount bug fixed. Inline editing not yet tried hands-on.
 - [Split MainEventCapture](tickets/010-split-main-event-capture.md) — into `src/screens/main-event-capture/` (5 files): newborn pre-fill as a tested table, the newborn popup, visit tabs, visit header; behaviour unchanged.
+- [Split the section layout admin page](tickets/011-split-section-layout.md) — into `src/screens/section-layout/` (6 files): the layout edits as a tested pure module, an editor hook, the group card in pieces, one shared name popup; behaviour unchanged.
 
 ## Not yet specified
 
