@@ -11,12 +11,19 @@ import {
 import type { MetadataStore } from "../db/metadata-store";
 import { SYNC_STATE_LOCK_NAME, withLock } from "./sync-locks";
 import { queryWithTimeout, SYNC_TIMEOUTS_MS } from "./network-reachability";
+import { METADATA_RESOURCES } from "./metadata-resources";
+import {
+    extractServerDate,
+    shouldUseLastUpdatedFilter,
+    type MetadataSyncMode,
+} from "./sync-metadata-mode";
 import {
     emptyStageHierarchyConfig,
     emptyUIConfig,
     Engine,
     Metadata,
     MetadataVersion,
+    Resource,
     StageHierarchyConfig,
     UIConfig,
 } from "../schemas";
@@ -204,7 +211,7 @@ export async function getConfiguredPageSize(
     }
 }
 
-/** pullResource's `metadata_versions` bookkeeping read (sync.ts:~1243). */
+/** The metadata pull's `metadata_versions` record (see pullMetadataResources). */
 export function getMetadataVersionRecord(
     store: MetadataStore,
 ): Promise<MetadataVersion | undefined> {
@@ -212,4 +219,118 @@ export function getMetadataVersionRecord(
         "metadata_versions",
         "metadata-version",
     );
+}
+
+/**
+ * The metadata version after a pull: each resource that succeeded, and
+ * the version as a whole, stamped `timestamp`; other resources keep theirs.
+ */
+function stampMetadataVersions(
+    previous: MetadataVersion | undefined,
+    succeeded: Iterable<Resource>,
+    timestamp: string,
+): MetadataVersion {
+    const version = previous ?? {
+        id: "metadata-version",
+        lastSync: timestamp,
+        versions: {},
+    };
+    for (const resource of succeeded) {
+        version.versions[resource] = timestamp;
+    }
+    version.lastSync = timestamp;
+    return version;
+}
+
+/**
+ * `pullResource`'s body: pulls every resource in parallel (see
+ * `METADATA_RESOURCES`), skipping any that fail, and stamps the ones that
+ * succeeded in the metadata version.
+ */
+export async function pullMetadataResources({
+    resources,
+    engine,
+    metadataStore,
+    lastMetadataPull,
+    metadataSyncMode,
+    userOrgUnit,
+}: {
+    resources: Resource[];
+    engine: Engine;
+    metadataStore: MetadataStore;
+    lastMetadataPull: string | undefined;
+    metadataSyncMode: MetadataSyncMode;
+    userOrgUnit: string;
+}): Promise<Metadata> {
+    // Mirror pullData's lastDataPull boundary: capture the SERVER's clock
+    // once, before any resource is pulled, rather than the device clock
+    // per-resource — avoids client/server clock skew and guarantees a
+    // resource updated on the server *during* this (possibly long-running)
+    // sync is re-fetched next time instead of being skipped.
+    const serverDate = extractServerDate(
+        (await queryWithTimeout(
+            engine,
+            { info: { resource: "system/info" } },
+            SYNC_TIMEOUTS_MS.probe,
+        )) as { info?: { serverDate?: string } },
+    );
+
+    const results: Metadata = {
+        dataElements: [],
+        optionGroups: [],
+        optionSets: [],
+        organisationUnits: [],
+        programs: [],
+        programIndicators: [],
+        programRules: [],
+        programRuleVariables: [],
+        trackedEntityAttributes: [],
+        metadataVersion: [],
+        dataSets: [],
+        categoryOptionCombos: [],
+        succeededResources: new Set<Resource>(),
+    };
+    const context = {
+        userOrgUnit,
+        since: shouldUseLastUpdatedFilter(metadataSyncMode, lastMetadataPull)
+            ? lastMetadataPull
+            : undefined,
+    };
+
+    const outcomes = await Promise.allSettled(
+        resources.map(async (resource) => {
+            const definition = METADATA_RESOURCES[resource];
+            if (!definition) return;
+            const response = await queryWithTimeout(
+                engine,
+                definition.query(context) as never,
+                definition.timeoutMs,
+            );
+            Object.assign(results, definition.read(response));
+        }),
+    );
+    outcomes.forEach((outcome, index) => {
+        const resource = resources[index];
+        if (outcome.status === "fulfilled") {
+            results.succeededResources!.add(resource);
+        } else {
+            console.warn(`[metadata-sync] Skipping ${resource}:`, outcome.reason);
+        }
+    });
+
+    if (results.succeededResources!.size > 0) {
+        // Prefer the server clock captured above; fall back to the previous
+        // boundary (don't advance with an untrusted timestamp — same rule as
+        // resolveNextDataPull) and only to the device clock as a last
+        // resort, since MetadataVersion.lastSync requires a string.
+        const timestamp = serverDate ?? lastMetadataPull ?? new Date().toISOString();
+        results.metadataVersion = [
+            stampMetadataVersions(
+                await getMetadataVersionRecord(metadataStore),
+                results.succeededResources!,
+                timestamp,
+            ),
+        ];
+    }
+    return results;
 }
