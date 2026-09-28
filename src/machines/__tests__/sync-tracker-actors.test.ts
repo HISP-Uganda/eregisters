@@ -1,4 +1,5 @@
-import { beforeAll, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { FetchError } from "@dhis2/app-runtime";
 
 // Node's built-in global `navigator` object has no `onLine` property (unlike
 // a real browser), which would make isDhis2Reachable's `!navigator.onLine`
@@ -18,6 +19,7 @@ import {
     syncDeleteToLocal,
     syncReportToLocal,
 } from ".././sync-tracker-actors";
+import { classifyFetchError, SYNC_TIMEOUTS_MS } from ".././network-reachability";
 
 const { driver } = createNodeSqliteDriver();
 
@@ -382,5 +384,60 @@ describe("processBatchSync", () => {
 
         expect(result).toEqual({ processed: 0, succeeded: 0, failed: 0 });
         expect(engine.query).not.toHaveBeenCalled();
+    });
+});
+
+describe("a hung tracker import (wayfinder ticket \"Apply withAbortTimeout to the remaining unprotected sync calls\")", () => {
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
+    it("gives up after the import time limit and leaves the rows pending for the next push", async () => {
+        await seedTrackedEntity("te-hung-import");
+        const [row] = await trackedEntitiesRowAdapter.loadByKeys!(driver, ["te-hung-import"]);
+        vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+        const engine = {
+            query: vi.fn(async () => ({})), // the reachability ping answers
+            mutate: vi.fn(
+                (_mutation: unknown, options?: { signal?: AbortSignal }) =>
+                    new Promise((_, reject) => {
+                        options?.signal?.addEventListener("abort", () =>
+                            reject(
+                                new FetchError({
+                                    type: "network",
+                                    message: "An unknown network error occurred",
+                                    details: options.signal!.reason,
+                                }),
+                            ),
+                        );
+                    }),
+            ),
+        } as unknown as Engine;
+
+        let settled = false;
+        const push = syncReportToLocal({
+            entities: [row],
+            engine,
+            backend: "sqlite",
+            sqlDriver: driver,
+            validAttributeIds: new Set(),
+            validDataElementsByStage: new Map(),
+            dataElements: undefined,
+            trackedEntityAttributes: undefined,
+            optionSets: undefined,
+        }).finally(() => {
+            settled = true;
+        });
+        const rejected = push.catch((error: unknown) => error);
+
+        // A slow upload is left alone until the limit…
+        await vi.advanceTimersByTimeAsync(SYNC_TIMEOUTS_MS.trackerImport - 1);
+        expect(settled).toBe(false);
+        // …then abandoned as a timeout, with nothing written locally.
+        await vi.advanceTimersByTimeAsync(1);
+        expect(classifyFetchError(await rejected)).toBe("timeout");
+
+        const [after] = await trackedEntitiesRowAdapter.loadByKeys!(driver, ["te-hung-import"]);
+        expect(after.syncStatus).toBe("pending");
     });
 });

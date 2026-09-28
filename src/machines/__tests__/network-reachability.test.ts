@@ -4,9 +4,12 @@ import {
     classifyFetchError,
     isDhis2Reachable,
     PING_TIMEOUT_MS,
+    queryWithTimeout,
+    SYNC_TIMEOUTS_MS,
     toConnectivityStatus,
     withAbortTimeout,
 } from ".././network-reachability";
+import type { Engine } from "../../schemas";
 
 describe("classifyFetchError", () => {
     it("maps FetchError type 'access' to 'access'", () => {
@@ -167,5 +170,66 @@ describe("isDhis2Reachable", () => {
         const result = await resultPromise;
         expect(result).toEqual({ reachable: false, reason: "timeout" });
         vi.useRealTimers();
+    });
+});
+
+/**
+ * A request that never answers but honours its abort signal, rejecting the
+ * way @dhis2/data-engine does: FetchError type "network", the abort reason
+ * in `details`.
+ */
+function hangingUntilAborted(_query: unknown, options?: { signal?: AbortSignal }) {
+    return new Promise((_, reject) => {
+        options?.signal?.addEventListener("abort", () =>
+            reject(
+                new FetchError({
+                    type: "network",
+                    message: "An unknown network error occurred",
+                    details: options.signal!.reason,
+                }),
+            ),
+        );
+    });
+}
+
+describe("queryWithTimeout (wayfinder ticket \"Apply withAbortTimeout to the remaining unprotected sync calls\")", () => {
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
+    it("gives up on a hung request at its time limit, as a 'timeout'", async () => {
+        vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+        const engine = { query: vi.fn(hangingUntilAborted) } as unknown as Engine;
+        let settled = false;
+        const request = queryWithTimeout(
+            engine,
+            { info: { resource: "system/info" } },
+            SYNC_TIMEOUTS_MS.probe,
+        ).finally(() => {
+            settled = true;
+        });
+        const rejected = request.catch((error: unknown) => error);
+
+        await vi.advanceTimersByTimeAsync(SYNC_TIMEOUTS_MS.probe - 1);
+        expect(settled).toBe(false);
+        await vi.advanceTimersByTimeAsync(1);
+
+        expect(classifyFetchError(await rejected)).toBe("timeout");
+    });
+
+    it("passes a prompt answer through and leaves no timer behind", async () => {
+        vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+        const engine = {
+            query: vi.fn(async () => ({ info: { serverDate: "2026-09-28T10:00:00.000" } })),
+        } as unknown as Engine;
+
+        await expect(
+            queryWithTimeout(engine, { info: { resource: "system/info" } }, SYNC_TIMEOUTS_MS.probe),
+        ).resolves.toEqual({ info: { serverDate: "2026-09-28T10:00:00.000" } });
+        expect(vi.getTimerCount()).toBe(0);
+        expect(engine.query).toHaveBeenCalledWith(
+            { info: { resource: "system/info" } },
+            { signal: expect.any(AbortSignal) },
+        );
     });
 });

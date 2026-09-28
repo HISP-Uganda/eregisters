@@ -47,6 +47,7 @@ import { dexieLocalLookups } from "../db/dexie/pull-page-lookups";
 import type { SqlDriver } from "../db/sqlite/driver-types";
 import { sqlLocalLookups } from "../db/sqlite/pull-page-lookups";
 import { type ConnectivityStatus } from "./network-reachability";
+import { queryWithTimeout, SYNC_TIMEOUTS_MS } from "./network-reachability";
 import {
     checkMetadataSyncStatus,
     deleteMetadataForResync,
@@ -452,9 +453,9 @@ export const syncMachine = setup({
                     // time instead of being skipped. This value is only persisted
                     // once the pull below completes successfully.
                     const serverDate = extractServerDate(
-                        (await engine.query({
+                        (await queryWithTimeout(engine, {
                             info: { resource: "system/info" },
-                        })) as { info?: { serverDate?: string } },
+                        }, SYNC_TIMEOUTS_MS.probe)) as { info?: { serverDate?: string } },
                     );
 
                     let currentPage = 1;
@@ -488,12 +489,12 @@ export const syncMachine = setup({
                             params = { ...params, updatedAfter };
                         }
 
-                        const response = (await engine.query({
+                        const response = (await queryWithTimeout(engine, {
                             trackedEntities: {
                                 resource: "tracker/trackedEntities",
                                 params,
                             },
-                        })) as {
+                        }, SYNC_TIMEOUTS_MS.pullPage)) as {
                             trackedEntities: {
                                 pager?: {
                                     page?: number;
@@ -595,9 +596,9 @@ export const syncMachine = setup({
             // (possibly long-running) sync is re-fetched next time instead
             // of being skipped.
             const serverDate = extractServerDate(
-                (await engine.query({
+                (await queryWithTimeout(engine, {
                     info: { resource: "system/info" },
-                })) as { info?: { serverDate?: string } },
+                }, SYNC_TIMEOUTS_MS.probe)) as { info?: { serverDate?: string } },
             );
 
             const results: Metadata = {
@@ -624,14 +625,14 @@ export const syncMachine = setup({
                     case "categoryOptionCombos":
                         const {
                             categoryOptionCombos: { categoryOptionCombos },
-                        } = (await engine.query({
+                        } = (await queryWithTimeout(engine, {
                             categoryOptionCombos: {
                                 resource: `categoryCombos/UjXPudXlraY/categoryOptionCombos.json`,
                                 params: {
                                     fields: "id,name,access,categoryOptions[id,name,access]",
                                 },
                             },
-                        })) as {
+                        }, SYNC_TIMEOUTS_MS.probe)) as {
                             categoryOptionCombos: {
                                 categoryOptionCombos: CategoryOptionCombo[];
                             };
@@ -641,7 +642,7 @@ export const syncMachine = setup({
                     case "organisationUnits":
                         const {
                             organisationUnits: { organisationUnits },
-                        } = (await engine.query({
+                        } = (await queryWithTimeout(engine, {
                             organisationUnits: {
                                 resource: `organisationUnits/${userOrgUnit}.json`,
                                 params: {
@@ -650,7 +651,7 @@ export const syncMachine = setup({
                                     includeDescendants: true,
                                 },
                             },
-                        })) as {
+                        }, SYNC_TIMEOUTS_MS.probe)) as {
                             organisationUnits: {
                                 organisationUnits: OU[];
                             };
@@ -660,14 +661,14 @@ export const syncMachine = setup({
                     case "dataSets":
                         const {
                             dataSets: { dataSets },
-                        } = (await engine.query({
+                        } = (await queryWithTimeout(engine, {
                             dataSets: {
                                 resource: "dataSets.json",
                                 params: {
                                     fields: "id,name,code,periodType",
                                 },
                             },
-                        })) as {
+                        }, SYNC_TIMEOUTS_MS.probe)) as {
                             dataSets: {
                                 dataSets: DataSet[];
                             };
@@ -676,7 +677,7 @@ export const syncMachine = setup({
                         break;
 
                     case "programs":
-                        const { program } = (await engine.query({
+                        const { program } = (await queryWithTimeout(engine, {
                             program: {
                                 resource: "programs",
                                 id: "ueBhWkWll5v",
@@ -684,7 +685,7 @@ export const syncMachine = setup({
                                     fields: "id,name,programSections[id,name,sortOrder,trackedEntityAttributes[id]],trackedEntityType[id,trackedEntityTypeAttributes[id]],programType,selectEnrollmentDatesInFuture,selectIncidentDatesInFuture,programStages[id,repeatable,name,code,executionDateLabel,programStageDataElements[id,sortOrder,compulsory,renderOptionsAsRadio,dataElement[id],renderType,allowFutureDate],programStageSections[id,name,sortOrder,dataElements[id]]],programTrackedEntityAttributes[id,mandatory,searchable,renderOptionsAsRadio,renderType,sortOrder,allowFutureDate,displayInList,trackedEntityAttribute[id]]",
                                 },
                             },
-                        })) as { program: Program };
+                        }, SYNC_TIMEOUTS_MS.bulkMetadata)) as { program: Program };
                         results.programs = [program];
                         break;
 
@@ -704,12 +705,12 @@ export const syncMachine = setup({
                         }
                         const {
                             dataElements: { dataElements },
-                        } = (await engine.query({
+                        } = (await queryWithTimeout(engine, {
                             dataElements: {
                                 resource: "dataElements",
                                 params: dataElementsParams,
                             },
-                        })) as {
+                        }, SYNC_TIMEOUTS_MS.bulkMetadata)) as {
                             dataElements: {
                                 dataElements: DataElement[];
                             };
@@ -732,12 +733,12 @@ export const syncMachine = setup({
                         }
                         const {
                             programIndicators: { programIndicators },
-                        } = (await engine.query({
+                        } = (await queryWithTimeout(engine, {
                             programIndicators: {
                                 resource: "programIndicators",
                                 params: programIndicatorsParams,
                             },
-                        })) as {
+                        }, SYNC_TIMEOUTS_MS.bulkMetadata)) as {
                             programIndicators: {
                                 programIndicators: ProgramIndicator[];
                             };
@@ -764,12 +765,12 @@ export const syncMachine = setup({
                             trackedEntityAttributes: {
                                 trackedEntityAttributes,
                             },
-                        } = (await engine.query({
+                        } = (await queryWithTimeout(engine, {
                             trackedEntityAttributes: {
                                 resource: "trackedEntityAttributes",
                                 params: attributesParams,
                             },
-                        })) as {
+                        }, SYNC_TIMEOUTS_MS.bulkMetadata)) as {
                             trackedEntityAttributes: {
                                 trackedEntityAttributes: TrackedEntityAttribute[];
                             };
@@ -795,7 +796,7 @@ export const syncMachine = setup({
                         }
                         const {
                             programRules: { programRules },
-                        } = (await engine.query({
+                        } = (await queryWithTimeout(engine, {
                             programRules: {
                                 resource: `programRules.json`,
                                 params: {
@@ -804,7 +805,7 @@ export const syncMachine = setup({
                                     paging: false,
                                 },
                             },
-                        })) as {
+                        }, SYNC_TIMEOUTS_MS.bulkMetadata)) as {
                             programRules: {
                                 programRules: ProgramRule[];
                             };
@@ -830,7 +831,7 @@ export const syncMachine = setup({
                         }
                         const {
                             programRuleVariables: { programRuleVariables },
-                        } = (await engine.query({
+                        } = (await queryWithTimeout(engine, {
                             programRuleVariables: {
                                 resource: `programRuleVariables.json`,
                                 params: {
@@ -839,7 +840,7 @@ export const syncMachine = setup({
                                     paging: false,
                                 },
                             },
-                        })) as {
+                        }, SYNC_TIMEOUTS_MS.bulkMetadata)) as {
                             programRuleVariables: {
                                 programRuleVariables: ProgramRuleVariable[];
                             };
@@ -861,12 +862,12 @@ export const syncMachine = setup({
                         ) {
                             optionSetsParams.filter = `lastUpdated:gt:${lastMetadataPull}`;
                         }
-                        const { optionSets } = (await engine.query({
+                        const { optionSets } = (await queryWithTimeout(engine, {
                             optionSets: {
                                 resource: "optionSets",
                                 params: optionSetsParams,
                             },
-                        })) as {
+                        }, SYNC_TIMEOUTS_MS.bulkMetadata)) as {
                             optionSets: {
                                 optionSets: {
                                     id: string;
@@ -905,12 +906,12 @@ export const syncMachine = setup({
                         ) {
                             optionGroupsParams.filter = `lastUpdated:gt:${lastMetadataPull}`;
                         }
-                        const { optionGroups } = (await engine.query({
+                        const { optionGroups } = (await queryWithTimeout(engine, {
                             optionGroups: {
                                 resource: "optionGroups",
                                 params: optionGroupsParams,
                             },
-                        })) as {
+                        }, SYNC_TIMEOUTS_MS.bulkMetadata)) as {
                             optionGroups: {
                                 optionGroups: Array<{
                                     id: string;

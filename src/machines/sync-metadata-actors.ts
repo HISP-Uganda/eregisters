@@ -10,6 +10,7 @@ import {
 } from "../db/metadata-operations";
 import type { MetadataStore } from "../db/metadata-store";
 import { SYNC_STATE_LOCK_NAME, withLock } from "./sync-locks";
+import { queryWithTimeout, SYNC_TIMEOUTS_MS } from "./network-reachability";
 import {
     emptyStageHierarchyConfig,
     emptyUIConfig,
@@ -117,9 +118,9 @@ export async function pullUiConfig(
     engine: Engine,
 ): Promise<UIConfig> {
     try {
-        const result = (await engine.query({
+        const result = (await queryWithTimeout(engine, {
             uiConfig: { resource: "dataStore/eregisters/ui-config" },
-        })) as { uiConfig: UIConfig };
+        }, SYNC_TIMEOUTS_MS.probe)) as { uiConfig: UIConfig };
         await store.putRow("ui_config", {
             id: "main",
             config: result.uiConfig,
@@ -146,11 +147,11 @@ export async function pullStageHierarchyConfig(
     engine: Engine,
 ): Promise<StageHierarchyConfig> {
     try {
-        const result = (await engine.query({
+        const result = (await queryWithTimeout(engine, {
             stageHierarchy: {
                 resource: "dataStore/eregisters/stage-hierarchy",
             },
-        })) as { stageHierarchy: StageHierarchyConfig };
+        }, SYNC_TIMEOUTS_MS.probe)) as { stageHierarchy: StageHierarchyConfig };
         await store.putRow("stage_hierarchy", {
             id: "main",
             config: result.stageHierarchy,
@@ -176,9 +177,9 @@ export async function getConfiguredPageSize(
     engine: Engine,
 ): Promise<number | undefined> {
     try {
-        const result = (await engine.query({
+        const result = (await queryWithTimeout(engine, {
             uiConfig: { resource: "dataStore/eregisters/ui-config" },
-        })) as { uiConfig: UIConfig };
+        }, SYNC_TIMEOUTS_MS.probe)) as { uiConfig: UIConfig };
         await store.putRow("ui_config", {
             id: "main",
             config: result.uiConfig,

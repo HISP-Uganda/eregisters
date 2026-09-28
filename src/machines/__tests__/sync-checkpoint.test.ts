@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createActor, fromCallback, fromPromise, waitFor, type AnyActorLogic } from "xstate";
 import { CROSS_TAB_CHANNEL } from "../../db/cross-tab";
+import { SYNC_TIMEOUTS_MS } from "../network-reachability";
 import type { CheckMetadataInfoResult } from "../../db/metadata-operations";
 import type { MetadataStore } from "../../db/metadata-store";
 import { sqliteMetadataStore } from "../../db/sqlite/metadata-store";
@@ -19,6 +20,12 @@ import { syncMachine } from "../sync";
  */
 
 const TIMEOUT = { timeout: 1000 };
+
+/** Lets real I/O and unfaked callbacks run while setTimeout is faked. */
+const nextMacrotask = () =>
+    new Promise<void>((resolve) =>
+        (globalThis as unknown as { setImmediate: (cb: () => void) => void }).setImmediate(resolve),
+    );
 
 type Overrides = Partial<{
     /** Run the real pullData actor against this engine instead of faking it. */
@@ -335,6 +342,57 @@ describe("sync.pullData log line (Phase 2)", () => {
         await waitFor(actor, (snap) => snap.matches({ dataPull: "waiting" }), TIMEOUT);
 
         expect(pullLines(info)[0]).toMatchObject({ outcome: "ok", mode: "full", checkpointFrom: null, checkpointTo: "C1" });
+    });
+
+    it("gives up on a hung pull page as an error and advances nothing (wayfinder ticket \"Apply withAbortTimeout to the remaining unprotected sync calls\")", async () => {
+        const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+        vi.spyOn(console, "error").mockImplementation(() => undefined);
+        let pageRequested = false;
+        const engine = {
+            query: (q: Record<string, { resource: string }>, options?: { signal?: AbortSignal }) => {
+                if ("info" in q) return Promise.resolve({ info: { serverDate: "2026-09-28T10:00:00.000" } });
+                if ("uiConfig" in q) return Promise.resolve({ uiConfig: {} });
+                pageRequested = true;
+                return new Promise((_, reject) => {
+                    options?.signal?.addEventListener("abort", () =>
+                        reject(
+                            new FetchError({
+                                type: "network",
+                                message: "An unknown network error occurred",
+                                details: options.signal!.reason,
+                            }),
+                        ),
+                    );
+                });
+            },
+        };
+        const { actor, close } = await setUp({ checkIndexDB: async () => checkResult({}), engine });
+        cleanup = () => {
+            vi.useRealTimers();
+            close();
+        };
+        await waitFor(actor, (snap) => snap.context.lastDataPull === "C1", TIMEOUT);
+
+        vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+        actor.send({ type: "START_DATA_SYNC" });
+        for (let i = 0; i < 200 && !pageRequested; i++) {
+            await nextMacrotask();
+        }
+        expect(pageRequested).toBe(true);
+        await vi.advanceTimersByTimeAsync(SYNC_TIMEOUTS_MS.pullPage);
+        for (let i = 0; i < 200 && !actor.getSnapshot().matches({ dataPull: "failure" }); i++) {
+            await nextMacrotask();
+        }
+
+        const s = actor.getSnapshot();
+        expect(s.matches({ dataPull: "failure" })).toBe(true);
+        expect(pullLines(info)[0]).toMatchObject({
+            outcome: "error",
+            checkpointFrom: "C1",
+            checkpointTo: null,
+            pages: 0,
+        });
+        expect(s.context.lastDataPull).toBe("C1");
     });
 
     it("logs an offline pull and advances nothing", async () => {

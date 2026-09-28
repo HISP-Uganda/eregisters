@@ -3,6 +3,8 @@ import {
     isDhis2Reachable,
     toConnectivityStatus,
     type ConnectivityStatus,
+    mutateWithTimeout,
+    SYNC_TIMEOUTS_MS,
 } from "./network-reachability";
 import {
     transformEnrollment,
@@ -85,12 +87,16 @@ async function submitTrackerImportAndWaitForReport({
     data: any;
     params: Record<string, any>;
 }): Promise<Dhis2Report> {
-    return (await engine.mutate({
-        resource: "tracker",
-        type: "create",
-        data,
-        params: { ...params, async: false },
-    })) as unknown as Dhis2Report;
+    return (await mutateWithTimeout(
+        engine,
+        {
+            resource: "tracker",
+            type: "create",
+            data,
+            params: { ...params, async: false },
+        },
+        SYNC_TIMEOUTS_MS.trackerImport,
+    )) as unknown as Dhis2Report;
 }
 
 export async function syncReportToLocal({

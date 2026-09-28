@@ -34,6 +34,53 @@ export async function withAbortTimeout<T>(
     }
 }
 
+/**
+ * Per-call time limits for the sync code's DHIS2 requests — wayfinder
+ * ticket "Apply withAbortTimeout to the remaining unprotected sync calls".
+ * The data engine buffers the whole response, so these bound total time,
+ * not inactivity: each is generous enough for its payload on a slow rural
+ * link, and only exists so a hung server can't block sync (and, since the
+ * cross-tab sync locks, every tab's sync) forever. A timeout surfaces as a
+ * normal failure — `classifyFetchError` calls it "timeout".
+ */
+export const SYNC_TIMEOUTS_MS = {
+    /** Small reads: system/info, dataStore config, org unit, data sets. */
+    probe: 30_000,
+    /** One tracker pull page (tracked entities with enrollments/events). */
+    pullPage: 60_000,
+    /** Whole metadata collections (option sets, rules, …): can be megabytes. */
+    bulkMetadata: 180_000,
+    /**
+     * The tracker import POST carrying every pending row. Aborting it may
+     * leave the server to commit anyway; the rows stay pending and the next
+     * push re-sends them (CREATE_AND_UPDATE by UID), so nothing is lost.
+     */
+    trackerImport: 300_000,
+} as const;
+
+type EngineQuery = Parameters<Engine["query"]>[0];
+type EngineMutation = Parameters<Engine["mutate"]>[0];
+
+export function queryWithTimeout(
+    engine: Engine,
+    query: EngineQuery,
+    timeoutMs: number,
+): ReturnType<Engine["query"]> {
+    return withAbortTimeout(timeoutMs, (signal) =>
+        engine.query(query, { signal }),
+    );
+}
+
+export function mutateWithTimeout(
+    engine: Engine,
+    mutation: EngineMutation,
+    timeoutMs: number,
+): ReturnType<Engine["mutate"]> {
+    return withAbortTimeout(timeoutMs, (signal) =>
+        engine.mutate(mutation, { signal }),
+    );
+}
+
 export function classifyFetchError(error: unknown): ReachabilityFailureReason {
     if (error instanceof FetchError) {
         if (error.type === "access") {
