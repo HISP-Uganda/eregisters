@@ -14,6 +14,8 @@ whichever DHIS2 server the app runs against, not always production.
 
 ## Notes
 
+- Two copies in the code: the report page's `fetchServerValues`, and a
+  dead `pullAggregateData` actor in `src/machines/sync.ts`.
 - Found while splitting the reports page (map "Simplify the codebase",
   ticket "Split the data set reports page"): `fetchServerValues` in
   `src/screens/data-set-report/report-data.ts` calls

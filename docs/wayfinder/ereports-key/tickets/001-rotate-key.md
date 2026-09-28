@@ -2,7 +2,7 @@
 title: Rotate the exposed ereports API key
 type: wayfinder:task
 status: open
-assignee:
+assignee: claude-session
 blocked_by: []
 ---
 
