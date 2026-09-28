@@ -15,3 +15,22 @@ service, not in this repo. The new key must **not** go into the app's
 code; it goes into the DHIS2 route (next ticket). Until the route exists,
 decide whether the report page may go without server values for a while
 or needs the old path for a short overlap.
+
+## Decided (2026-09-29, the user took the recommendation)
+
+**Short overlap:** the old key keeps working until the DHIS2 route is live
+on production; it is revoked right after. Report pages keep loading the
+server's values throughout. Keep the overlap to days, not weeks.
+
+Checklist (the user's):
+1. Get a new key from whoever runs the ereports service — never into
+   chat, the repo or the app's code.
+2. Hand it over only when "Switch the report page to the DHIS2 route"
+   creates the route (test server first, production with the user's OK);
+   it goes straight into the route's encrypted `api-headers`.
+3. Once the route serves production reports, revoke the old key
+   (`LnwYP…`, exposed in git history and every loaded bundle).
+4. Delete the stray copies in local `.claude/worktrees/` checkouts.
+
+Stays open until the new key exists; this ticket then closes and unblocks
+the switch-over.

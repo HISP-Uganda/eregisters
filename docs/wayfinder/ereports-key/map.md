@@ -29,6 +29,7 @@ whichever DHIS2 server the app runs against, not always production.
 
 ## Decisions so far
 
+- [Rotate the exposed ereports API key](tickets/001-rotate-key.md) (decision part) — short overlap: the old key works until the route is live on production, then is revoked; the rotation itself is the user's, still pending.
 - [How does the DHIS2 Route API proxy the ereports query?](tickets/002-route-api-research.md) — `POST /api/routes` with `api-headers` auth (key encrypted at rest), run via `routes/<code>/run` through the data engine, access by the app's authority; query-parameter forwarding to confirm when the route is made.
 
 ## Not yet specified
