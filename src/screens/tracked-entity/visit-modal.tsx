@@ -2,7 +2,7 @@ import { and, eq, not, useLiveSuspenseQuery } from "@tanstack/react-db";
 import { Form } from "antd";
 import React, { useState } from "react";
 import { DataModal } from "../../components/data-modal";
-import MainEventCapture from "../../components/main-event-capture";
+import { MainEventCapture } from "../main-event-capture/main-event-capture";
 import { EventRuleAwareForm } from "../../components/rule-aware-form";
 import { getEventsCollection } from "../../db/collections";
 import { useMetadata } from "../../hooks/useMetadata";
