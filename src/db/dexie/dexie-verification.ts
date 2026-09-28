@@ -1,4 +1,5 @@
 import Dexie from "dexie";
+import { storeName } from "../store-names";
 
 /**
  * Dexie-native row-count check, for the reverse migration's post-write
@@ -22,7 +23,7 @@ export async function countDexieRowsByIds(
     ids: string[],
 ): Promise<number> {
     if (ids.length === 0) return 0;
-    const handle = new Dexie(dbName);
+    const handle = new Dexie(storeName(dbName));
     try {
         await handle.open();
         // "id" is not this repo's assumption — `dexieCollectionOptions`
@@ -51,8 +52,8 @@ export async function listDexieIds(
     dbName: string,
     tableName: string,
 ): Promise<string[]> {
-    if (!(await Dexie.exists(dbName))) return [];
-    const handle = new Dexie(dbName);
+    if (!(await Dexie.exists(storeName(dbName)))) return [];
+    const handle = new Dexie(storeName(dbName));
     try {
         await handle.open();
         if (!handle.tables.some((table) => table.name === tableName)) return [];
@@ -73,7 +74,7 @@ export async function sumDexieNestedKeys(
     field: string,
 ): Promise<number> {
     if (ids.length === 0) return 0;
-    const handle = new Dexie(dbName);
+    const handle = new Dexie(storeName(dbName));
     try {
         await handle.open();
         const rows = await handle

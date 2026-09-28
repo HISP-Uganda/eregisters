@@ -1,3 +1,4 @@
+import { storeFlagKey } from "./store-names";
 /**
  * Per-device storage backend selection — wayfinder tickets 001/002/004
  * (docs/wayfinder/opfs-dexie-dual-backend/). Resolves which physical store
@@ -16,6 +17,7 @@ export type BackendSetting = "auto" | StorageBackend;
 
 const SETTING_KEY = "eregisters.storageBackend";
 const OPFS_FAILURE_CACHE_KEY = "eregisters.opfsInitFailed";
+/** Per facility store (`storeFlagKey`); the two above are per device. */
 const SQLITE_USED_KEY = "eregisters.sqliteUsed";
 
 /**
@@ -63,7 +65,7 @@ interface CachedOpfsFailure {
  * it trigger a full store copy?". A truly incapable device pays for one
  * extra failed attempt.
  */
-export const OPFS_FAILURES_TO_CACHE = 2;
+const OPFS_FAILURES_TO_CACHE = 2;
 
 function readCachedOpfsFailure(): CachedOpfsFailure | undefined {
     try {
@@ -112,7 +114,7 @@ export function clearCachedOpfsFailure(): void {
  */
 export function markSqliteUsed(): void {
     try {
-        localStorage.setItem(SQLITE_USED_KEY, "1");
+        localStorage.setItem(storeFlagKey(SQLITE_USED_KEY), "1");
     } catch {
         // Best-effort — see setBackendSetting's comment.
     }
@@ -120,7 +122,7 @@ export function markSqliteUsed(): void {
 
 function hasUsedSqlite(): boolean {
     try {
-        return localStorage.getItem(SQLITE_USED_KEY) === "1";
+        return localStorage.getItem(storeFlagKey(SQLITE_USED_KEY)) === "1";
     } catch {
         return false;
     }

@@ -3,6 +3,7 @@ import type {
     RowWriteOptions,
     TrackerCollectionUtils,
 } from "../tracker-collection-utils";
+import { storeName } from "../store-names";
 
 /**
  * Wraps `tanstack-dexie-db-collection`'s `dexieCollectionOptions` so the
@@ -57,7 +58,8 @@ export function dexieTrackerCollectionOptions<
 
     const base = dexieCollectionOptions<TRow>({
         id,
-        dbName,
+        // Per-facility store — see store-names.ts.
+        dbName: storeName(dbName),
         tableName,
         getKey,
         awaitPersistence: true,

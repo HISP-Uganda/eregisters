@@ -7,6 +7,7 @@ import type {
     MetadataVersion,
 } from "../../schemas";
 import type { DexieMigrationSource } from "./migrate-from-dexie";
+import { storeName } from "../store-names";
 
 /**
  * `dexieMetadataStore()`'s own database (`src/db/dexie/metadata-store.ts`)
@@ -25,8 +26,8 @@ async function readMetadataRow<T>(
     table: string,
     id: string,
 ): Promise<T | undefined> {
-    if (!(await Dexie.exists("MOHRegister_Metadata"))) return undefined;
-    const handle = new Dexie("MOHRegister_Metadata");
+    if (!(await Dexie.exists(storeName("MOHRegister_Metadata")))) return undefined;
+    const handle = new Dexie(storeName("MOHRegister_Metadata"));
     try {
         await handle.open();
         const row = await handle
@@ -72,8 +73,8 @@ async function readAllRows<T>(
     dbName: string,
     tableName: string,
 ): Promise<T[]> {
-    if (!(await Dexie.exists(dbName))) return [];
-    const handle = new Dexie(dbName);
+    if (!(await Dexie.exists(storeName(dbName)))) return [];
+    const handle = new Dexie(storeName(dbName));
     try {
         await handle.open();
         return await handle.table<T, string>(tableName).toArray();
@@ -85,7 +86,7 @@ async function readAllRows<T>(
 export const realDexieMigrationSource: DexieMigrationSource = {
     async existsAnyDexieData(): Promise<boolean> {
         const results = await Promise.all(
-            DEXIE_DATABASE_NAMES.map((name) => Dexie.exists(name)),
+            DEXIE_DATABASE_NAMES.map((name) => Dexie.exists(storeName(name))),
         );
         return results.some(Boolean);
     },
@@ -138,8 +139,8 @@ export const realDexieMigrationSource: DexieMigrationSource = {
     },
 
     async readMetadataTables(): Promise<Record<string, unknown[]>> {
-        if (!(await Dexie.exists("MOHRegister_Metadata"))) return {};
-        const handle = new Dexie("MOHRegister_Metadata");
+        if (!(await Dexie.exists(storeName("MOHRegister_Metadata")))) return {};
+        const handle = new Dexie(storeName("MOHRegister_Metadata"));
         try {
             await handle.open();
             const allRows = await handle
@@ -160,7 +161,7 @@ export const realDexieMigrationSource: DexieMigrationSource = {
 
     async dropAll(): Promise<void> {
         await Promise.all(
-            DEXIE_DATABASE_NAMES.map((name) => Dexie.delete(name)),
+            DEXIE_DATABASE_NAMES.map((name) => Dexie.delete(storeName(name))),
         );
     },
 };

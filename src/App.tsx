@@ -2,10 +2,16 @@ import { useDataEngine, useDataQuery } from "@dhis2/app-runtime";
 import { RouterProvider } from "@tanstack/react-router";
 import { useSelector } from "@xstate/react";
 import { App, ConfigProvider, Typography } from "antd";
-import React, { FC, useEffect } from "react";
+import React, { FC, useEffect, useState } from "react";
 import { Spinner } from "./components/spinner";
 import { StorageBootScreen } from "./components/storage-boot-screen";
 import { bootView } from "./machines/storage-boot";
+import {
+    ensureFacilityBoot,
+    settleSlotZero,
+    startRememberedFacilityBoot,
+    watchFacilityAcrossTabs,
+} from "./facility-store";
 import { getStorageBootActor } from "./machines/storage-boot-actor";
 import { SyncContext } from "./machines/sync";
 import { router } from "./router";
@@ -44,8 +50,27 @@ const FullApp: FC<{
     const storage = useSelector(bootActor, (snapshot) =>
         snapshot.status === "done" ? snapshot.output : undefined,
     );
+    const orgUnit = userInfo.organisationUnits[0].id;
+    // Slot 0 may turn out to hold another facility's data (settleSlotZero
+    // then reloads into this facility's own store) — don't render on it
+    // until that's settled.
+    const [storeSettled, setStoreSettled] = useState(false);
+    useEffect(() => {
+        if (!storage) return;
+        let cancelled = false;
+        void settleSlotZero(orgUnit, storage.metadataStore).then((ok) => {
+            if (!cancelled && ok) setStoreSettled(true);
+        });
+        return () => {
+            cancelled = true;
+        };
+    }, [storage, orgUnit]);
+    useEffect(() => {
+        if (!storeSettled) return;
+        return watchFacilityAcrossTabs(orgUnit);
+    }, [storeSettled, orgUnit]);
 
-    if (!storage) {
+    if (!storage || !storeSettled) {
         return (
             <StorageBootScreen
                 view={view}
@@ -82,10 +107,11 @@ function shallowEqualView(
 }
 
 const MyApp: FC = () => {
-    // Started here, not in FullApp: storage boot needs nothing from `me`,
-    // so opening storage and any store copy overlap the `me` round trip.
-    // A module-level singleton — never tied to this component's lifecycle.
-    getStorageBootActor();
+    // Started here, not in FullApp: storage opens for the facility the
+    // page last booted for, so opening it and any store copy overlap the
+    // `me` round trip (`facility-store.ts` corrects a wrong guess). A
+    // module-level singleton — never tied to this component's lifecycle.
+    startRememberedFacilityBoot();
     const { data, loading, error } = useDataQuery<MeData>(ME_QUERY);
     useEffect(() => {
         if (!("serviceWorker" in navigator)) return;
@@ -132,11 +158,24 @@ const MyApp: FC = () => {
         );
     }
 
-    if (!data || data.me.organisationUnits.length > 1) {
+    // Exactly one: the org unit is the app's working scope and names the
+    // facility's local store.
+    if (!data || data.me.organisationUnits.length !== 1) {
         return (
             <Typography.Text>
                 No user found or user assigned multiple organisations
             </Typography.Text>
+        );
+    }
+
+    // Storage belongs to the user's facility (org unit): open it now if it
+    // wasn't opened before `me`, or reload into it if another facility's
+    // store was opened — see facility-store.ts.
+    if (ensureFacilityBoot(data.me.organisationUnits[0].id) === "reloading") {
+        return (
+            <Spinner
+                component={<Typography.Text>Switching facility</Typography.Text>}
+            />
         );
     }
 

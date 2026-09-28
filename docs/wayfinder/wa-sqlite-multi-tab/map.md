@@ -131,6 +131,8 @@ being redirected away.
 
 - [Do two open tabs' sync machines conflict, and does sync need a cross-tab lock?](tickets/007-concurrent-tab-sync.md) — yes (a reconnect started push + pull in every tab; checkpoint patches could overwrite each other). One Web Lock per sync kind held by a parent state; a busy lock means skip with a message; `sync_state` writes are locked and broadcast so other tabs' checkpoints follow; another tab's metadata sync makes the rest reload metadata from the store. Verified with two tabs.
 
+- [What should happen to local data when a different DHIS2 user signs in on the same device?](tickets/010-shared-device-user-scoping.md) — local data belongs to the facility (org unit): same-facility users share a store, another facility's user gets a separate one (`storeName` suffix). Existing stores become "slot 0", owned by the first facility (proved by checkpoint scope), so nothing is copied; storage still opens before `me` and reloads on a mismatch. Verified with two real users on one browser.
+
 ## Implementation progress
 
 All three tickets' decisions are now fully wired and built (commit
@@ -173,8 +175,12 @@ doc-comment fixed before commit).
 
 ## Not yet specified
 
-(none — the per-user naming question graduated to "What should happen
-  to local data when a different DHIS2 user signs in on the same device?")
+- Telling a user that this device holds **unsent records for another
+  facility** (they wait, untouched, until that facility signs in again) —
+  no notice today; wanted only if devices really move between facilities.
+- Recording a local record's **author** (`storedBy` / `createdBy` at
+  creation) so a same-facility colleague's unsent rows keep their real
+  author when pushed under someone else's session.
 
 ## Out of scope
 

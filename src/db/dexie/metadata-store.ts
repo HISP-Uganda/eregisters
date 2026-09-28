@@ -1,6 +1,7 @@
 import Dexie, { type Table } from "dexie";
 import type { MetadataStore } from "../metadata-store";
 import { notifyConfigChanged } from "../reactive-config";
+import { storeName } from "../store-names";
 
 /**
  * Dexie implementation of `MetadataStore` — see `../metadata-store.ts` for
@@ -25,7 +26,7 @@ class MetadataDexieDatabase extends Dexie {
     rows!: Table<MetadataRow, [string, string]>;
 
     constructor() {
-        super("MOHRegister_Metadata");
+        super(storeName("MOHRegister_Metadata"));
         this.version(1).stores({
             rows: "[table+id], table",
         });

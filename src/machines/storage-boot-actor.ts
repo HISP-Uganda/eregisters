@@ -26,7 +26,9 @@ import {
     recordStoreCopyFailure,
 } from "../db/store-copy-failures";
 import { storageBootMachine, type StorageBootDeps } from "./storage-boot";
+import { storeName } from "../db/store-names";
 
+/** Base name; `storeName` adds the facility suffix — see store-names.ts. */
 const SQLITE_DB_NAME = "eregisters-metadata";
 const STORE_COPY_LOCK = "eregisters-store-copy";
 
@@ -38,7 +40,8 @@ const STORE_COPY_LOCK = "eregisters-store-copy";
  * unlocked, as before.
  */
 function acquireCopyLock(): Promise<() => void> {
-    const locks = typeof navigator !== "undefined" ? navigator.locks : undefined;
+    const locks =
+        typeof navigator !== "undefined" ? navigator.locks : undefined;
     if (!locks) return Promise.resolve(() => undefined);
     return new Promise((resolveAcquired, reject) => {
         locks
@@ -53,13 +56,16 @@ function acquireCopyLock(): Promise<() => void> {
     });
 }
 
-export const realStorageBootDeps: StorageBootDeps = {
+const realStorageBootDeps: StorageBootDeps = {
     async resolveBackend(setting) {
         let liveDriver: SqlDriver | undefined;
         const backend = await resolveBackend(setting, async () => {
-            liveDriver = await createWaSqliteDriver(SQLITE_DB_NAME);
+            liveDriver = await createWaSqliteDriver(storeName(SQLITE_DB_NAME));
         });
-        return { backend, liveDriver: backend === "sqlite" ? liveDriver : undefined };
+        return {
+            backend,
+            liveDriver: backend === "sqlite" ? liveDriver : undefined,
+        };
     },
 
     initCollections,
@@ -85,7 +91,7 @@ export const realStorageBootDeps: StorageBootDeps = {
         }
         if (!shouldAttemptSqliteToDexieCopy(setting)) return undefined;
         try {
-            const driver = await createWaSqliteDriver(SQLITE_DB_NAME);
+            const driver = await createWaSqliteDriver(storeName(SQLITE_DB_NAME));
             clearCachedOpfsFailure();
             return driver;
         } catch {

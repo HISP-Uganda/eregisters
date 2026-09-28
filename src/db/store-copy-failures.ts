@@ -1,3 +1,4 @@
+import { storeFlagKey } from "./store-names";
 /**
  * Consecutive failed store copies on the "auto" setting, per direction —
  * wayfinder ticket "Escape hatch after repeated migration failures (R11)".
@@ -11,6 +12,7 @@
  */
 export const STORE_COPY_RETRY_VERSION = "1";
 
+/** Per facility store — see store-names.ts. */
 const KEY = "eregisters.storeCopyFailures";
 
 type Direction = "forward" | "reverse";
@@ -18,7 +20,7 @@ type Record = { version: string; direction: Direction; count: number };
 
 function read(): Record | undefined {
     try {
-        const raw = localStorage.getItem(KEY);
+        const raw = localStorage.getItem(storeFlagKey(KEY));
         return raw ? (JSON.parse(raw) as Record) : undefined;
     } catch {
         return undefined;
@@ -44,7 +46,7 @@ export function recordStoreCopyFailure(direction: Direction): void {
         count: readStoreCopyFailures(direction) + 1,
     };
     try {
-        localStorage.setItem(KEY, JSON.stringify(record));
+        localStorage.setItem(storeFlagKey(KEY), JSON.stringify(record));
     } catch {
         // Best-effort: without storage the copy just retries every boot.
     }
@@ -52,7 +54,7 @@ export function recordStoreCopyFailure(direction: Direction): void {
 
 export function clearStoreCopyFailures(): void {
     try {
-        localStorage.removeItem(KEY);
+        localStorage.removeItem(storeFlagKey(KEY));
     } catch {
         // Best-effort, as above.
     }

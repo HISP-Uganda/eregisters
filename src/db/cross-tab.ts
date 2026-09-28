@@ -19,7 +19,13 @@ export type CrossTabChange =
     /** No `keys`: the write's scope is unknown — re-read the whole collection. */
     | { kind: "collection"; id: string; keys?: Array<string | number> }
     /** A tab finished a metadata sync; others reload metadata from the store. */
-    | { kind: "metadata" };
+    | { kind: "metadata" }
+    /**
+     * A tab booted for this facility (the signed-in user's org unit). A tab
+     * on another facility's store is stale — its session now belongs to
+     * this user — and reloads (see `src/facility-store.ts`).
+     */
+    | { kind: "facility"; orgUnit: string };
 
 export interface CrossTabBus {
     publish(change: CrossTabChange): void;
