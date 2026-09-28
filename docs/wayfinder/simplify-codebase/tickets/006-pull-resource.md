@@ -2,7 +2,7 @@
 title: How should the metadata pull (pullResource) be broken up?
 type: wayfinder:grilling
 status: open
-assignee:
+assignee: claude-session
 blocked_by: []
 ---
 

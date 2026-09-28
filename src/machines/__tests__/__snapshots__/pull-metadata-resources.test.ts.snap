@@ -1,0 +1,375 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`the metadata pull > adds a lastUpdated filter to the incremental resources 1`] = `
+[
+  {
+    "categoryOptionCombos": {
+      "params": {
+        "fields": "id,name,access,categoryOptions[id,name,access]",
+      },
+      "resource": "categoryCombos/UjXPudXlraY/categoryOptionCombos.json",
+    },
+    "timeoutMs": 30000,
+  },
+  {
+    "dataElements": {
+      "params": {
+        "fields": "id,name,code,valueType,formName,optionSetValue,optionSet[id]",
+        "filter": "lastUpdated:gt:2026-09-01T00:00:00.000",
+        "paging": false,
+      },
+      "resource": "dataElements",
+    },
+    "timeoutMs": 180000,
+  },
+  {
+    "dataSets": {
+      "params": {
+        "fields": "id,name,code,periodType",
+      },
+      "resource": "dataSets.json",
+    },
+    "timeoutMs": 30000,
+  },
+  {
+    "info": {
+      "resource": "system/info",
+    },
+    "timeoutMs": 30000,
+  },
+  {
+    "optionGroups": {
+      "params": {
+        "fields": "id,options[id,name,code,sortOrder]",
+        "filter": "lastUpdated:gt:2026-09-01T00:00:00.000",
+        "paging": false,
+      },
+      "resource": "optionGroups",
+    },
+    "timeoutMs": 180000,
+  },
+  {
+    "optionSets": {
+      "params": {
+        "fields": "id,name,options[id,name,code,sortOrder]",
+        "filter": "lastUpdated:gt:2026-09-01T00:00:00.000",
+        "paging": false,
+      },
+      "resource": "optionSets",
+    },
+    "timeoutMs": 180000,
+  },
+  {
+    "organisationUnits": {
+      "params": {
+        "fields": "id,name,code,path,parent",
+        "includeDescendants": true,
+        "paging": false,
+      },
+      "resource": "organisationUnits/userOU.json",
+    },
+    "timeoutMs": 30000,
+  },
+  {
+    "program": {
+      "id": "ueBhWkWll5v",
+      "params": {
+        "fields": "id,name,programSections[id,name,sortOrder,trackedEntityAttributes[id]],trackedEntityType[id,trackedEntityTypeAttributes[id]],programType,selectEnrollmentDatesInFuture,selectIncidentDatesInFuture,programStages[id,repeatable,name,code,executionDateLabel,programStageDataElements[id,sortOrder,compulsory,renderOptionsAsRadio,dataElement[id],renderType,allowFutureDate],programStageSections[id,name,sortOrder,dataElements[id]]],programTrackedEntityAttributes[id,mandatory,searchable,renderOptionsAsRadio,renderType,sortOrder,allowFutureDate,displayInList,trackedEntityAttribute[id]]",
+      },
+      "resource": "programs",
+    },
+    "timeoutMs": 180000,
+  },
+  {
+    "programIndicators": {
+      "params": {
+        "fields": "id,name,filter,program,aggregationType,expression",
+        "filter": "lastUpdated:gt:2026-09-01T00:00:00.000",
+        "paging": false,
+      },
+      "resource": "programIndicators",
+    },
+    "timeoutMs": 180000,
+  },
+  {
+    "programRules": {
+      "params": {
+        "fields": "*,programRuleActions[*]",
+        "filter": [
+          "program.id:eq:ueBhWkWll5v",
+          "lastUpdated:gt:2026-09-01T00:00:00.000",
+        ],
+        "paging": false,
+      },
+      "resource": "programRules.json",
+    },
+    "timeoutMs": 180000,
+  },
+  {
+    "programRuleVariables": {
+      "params": {
+        "fields": "*",
+        "filter": [
+          "program.id:eq:ueBhWkWll5v",
+          "lastUpdated:gt:2026-09-01T00:00:00.000",
+        ],
+        "paging": false,
+      },
+      "resource": "programRuleVariables.json",
+    },
+    "timeoutMs": 180000,
+  },
+  {
+    "timeoutMs": 180000,
+    "trackedEntityAttributes": {
+      "params": {
+        "fields": "id,name,code,unique,generated,pattern,confidential,valueType,optionSetValue,displayFormName,formName,optionSet[id]",
+        "filter": "lastUpdated:gt:2026-09-01T00:00:00.000",
+        "paging": false,
+      },
+      "resource": "trackedEntityAttributes",
+    },
+  },
+]
+`;
+
+exports[`the metadata pull > requests every resource in full 1`] = `
+[
+  {
+    "categoryOptionCombos": {
+      "params": {
+        "fields": "id,name,access,categoryOptions[id,name,access]",
+      },
+      "resource": "categoryCombos/UjXPudXlraY/categoryOptionCombos.json",
+    },
+    "timeoutMs": 30000,
+  },
+  {
+    "dataElements": {
+      "params": {
+        "fields": "id,name,code,valueType,formName,optionSetValue,optionSet[id]",
+        "paging": false,
+      },
+      "resource": "dataElements",
+    },
+    "timeoutMs": 180000,
+  },
+  {
+    "dataSets": {
+      "params": {
+        "fields": "id,name,code,periodType",
+      },
+      "resource": "dataSets.json",
+    },
+    "timeoutMs": 30000,
+  },
+  {
+    "info": {
+      "resource": "system/info",
+    },
+    "timeoutMs": 30000,
+  },
+  {
+    "optionGroups": {
+      "params": {
+        "fields": "id,options[id,name,code,sortOrder]",
+        "paging": false,
+      },
+      "resource": "optionGroups",
+    },
+    "timeoutMs": 180000,
+  },
+  {
+    "optionSets": {
+      "params": {
+        "fields": "id,name,options[id,name,code,sortOrder]",
+        "paging": false,
+      },
+      "resource": "optionSets",
+    },
+    "timeoutMs": 180000,
+  },
+  {
+    "organisationUnits": {
+      "params": {
+        "fields": "id,name,code,path,parent",
+        "includeDescendants": true,
+        "paging": false,
+      },
+      "resource": "organisationUnits/userOU.json",
+    },
+    "timeoutMs": 30000,
+  },
+  {
+    "program": {
+      "id": "ueBhWkWll5v",
+      "params": {
+        "fields": "id,name,programSections[id,name,sortOrder,trackedEntityAttributes[id]],trackedEntityType[id,trackedEntityTypeAttributes[id]],programType,selectEnrollmentDatesInFuture,selectIncidentDatesInFuture,programStages[id,repeatable,name,code,executionDateLabel,programStageDataElements[id,sortOrder,compulsory,renderOptionsAsRadio,dataElement[id],renderType,allowFutureDate],programStageSections[id,name,sortOrder,dataElements[id]]],programTrackedEntityAttributes[id,mandatory,searchable,renderOptionsAsRadio,renderType,sortOrder,allowFutureDate,displayInList,trackedEntityAttribute[id]]",
+      },
+      "resource": "programs",
+    },
+    "timeoutMs": 180000,
+  },
+  {
+    "programIndicators": {
+      "params": {
+        "fields": "id,name,filter,program,aggregationType,expression",
+        "paging": false,
+      },
+      "resource": "programIndicators",
+    },
+    "timeoutMs": 180000,
+  },
+  {
+    "programRules": {
+      "params": {
+        "fields": "*,programRuleActions[*]",
+        "filter": [
+          "program.id:eq:ueBhWkWll5v",
+        ],
+        "paging": false,
+      },
+      "resource": "programRules.json",
+    },
+    "timeoutMs": 180000,
+  },
+  {
+    "programRuleVariables": {
+      "params": {
+        "fields": "*",
+        "filter": [
+          "program.id:eq:ueBhWkWll5v",
+        ],
+        "paging": false,
+      },
+      "resource": "programRuleVariables.json",
+    },
+    "timeoutMs": 180000,
+  },
+  {
+    "timeoutMs": 180000,
+    "trackedEntityAttributes": {
+      "params": {
+        "fields": "id,name,code,unique,generated,pattern,confidential,valueType,optionSetValue,displayFormName,formName,optionSet[id]",
+        "paging": false,
+      },
+      "resource": "trackedEntityAttributes",
+    },
+  },
+]
+`;
+
+exports[`the metadata pull > returns each resource's records, options flattened 1`] = `
+{
+  "categoryOptionCombos": [
+    {
+      "id": "coc1",
+    },
+  ],
+  "dataElements": [
+    {
+      "id": "de1",
+    },
+  ],
+  "dataSets": [
+    {
+      "id": "ds1",
+    },
+  ],
+  "metadataVersion": [
+    {
+      "id": "metadata-version",
+      "lastSync": "2026-09-28T10:00:00.000",
+      "versions": {
+        "attributes": "2026-09-28T10:00:00.000",
+        "categoryOptionCombos": "2026-09-28T10:00:00.000",
+        "dataElements": "2026-09-28T10:00:00.000",
+        "dataSets": "2026-09-28T10:00:00.000",
+        "optionGroups": "2026-09-28T10:00:00.000",
+        "optionSets": "2026-09-28T10:00:00.000",
+        "organisationUnits": "2026-09-28T10:00:00.000",
+        "programIndicators": "2026-09-28T10:00:00.000",
+        "programRuleVariables": "2026-09-28T10:00:00.000",
+        "programRules": "2026-09-28T10:00:00.000",
+        "programStages": "2026-09-28T10:00:00.000",
+        "programs": "2026-09-28T10:00:00.000",
+      },
+    },
+  ],
+  "optionGroups": [
+    {
+      "code": "1",
+      "id": "o1",
+      "name": "Yes",
+      "optionGroup": "og1",
+      "sortOrder": 1,
+    },
+  ],
+  "optionSets": [
+    {
+      "code": "1",
+      "id": "o1",
+      "name": "Yes",
+      "optionSet": "os1",
+      "optionSetName": "Yes/No",
+      "sortOrder": 1,
+    },
+    {
+      "code": "0",
+      "id": "o2",
+      "name": "No",
+      "optionSet": "os1",
+      "optionSetName": "Yes/No",
+      "sortOrder": 2,
+    },
+  ],
+  "organisationUnits": [
+    {
+      "id": "ou1",
+    },
+    {
+      "id": "ou2",
+    },
+  ],
+  "programIndicators": [
+    {
+      "id": "pi1",
+    },
+  ],
+  "programRuleVariables": [
+    {
+      "id": "prv1",
+    },
+  ],
+  "programRules": [
+    {
+      "id": "pr1",
+    },
+  ],
+  "programs": [
+    {
+      "id": "ueBhWkWll5v",
+      "programStages": [],
+    },
+  ],
+  "succeededResources": Set {
+    "programs",
+    "programStages",
+    "dataElements",
+    "optionSets",
+    "optionGroups",
+    "attributes",
+    "programRuleVariables",
+    "categoryOptionCombos",
+    "programRules",
+    "dataSets",
+    "organisationUnits",
+    "programIndicators",
+  },
+  "trackedEntityAttributes": [
+    {
+      "id": "tea1",
+    },
+  ],
+}
+`;
