@@ -1,5 +1,5 @@
 import { CloudUploadOutlined } from "@ant-design/icons";
-import { Badge, Button, Flex, Space, Tooltip, Typography } from "antd";
+import { Badge, Button, Flex, Tooltip, Typography } from "antd";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
 import React from "react";
@@ -55,56 +55,23 @@ export function SyncButton(props: SyncButtonProps) {
     );
 }
 
-/**
- * A sync button that can't be pressed again while its sync runs. Its menu
- * of extra actions (`dropdownItems`) is switched off for now — see the
- * commented-out `Dropdown` below.
- */
-export function SplitSyncButton({
-    primaryAction,
-    dropdownItems,
-    ...props
-}: Omit<SyncButtonProps, "onClick"> & {
-    primaryAction: () => void;
-    dropdownItems: Array<{ key: string; label: string; onClick: () => void }>;
-}) {
+/** A sync button that can't be pressed again while its sync runs. */
+export function SplitSyncButton({ primaryAction, ...props }: Omit<SyncButtonProps, "onClick"> & { primaryAction: () => void }) {
     const { tooltip, icon, isLoading, type, danger, disabled } = props;
-    // Running: the button and its menu can't start another run of the same sync.
-    const busy = disabled || isLoading;
     return (
-        <Space.Compact>
-            <Tooltip title={disabled ? NO_PROGRAM : tooltip}>
-                <Button
-                    icon={icon}
-                    loading={isLoading}
-                    onClick={primaryAction}
-                    type={type}
-                    danger={danger}
-                    disabled={busy}
-                    style={{ height: "auto", padding: "4px 12px" }}
-                >
-                    <ButtonLabel {...props} />
-                </Button>
-            </Tooltip>
-            {/* <Dropdown
-                disabled={busy}
-                menu={{
-                    items: dropdownItems.map((item) => ({
-                        key: item.key,
-                        label: item.label,
-                        onClick: item.onClick,
-                    })),
-                }}
+        <Tooltip title={disabled ? NO_PROGRAM : tooltip}>
+            <Button
+                icon={icon}
+                loading={isLoading}
+                onClick={primaryAction}
+                type={type}
+                danger={danger}
+                disabled={disabled || isLoading}
+                style={{ height: "auto", padding: "4px 12px" }}
             >
-                <Button
-                    type={type}
-                    danger={danger}
-                    disabled={busy}
-                    icon={<DownOutlined />}
-                    style={{ height: "auto", padding: "4px 6px" }}
-                />
-            </Dropdown> */}
-        </Space.Compact>
+                <ButtonLabel {...props} />
+            </Button>
+        </Tooltip>
     );
 }
 

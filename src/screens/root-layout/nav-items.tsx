@@ -6,7 +6,7 @@ import {
     ReloadOutlined,
 } from "@ant-design/icons";
 import { Link } from "@tanstack/react-router";
-import { App, Flex, Tooltip, Typography } from "antd";
+import { Flex, Tooltip, Typography } from "antd";
 import React from "react";
 import { SyncContext } from "../../machines/sync";
 import type {
@@ -92,7 +92,6 @@ export function NavItems({
     onNavigate: () => void;
     onOpenFailures: () => void;
 }) {
-    const { modal } = App.useApp();
     const syncActor = SyncContext.useActorRef();
     const status = useSyncStatus();
 
@@ -107,23 +106,6 @@ export function NavItems({
                 loadingLabel="Pulling..."
                 lastTime={status.lastDataPull ? fromServerTime(status.lastDataPull) : undefined}
                 primaryAction={() => syncActor.send({ type: "START_DATA_SYNC" })}
-                dropdownItems={[
-                    {
-                        // Deliberately not routine (Pull Data is incremental):
-                        // the recovery path for a device missing records.
-                        key: "redownload",
-                        label: "Re-download all data…",
-                        onClick: () =>
-                            modal.confirm({
-                                title: "Re-download all data?",
-                                content:
-                                    "This fetches every record for your facility from the server again. It can take a long time on a slow connection. Your local records and unsent changes are kept. Use this only if records seem to be missing.",
-                                okText: "Re-download",
-                                cancelText: "Cancel",
-                                onOk: () => syncActor.send({ type: "RESET_DATA_CHECKPOINT" }),
-                            }),
-                    },
-                ]}
                 disabled={!status.hasProgram}
             />
             <SplitSyncButton
@@ -134,13 +116,6 @@ export function NavItems({
                 loadingLabel="Syncing..."
                 lastTime={status.lastMetadataPull ? fromServerTime(status.lastMetadataPull) : undefined}
                 primaryAction={() => syncActor.send({ type: "START_METADATA_SYNC" })}
-                dropdownItems={[
-                    {
-                        key: "full",
-                        label: "Full Metadata Sync",
-                        onClick: () => syncActor.send({ type: "FULL_METADATA_SYNC" }),
-                    },
-                ]}
                 type="primary"
             />
             <PushDataButton

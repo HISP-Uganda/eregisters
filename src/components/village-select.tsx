@@ -1,7 +1,6 @@
 import { FormInstance, Select } from "antd";
 import React from "react";
 import { Village } from "../schemas";
-// import villages from "../villages.json";
 
 interface WatchField {
     fieldId: string | string[];
@@ -38,7 +37,6 @@ export default function VillageSelect({
             .then((res) => res.json())
             .then(setCurrentVillages);
     }, []);
-    // const currentVillages = villages as Village[];
 
     const handleVillageChange = async (selectedValue: string) => {
         onChange?.(selectedValue);

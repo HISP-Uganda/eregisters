@@ -341,19 +341,3 @@ export async function cancelDataModal(
         await deleteRecursiveDraftSubtree(undefined, data.trackedEntity);
     }
 }
-
-// export function redirectByAuthorities(
-//     authorities: string[],
-//     programs: string[],
-//     baseUrl: string,
-// ) {
-//     if (!authorities.includes("ALL") && !authorities.includes("M_eregisters")) {
-//         window.location.href = `${baseUrl}/apps/eRegisters-Monitoring-Dashboard`;
-//         return;
-//     }
-
-//     if (programs.length === 0) {
-//         window.location.href = `${baseUrl}/apps/eRegisters-Monitoring-Dashboard`;
-//         return;
-//     }
-// }

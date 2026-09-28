@@ -5,7 +5,6 @@ import { useSelector } from "@xstate/react";
 import { Alert, Button, Drawer, Flex, Grid, Layout, Tooltip, Typography } from "antd";
 import React, { useState } from "react";
 import { StorageFallbackNotice } from "../../components/storage-boot-screen";
-// import { PersistentStorageBanner } from "../../components/persistent-storage-banner";
 import { getStoreKey } from "../../db/store-names";
 import { useMetadata } from "../../hooks/useMetadata";
 import { bootView } from "../../machines/storage-boot";
@@ -131,7 +130,6 @@ export function RootLayout() {
                 {navItems(true)}
             </Drawer>
             <StorageFallbackNotice view={storageView} />
-            {/* <PersistentStorageBanner /> */}
             {metadataReload.show && (
                 <MetadataReloadBanner
                     onSync={() => {

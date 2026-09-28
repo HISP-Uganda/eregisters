@@ -16,6 +16,9 @@ still at 0. (fallow's `unit_size` penalty was dropped as a goal — see
 
 ## Notes
 
+- **Destination reached 2026-09-29** — every ticket closed; see the last
+  decisions for what's still worth checking by hand in a browser.
+
 - Settled while charting (2026-09-28; the user took every
   recommendation): **both** removal and restructuring — removal first;
   restructuring is **behaviour-preserving**, guarded by the test suite
@@ -61,6 +64,7 @@ still at 0. (fallow's `unit_size` penalty was dropped as a goal — see
 - [Do the data set and category option combo pulls miss pages?](tickets/019-metadata-paging.md) — data sets yes past 50 (11 today): `paging: false` added; the category option combo endpoint isn't paged.
 - [What should the function-size target be?](tickets/020-unit-size-target.md) — the ~300-line rule (met) is the finish line; fallow's `unit_size` (functions over 60 lines) dropped as a goal; tests stay in fallow's health.
 - [Which duplicated blocks should be merged?](tickets/021-duplicated-blocks.md) — `buildColumnRegistry`'s three stage loops share one generator (pinned by a snapshot); the dataStore update-else-create is one `saveToDataStore` (×4); the row adapters' small overlap left.
+- [Keep, restore or delete the commented-out code?](tickets/022-commented-out-code.md) — all deleted, except persistent storage: the app asks for it again at startup (quietly — it hadn't since the v1.1.6 banner was switched off).
 
 ## Not yet specified
 
