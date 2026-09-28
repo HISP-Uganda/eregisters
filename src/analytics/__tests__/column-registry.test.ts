@@ -990,3 +990,18 @@ describe("buildColumnRegistry", () => {
         });
     });
 });
+
+describe("buildColumnRegistry's full column list", () => {
+    // Pins every column — key, label, grouping, chooser fields — across the
+    // main stage, two child-stage slots and a linked parent stage, so the
+    // shared per-stage column builder can't drift from what it replaced.
+    it("is unchanged", () => {
+        const columns = buildColumnRegistry({
+            metadata,
+            mainStageId: "visit000001",
+            childStageSlotCounts: new Map([["followup001", 2]]),
+            realizedParentStageIds: ["visit000001"],
+        });
+        expect(columns).toMatchSnapshot();
+    });
+});
