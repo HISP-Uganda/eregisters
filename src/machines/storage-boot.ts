@@ -51,14 +51,14 @@ export interface StorageBootDeps {
 }
 
 /** After this many consecutive failures on "auto", the copy is skipped until reset. */
-export const MAX_COPY_FAILURES = 3;
+const MAX_COPY_FAILURES = 3;
 
-export interface StorageBootInput {
+interface StorageBootInput {
     setting: BackendSetting;
     deps: StorageBootDeps;
 }
 
-export interface StorageBootOutput {
+interface StorageBootOutput {
     backend: StorageBackend;
     metadataStore: MetadataStore;
     sqlDriver?: SqlDriver;
@@ -98,7 +98,7 @@ export interface StorageBootContext {
 
 export type StepStatus = "ok" | "failed" | "not-run";
 
-export type StorageBootEvent =
+type StorageBootEvent =
     | { type: "PROGRESS"; progress: MigrationProgress }
     | { type: "WRITTEN"; table: string; ids: string[] }
     | { type: "RETRY" }

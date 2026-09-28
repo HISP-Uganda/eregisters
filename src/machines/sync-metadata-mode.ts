@@ -175,7 +175,7 @@ export function checkpointForScope(
 }
 
 /** How far before the stored checkpoint each incremental pull starts. */
-export const PULL_OVERLAP_MINUTES = 5;
+const PULL_OVERLAP_MINUTES = 5;
 
 const NAIVE_SERVER_DATE =
     /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?$/;
@@ -211,4 +211,3 @@ export function withPullOverlap(
         ? base
         : `${base}.${String(t.getUTCMilliseconds()).padStart(3, "0")}`;
 }
-
