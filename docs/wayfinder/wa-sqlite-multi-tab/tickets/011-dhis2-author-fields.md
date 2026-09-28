@@ -2,7 +2,7 @@
 title: Which author fields does DHIS2 2.42's tracker importer take from the payload?
 type: wayfinder:research
 status: open
-assignee:
+assignee: claude-research-agent
 blocked_by: []
 ---
 
