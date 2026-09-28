@@ -39,7 +39,10 @@ const flush = async () => {
     for (let i = 0; i < 5; i++) await Promise.resolve();
 };
 
-describe("the admin's reload broadcast", () => {
+// Each test re-imports the controller after `vi.resetModules()`, which
+// rebuilds a large module graph — slower than vitest's default 5 s under
+// the full suite's load.
+describe("the admin's reload broadcast", { timeout: 20_000 }, () => {
     let storage: ReturnType<typeof memoryStorage>;
     let reload: ReturnType<typeof vi.fn>;
 
