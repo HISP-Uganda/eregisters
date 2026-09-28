@@ -39,6 +39,8 @@ included.
 
 ## Decisions so far
 
+- [What does a reload do to a push or pull in progress, and must a forced reload wait for sync?](tickets/002-sync-vs-reload.md) — a push or pull cut off by a reload recovers on its own (records stay pending; pages are atomic; the checkpoint moves only after success), but a Full Metadata Sync can leave no metadata. The forced reload waits for a running sync (cap: grace period + 5 min), and no new sync starts once the countdown ends.
+
 ## Not yet specified
 
 - The popup's exact wording and look, and the grace-period length —

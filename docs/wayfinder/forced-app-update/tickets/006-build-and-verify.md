@@ -3,7 +3,7 @@ title: Build the forced update and verify it against a stand-in server
 type: wayfinder:task
 status: open
 assignee:
-blocked_by: [001-platform-update-prompt, 002-sync-vs-reload, 003-unsaved-changes, 004-tab-coordination, 005-broadcast-freshness]
+blocked_by: [001-platform-update-prompt, 002-sync-vs-reload, 003-unsaved-changes, 004-tab-coordination, 005-broadcast-freshness, 007-atomic-full-metadata-sync]
 ---
 
 ## Question
