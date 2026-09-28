@@ -2,7 +2,7 @@
 title: How should executeProgramRules be made smaller and safe to change?
 type: wayfinder:grilling
 status: open
-assignee:
+assignee: claude-session
 blocked_by: [003-split-utils]
 ---
 
