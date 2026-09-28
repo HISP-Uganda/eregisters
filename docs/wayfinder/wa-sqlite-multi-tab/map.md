@@ -133,6 +133,8 @@ being redirected away.
 
 - [What should happen to local data when a different DHIS2 user signs in on the same device?](tickets/010-shared-device-user-scoping.md) — local data belongs to the facility (org unit): same-facility users share a store, another facility's user gets a separate one (`storeName` suffix). Existing stores become "slot 0", owned by the first facility (proved by checkpoint scope), so nothing is copied; storage still opens before `me` and reloads on a mismatch. Verified with two real users on one browser.
 
+- [Which author fields does DHIS2 2.42's tracker importer take from the payload?](tickets/011-dhis2-author-fields.md) — only `storedBy` (on create) is taken from the payload, and only on 2.42.0–2.42.5.x (2.42.6+ uses the session user); every created/updated-by and change-log author is always the session user. The eRegistry build looks like 2.42.5.1 — to confirm.
+
 ## Implementation progress
 
 All three tickets' decisions are now fully wired and built (commit

@@ -30,3 +30,10 @@ take from the payload?":
   the shared-device ticket;
 - tests, and verification against the real server (read back what DHIS2
   stored).
+
+> From the research: only `storedBy` (and the client timestamps) can
+> carry a device-side author, and **only on 2.42.0–2.42.5.x, on create**;
+> 2.42.6+ ignores it. Every `createdBy`/`updatedBy`/change-log author is
+> the session user regardless. First confirm each server's patch release
+> (`GET /api/system/info`, read-only) — the eRegistry build looks like
+> 2.42.5.1 (`2.42.5.1-ug-ereg-custom`).
