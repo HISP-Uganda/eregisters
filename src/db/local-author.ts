@@ -30,7 +30,7 @@ export function getLocalAuthor(): LocalAuthor | undefined {
 }
 
 /** The timestamp format the record factories use (`createEmpty*`). */
-export function localTimestamp(): string {
+function localTimestamp(): string {
     return dayjs().format("YYYY-MM-DDTHH:mm:ss.SSSZ");
 }
 

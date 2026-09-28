@@ -35,9 +35,7 @@ export function mergeDraftAndServer(
     return merged;
 }
 
-export async function getHmisDraft(
-    id: string,
-): Promise<HmisDraft | undefined> {
+export async function getHmisDraft(id: string): Promise<HmisDraft | undefined> {
     return db.hmisDrafts.get(id);
 }
 
@@ -45,7 +43,7 @@ export async function upsertHmisDraft(row: HmisDraft): Promise<void> {
     await db.hmisDrafts.put(row);
 }
 
-export async function patchHmisDraft(
+async function patchHmisDraft(
     id: string,
     patch: Partial<HmisDraft>,
 ): Promise<void> {

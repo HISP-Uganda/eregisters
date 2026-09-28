@@ -51,7 +51,10 @@ class WaSqliteWorkerClient {
     private nextId = 1;
     private readonly pending = new Map<
         number,
-        { resolve: (result: SqlExecuteResult) => void; reject: (error: Error) => void }
+        {
+            resolve: (result: SqlExecuteResult) => void;
+            reject: (error: Error) => void;
+        }
     >();
 
     constructor(
@@ -74,9 +77,7 @@ class WaSqliteWorkerClient {
             }
         });
         this.worker.addEventListener("error", (event) => {
-            const error = new Error(
-                event.message || "wa-sqlite worker error",
-            );
+            const error = new Error(event.message || "wa-sqlite worker error");
             for (const entry of this.pending.values()) entry.reject(error);
             this.pending.clear();
         });
@@ -106,9 +107,10 @@ function makeTxDriver(client: WaSqliteWorkerClient): SqlDriver {
         execute: <TRow = Record<string, unknown>>(
             sql: string,
             params?: ReadonlyArray<unknown>,
-        ) => client.request({ type: "execute", sql, params }) as Promise<
-            SqlExecuteResult<TRow>
-        >,
+        ) =>
+            client.request({ type: "execute", sql, params }) as Promise<
+                SqlExecuteResult<TRow>
+            >,
         // Reentrant, matching this repo's former op-sqlite driver: a .transaction() call
         // already running inside a tx-scoped driver just reuses itself.
         transaction: async (fn) => fn(txDriver),
@@ -194,7 +196,7 @@ export function wrapWaSqliteWorker(
  * does the first SQLite open sometimes fail on a reload, and should it
  * trigger a full store copy?".
  */
-export const OPEN_RETRY_DELAYS_MS: readonly number[] = [300, 1000];
+const OPEN_RETRY_DELAYS_MS: readonly number[] = [300, 1000];
 
 export async function createWaSqliteDriver(
     name: string,

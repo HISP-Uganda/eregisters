@@ -41,7 +41,7 @@ const CHECKED_TABLES = [
     "category_option_combos",
 ] as const;
 
-export function keyForRow(table: string, row: { id: string }): string {
+function keyForRow(table: string, row: { id: string }): string {
     if (table === "option_sets") return optionSetKey(row as FlattenedOptionSet);
     if (table === "option_groups")
         return optionGroupKey(row as FlattenedOptionGroup);

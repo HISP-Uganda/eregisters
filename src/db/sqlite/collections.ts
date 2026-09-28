@@ -1,5 +1,10 @@
 import { createCollection } from "@tanstack/db";
-import type { FlattenedEnrollment, FlattenedEvent, FlattenedTrackedEntity, RuleResult } from "../../schemas";
+import type {
+    FlattenedEnrollment,
+    FlattenedEvent,
+    FlattenedTrackedEntity,
+    RuleResult,
+} from "../../schemas";
 import { sqliteCollectionOptions } from "./collection-adapter";
 import type { SqlDriver } from "./driver-types";
 import { enrollmentsRowAdapter } from "./row-adapters/enrollments";
@@ -55,7 +60,7 @@ export function createEventsSqliteCollection(db: SqlDriver) {
     );
 }
 
-export function createRuleResultsSqliteCollection(db: SqlDriver) {
+function createRuleResultsSqliteCollection(db: SqlDriver) {
     return createCollection(
         sqliteCollectionOptions<RuleResult, string>({
             id: "ruleResults",

@@ -58,7 +58,7 @@ function subscribeToOtherTabs(): void {
  * `putRows` notify for every row they write, and a metadata sync writes
  * thousands; broadcasting those would flood every other tab for nothing.
  */
-export const CROSS_TAB_CONFIG_TABLES: ReadonlySet<string> = new Set([
+const CROSS_TAB_CONFIG_TABLES: ReadonlySet<string> = new Set([
     "ui_config",
     "stage_hierarchy",
     "sync_state",

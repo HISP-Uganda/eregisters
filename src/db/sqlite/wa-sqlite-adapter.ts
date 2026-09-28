@@ -36,7 +36,7 @@ import { instantiateWasmFromUrl } from "./wasm-loader";
  * far larger work this bug report didn't ask for.
  */
 
-export type WaSqliteValue = string | number | bigint | null | Uint8Array;
+type WaSqliteValue = string | number | bigint | null | Uint8Array;
 export type WaSqliteParams = ReadonlyArray<unknown> | undefined;
 
 export interface WaSqliteStatementResult {
@@ -49,7 +49,10 @@ export interface WaSqliteAdapter {
     /** Runs `sql` (optionally multiple `;`-separated statements) and
      * returns the LAST statement's rows/rowsAffected/insertId — matches
      * `SqlDriver.execute`'s single-result contract. */
-    execute(sql: string, params?: WaSqliteParams): Promise<WaSqliteStatementResult>;
+    execute(
+        sql: string,
+        params?: WaSqliteParams,
+    ): Promise<WaSqliteStatementResult>;
 }
 
 function checkCapabilities(): void {
@@ -97,7 +100,10 @@ export async function openWaSqliteAdapter(
     checkCapabilities();
     const module = await loadSqliteModule();
     const sqlite = Factory(module);
-    const vfs = await OPFSCoopSyncVFS.create("eregisters-cooperative-opfs", module);
+    const vfs = await OPFSCoopSyncVFS.create(
+        "eregisters-cooperative-opfs",
+        module,
+    );
     vfs.mxPathname = 256;
     sqlite.vfs_register(vfs, true);
     const database = await sqlite.open_v2(`/eregisters-wa-v1-${name}.sqlite3`);

@@ -33,7 +33,9 @@ export function initCollections(
 ): void {
     if (backend === "sqlite") {
         if (!sqlDriver) {
-            throw new Error("initCollections(\"sqlite\", ...) requires a sqlDriver");
+            throw new Error(
+                'initCollections("sqlite", ...) requires a sqlDriver',
+            );
         }
         initTrackerCollections(sqlDriver);
     } else {
@@ -70,6 +72,6 @@ export function getEventsCollection() {
 }
 
 /** Test-only escape hatch, mirroring both underlying instance modules'. */
-export function resetCollectionsForTests(): void {
+function resetCollectionsForTests(): void {
     activeBackend = null;
 }
