@@ -62,12 +62,9 @@ import type {
 } from "../schemas";
 import { parseServerTime } from "../utils/server-time";
 import {
-    shouldShowAppReload,
     shouldShowMetadataReload,
 } from "../utils/reload-signals";
 
-/** When this page loaded its code — see `shouldShowAppReload`. */
-const PAGE_LOADED_AT = new Date().toISOString();
 
 dayjs.extend(relativeTime);
 
@@ -596,7 +593,6 @@ function LayoutWithDrafts() {
                 .length > 0,
     );
     const uiConfig = useUIConfig();
-    const [showAppReload, setShowAppReload] = useState(false);
     const [showMetadataReload, setShowMetadataReload] = useState(false);
     const [showStorageBackendReload, setShowStorageBackendReload] =
         useState(false);
@@ -624,15 +620,6 @@ function LayoutWithDrafts() {
         function checkSignals() {
             // Only a page that doesn't already have what a broadcast
             // announces gets its banner — see utils/reload-signals.ts.
-            setShowAppReload(
-                shouldShowAppReload({
-                    signalAt: uiConfig.reloadSignal.app?.timestamp,
-                    lastSeen: localStorage.getItem(
-                        "eregisters.lastSeenAppSignal",
-                    ),
-                    pageLoadedAt: PAGE_LOADED_AT,
-                }),
-            );
             setShowMetadataReload(
                 shouldShowMetadataReload({
                     signalAt: uiConfig.reloadSignal.metadata?.timestamp,
@@ -867,7 +854,7 @@ function LayoutWithDrafts() {
                 <SyncButton
                     tooltip="Verify Reports"
                     icon={<CloudUploadOutlined />}
-                    isLoading={pushingData}
+                    isLoading={false}
                     idleLabel="Verify Reports"
                     loadingLabel="Pushing..."
                     lastTime={"View reports"}
@@ -893,7 +880,7 @@ function LayoutWithDrafts() {
                     <SyncButton
                         tooltip="Administration"
                         icon={<CloudUploadOutlined />}
-                        isLoading={pushingData}
+                        isLoading={false}
                         idleLabel="Administration"
                         loadingLabel="Pushing..."
                         lastTime={"Admin"}
@@ -959,47 +946,6 @@ function LayoutWithDrafts() {
             </Drawer>
             <StorageFallbackNotice view={storageView} />
             {/* <PersistentStorageBanner /> */}
-            {showAppReload && (
-                <Alert
-                    type="warning"
-                    title="Update available — your administrator has pushed a new version."
-                    action={
-                        <Button
-                            size="small"
-                            type="primary"
-                            style={{
-                                background: "#d97706",
-                                borderColor: "#d97706",
-                            }}
-                            onClick={() => {
-                                const ts =
-                                    uiConfig.reloadSignal.app?.timestamp;
-                                if (ts)
-                                    localStorage.setItem(
-                                        "eregisters.lastSeenAppSignal",
-                                        ts,
-                                    );
-                                setShowAppReload(false);
-                                window.location.reload();
-                            }}
-                        >
-                            Reload now
-                        </Button>
-                    }
-                    closable={{
-                        onClose: () => {
-                            const ts = uiConfig.reloadSignal.app?.timestamp;
-                            if (ts)
-                                localStorage.setItem(
-                                    "eregisters.lastSeenAppSignal",
-                                    ts,
-                                );
-                            setShowAppReload(false);
-                        },
-                    }}
-                    style={{ borderRadius: 0 }}
-                />
-            )}
             {showMetadataReload && (
                 <Alert
                     type="info"

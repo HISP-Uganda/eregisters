@@ -1,6 +1,7 @@
 /**
- * Rules for the admin-broadcast "reload app" / "sync metadata" banners in
- * `__root.tsx`. All timestamps are ISO strings (broadcasts are written with
+ * Rules for the admin-broadcast "sync metadata" banner in `__root.tsx`
+ * (the "reload app" broadcast now forces a reload instead — see
+ * src/app-update/update-controller.ts). All timestamps are ISO strings (broadcasts are written with
  * `new Date().toISOString()`), so string comparison orders them.
  *
  * A broadcast only matters to a page that doesn't already have what it
@@ -11,17 +12,6 @@
 
 function isUndismissed(signalAt: string, lastSeen: string | null): boolean {
     return !lastSeen || signalAt > lastSeen;
-}
-
-/** Shown only for a new-app broadcast made after this page loaded its code. */
-export function shouldShowAppReload(params: {
-    signalAt: string | undefined;
-    lastSeen: string | null;
-    pageLoadedAt: string;
-}): boolean {
-    const { signalAt, lastSeen, pageLoadedAt } = params;
-    if (!signalAt) return false;
-    return isUndismissed(signalAt, lastSeen) && signalAt > pageLoadedAt;
 }
 
 /**

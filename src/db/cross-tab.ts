@@ -25,7 +25,13 @@ export type CrossTabChange =
      * on another facility's store is stale — its session now belongs to
      * this user — and reloads (see `src/facility-store.ts`).
      */
-    | { kind: "facility"; orgUnit: string };
+    | { kind: "facility"; orgUnit: string }
+    /**
+     * A tab noticed a new app version (a deployed build or the admin's
+     * reload broadcast): every tab counts down to the earliest
+     * `detectedAt` (see `src/app-update/update-controller.ts`).
+     */
+    | { kind: "appUpdate"; detectedAt: number; source: "deploy" | "broadcast" };
 
 export interface CrossTabBus {
     publish(change: CrossTabChange): void;

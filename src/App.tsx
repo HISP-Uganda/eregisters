@@ -13,6 +13,11 @@ import {
     watchFacilityAcrossTabs,
 } from "./facility-store";
 import { setLocalAuthor } from "./db/local-author";
+import {
+    startAppUpdateWatch,
+    startBroadcastWatch,
+} from "./app-update/update-controller";
+import { AppUpdateNotice } from "./app-update/update-notice";
 import { getStorageBootActor } from "./machines/storage-boot-actor";
 import { SyncContext } from "./machines/sync";
 import { router } from "./router";
@@ -70,6 +75,11 @@ const FullApp: FC<{
         if (!storeSettled) return;
         return watchFacilityAcrossTabs(orgUnit);
     }, [storeSettled, orgUnit]);
+    // The admin's reload broadcast needs the local store and the engine.
+    useEffect(() => {
+        if (!storage || !storeSettled) return;
+        return startBroadcastWatch(storage.metadataStore, engine);
+    }, [storage, storeSettled, engine]);
 
     if (!storage || !storeSettled) {
         return (
@@ -82,6 +92,8 @@ const FullApp: FC<{
     }
 
     return (
+        <>
+        <AppUpdateNotice />
         <SyncContext.Provider
             options={{
                 input: {
@@ -97,6 +109,7 @@ const FullApp: FC<{
         >
             <Main />
         </SyncContext.Provider>
+        </>
     );
 };
 
@@ -114,34 +127,11 @@ const MyApp: FC = () => {
     // module-level singleton — never tied to this component's lifecycle.
     startRememberedFacilityBoot();
     const { data, loading, error } = useDataQuery<MeData>(ME_QUERY);
-    useEffect(() => {
-        if (!("serviceWorker" in navigator)) return;
-
-        const applyWhenInstalled = (worker: ServiceWorker) => {
-            worker.addEventListener("statechange", function () {
-                if (
-                    this.state === "installed" &&
-                    navigator.serviceWorker.controller
-                ) {
-                    this.postMessage({ type: "SKIP_WAITING" });
-                }
-            });
-        };
-
-        navigator.serviceWorker.ready.then((registration) => {
-            if (registration.installing) {
-                applyWhenInstalled(registration.installing);
-            }
-
-            registration.update().catch(() => {});
-
-            registration.addEventListener("updatefound", () => {
-                if (registration.installing) {
-                    applyWhenInstalled(registration.installing);
-                }
-            });
-        });
-    }, []);
+    // A new app version no longer applies the moment it installs (that
+    // reloaded every tab at once, mid-form): the update controller counts
+    // down, waits for unsaved work and syncs, then applies it — wayfinder
+    // map "Force devices onto the latest app version".
+    useEffect(() => startAppUpdateWatch(), []);
 
     if (error) {
         return (

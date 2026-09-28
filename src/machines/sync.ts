@@ -81,6 +81,7 @@ import {
     type PullDataSummary,
 } from "./pull-log";
 import { processBatchSync as processBatchSyncImpl } from "./sync-tracker-actors";
+import { syncsBlockedByUpdate } from "../app-update/update-controller";
 import {
     holdLockIfAvailable,
     SYNC_LOCK_NAMES,
@@ -259,7 +260,11 @@ export const syncMachine = setup({
 
         announceSkippedSync: ({ context, event }) => {
             if (event.type === "SYNC_LOCK_BUSY") {
-                context.message.info(SKIPPED_SYNC_MESSAGES[event.kind]);
+                context.message.info(
+                    syncsBlockedByUpdate()
+                        ? "An app update is about to be applied — syncing resumes after the reload."
+                        : SKIPPED_SYNC_MESSAGES[event.kind],
+                );
             }
         },
         announceMetadataSynced: () => {
@@ -285,14 +290,24 @@ export const syncMachine = setup({
         // Holds a sync kind's cross-tab Web Lock while the invoking state
         // is active; reports whether another tab already had it.
         holdSyncLock: fromCallback<SyncEvent, { kind: SyncKind }>(
-            ({ sendBack, input }) =>
-                holdLockIfAvailable(SYNC_LOCK_NAMES[input.kind], (acquired) =>
+            ({ sendBack, input }) => {
+                // An app update is about to reload every tab: start nothing
+                // new (wayfinder "What does a reload do to a push or pull
+                // in progress, and must a forced reload wait for sync?").
+                if (syncsBlockedByUpdate()) {
+                    queueMicrotask(() =>
+                        sendBack({ type: "SYNC_LOCK_BUSY", kind: input.kind }),
+                    );
+                    return () => {};
+                }
+                return holdLockIfAvailable(SYNC_LOCK_NAMES[input.kind], (acquired) =>
                     sendBack(
                         acquired
                             ? { type: "SYNC_LOCK_ACQUIRED", kind: input.kind }
                             : { type: "SYNC_LOCK_BUSY", kind: input.kind },
                     ),
-                ),
+                );
+            },
         ),
         // What other tabs change underneath this machine: checkpoints
         // (`sync_state`, re-read so the labels and the next pull's
