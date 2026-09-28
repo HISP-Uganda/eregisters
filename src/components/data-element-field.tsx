@@ -20,7 +20,7 @@ import {
     RenderType,
     TrackedEntityAttribute,
 } from "../schemas";
-import { createGetValueProps, createNormalize, isDate } from "../utils/utils";
+import { createGetValueProps, createNormalize, isDate } from "../utils/form-fields";
 import DobPicker from "./dob-picker";
 import VillageSelect from "./village-select";
 

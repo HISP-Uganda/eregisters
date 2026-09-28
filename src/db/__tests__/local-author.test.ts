@@ -1,10 +1,6 @@
 import { createCollection } from "@tanstack/db";
 import { afterEach, describe, expect, it } from "vitest";
-import {
-    createEmptyEnrollment,
-    createEmptyEvent,
-    createEmptyTrackedEntity,
-} from "../../utils/utils";
+import { createEmptyEnrollment, createEmptyEvent, createEmptyTrackedEntity } from "../../utils/record-factories";
 import { localEditStamp, setLocalAuthor, type LocalAuthor } from "../local-author";
 import { sqliteCollectionOptions } from "../sqlite/collection-adapter";
 import type { RowAdapter } from "../sqlite/row-adapter";

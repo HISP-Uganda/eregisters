@@ -63,13 +63,8 @@ import {
 } from "../schemas";
 import { collectParentSaveCascade } from "../utils/parent-save-cascade";
 import { computeSaveBlock } from "../utils/save-block";
-import {
-    cancelDataModal,
-    createEmptyEvent,
-    deleteEventWithChildren,
-    deleteTrackedEntityWithChildren,
-    resendEventWithChildren,
-} from "../utils/utils";
+import { cancelDataModal, deleteEventWithChildren, deleteTrackedEntityWithChildren, resendEventWithChildren } from "../utils/record-cascades";
+import { createEmptyEvent } from "../utils/record-factories";
 import { RootRoute } from "./__root";
 
 export const TrackedEntityRoute = createRoute({

@@ -9,7 +9,7 @@ import {
     mergeBulkEvents,
     mergeBulkTrackedEntities,
 } from "./merge-utils";
-import { flattenEnrollment, flattenEvent, flattenTrackedEntity } from "../utils/utils";
+import { flattenEnrollment, flattenEvent, flattenTrackedEntity } from "./flatten";
 import type {
     createEnrollmentsDexieCollection,
     createEventsDexieCollection,

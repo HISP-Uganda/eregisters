@@ -9,11 +9,8 @@ import { TrackedEntityContext } from "../machines";
 import { TrackedEntityRuleAwareForm } from "./rule-aware-form";
 import { TrackedEntitiesRoute } from "../routes/tracked-entities";
 import { FlattenedTrackedEntity } from "../schemas";
-import {
-    cancelDataModal,
-    createEmptyEnrollment,
-    createEmptyTrackedEntity,
-} from "../utils/utils";
+import { cancelDataModal } from "../utils/record-cascades";
+import { createEmptyEnrollment, createEmptyTrackedEntity } from "../utils/record-factories";
 import { DataModal } from "./data-modal";
 import { TrackerRegistration } from "./tracker-registration";
 

@@ -40,7 +40,7 @@ TanStack Router with **hash history** (`createHashHistory()` in `src/router.tsx`
 `src/machines/` — all long-lived state lives in state machines exposed as React contexts (`createActorContext` from `@xstate/react`).
 
 - `sync.ts` (~1.7k lines) is the top-level machine — parallel states covering `metadataSync`, `dataPull`, `dataSync` (push), plus caches for metadata (`context.metadata`), user info, last-sync timestamps, and pull versions. **Almost every "does the app know X yet?" question is answered by `SyncContext.useSelector(...)`.** Access metadata through `hooks/useMetadata.ts` rather than reaching into the machine directly.
-- `enrollment-form.ts`, `event-form.ts`, `tracked-entity-form.ts` — per-form machines that own form data, program-rule evaluation (`executeProgramRules` from `utils/utils.ts`), errors, and persistence.
+- `enrollment-form.ts`, `event-form.ts`, `tracked-entity-form.ts` — per-form machines that own form data, program-rule evaluation (`executeProgramRules` from `program-rules/execute-program-rules.ts`), errors, and persistence.
 - `sync-metadata-mode.ts` — small helpers (`shouldUseLastUpdatedFilter`, `isDataPullLoading`, etc.) that gate sync behavior. Prefer these over ad-hoc booleans.
 
 ### Data layer: Dexie + TanStack DB

@@ -36,11 +36,8 @@ import {
     FlattenedTrackedEntity,
     ProgramStage,
 } from "../schemas";
-import {
-    cancelDataModal,
-    createEmptyEvent,
-    deleteEventWithChildren,
-} from "../utils/utils";
+import { cancelDataModal, deleteEventWithChildren } from "../utils/record-cascades";
+import { createEmptyEvent } from "../utils/record-factories";
 import { DataModal } from "./data-modal";
 import ProgramStageForm from "./program-stage-form";
 import { EventRuleAwareForm } from "./rule-aware-form";

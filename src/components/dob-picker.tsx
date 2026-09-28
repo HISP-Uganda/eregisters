@@ -9,7 +9,7 @@ import {
 import dayjs from "dayjs";
 import React, { useMemo } from "react";
 import { DataElement, TrackedEntityAttribute } from "../schemas";
-import { createGetValueProps, createNormalize } from "../utils/utils";
+import { createGetValueProps, createNormalize } from "../utils/form-fields";
 
 function dobFromAge(now: dayjs.Dayjs, years = 0, months = 0, days = 0) {
     return now

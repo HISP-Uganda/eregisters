@@ -2,7 +2,7 @@ import { and, eq, not, useLiveSuspenseQuery } from "@tanstack/react-db";
 import { Badge, Flex, Tabs, Typography } from "antd";
 import React, { Key, useState } from "react";
 import { FlattenedEvent, FlattenedTrackedEntity } from "../schemas";
-import { createEmptyEvent } from "../utils/utils";
+import { createEmptyEvent } from "../utils/record-factories";
 import Relation from "./relation";
 import { SyncStatusComp } from "./sync-status-comp";
 

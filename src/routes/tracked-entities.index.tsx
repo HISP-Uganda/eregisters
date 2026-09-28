@@ -26,11 +26,8 @@ import { TrackerRegistration } from "../components/tracker-registration";
 import { useModalState } from "../hooks/useModalState";
 import { useTrackedEntitySaveBlock } from "../hooks/useTrackedEntitySaveBlock";
 import { FlattenedTrackedEntity } from "../schemas";
-import {
-    createEmptyEnrollment,
-    createEmptyTrackedEntity,
-    deleteTrackedEntityWithChildren,
-} from "../utils/utils";
+import { createEmptyEnrollment, createEmptyTrackedEntity } from "../utils/record-factories";
+import { deleteTrackedEntityWithChildren } from "../utils/record-cascades";
 import { TrackedEntitiesRoute } from "./tracked-entities";
 import { DataModal } from "../components/data-modal";
 import { TrackedEntityContext } from "../machines";

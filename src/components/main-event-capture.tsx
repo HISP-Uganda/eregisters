@@ -26,16 +26,9 @@ import {
     FlattenedEvent,
     FlattenedTrackedEntity,
 } from "../schemas";
-import {
-    buildCurrentDataElements,
-    cancelDataModal,
-    createEmptyEnrollment,
-    createEmptyEvent,
-    createEmptyTrackedEntity,
-    createGetValueProps,
-    createNormalize,
-    FORM_ROW_GUTTER,
-} from "../utils/utils";
+import { buildCurrentDataElements, createGetValueProps, createNormalize, FORM_ROW_GUTTER } from "../utils/form-fields";
+import { cancelDataModal } from "../utils/record-cascades";
+import { createEmptyEnrollment, createEmptyEvent, createEmptyTrackedEntity } from "../utils/record-factories";
 import { useUIConfig } from "../hooks/useUIConfig";
 import { DataElementField } from "./data-element-field";
 import { DataElementRenderer } from "./data-element-renderer";

@@ -10,12 +10,8 @@ import {
     ProgramRuleResult,
     ProgramRuleVariable,
 } from "../schemas";
-import {
-    createEmptyProgramRuleResult,
-    EventForRules,
-    executeProgramRules,
-    programRuleResultsEqual,
-} from "../utils/utils";
+import { createEmptyProgramRuleResult, programRuleResultsEqual } from "../program-rules/rule-results";
+import { EventForRules, executeProgramRules } from "../program-rules/execute-program-rules";
 
 import { applyRuleResultsToForm, FormEvent } from "./common";
 import { whileSaving } from "../app-update/unsaved-work";

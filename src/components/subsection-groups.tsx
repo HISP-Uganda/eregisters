@@ -2,7 +2,7 @@ import { Card, Flex, Row } from "antd";
 import React, { ReactNode } from "react";
 import { FormLayoutItem, SubsectionConfig } from "../schemas";
 import { groupByLayout, groupBySubsections } from "../utils/subsection-grouping";
-import { FORM_ROW_GUTTER } from "../utils/utils";
+import { FORM_ROW_GUTTER } from "../utils/form-fields";
 
 export function SubsectionGroups<T extends { id: string }>({
     items,
