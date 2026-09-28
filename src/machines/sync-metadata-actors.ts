@@ -9,6 +9,7 @@ import {
     type QueryMetadataInfoResult,
 } from "../db/metadata-operations";
 import type { MetadataStore } from "../db/metadata-store";
+import { SYNC_STATE_LOCK_NAME, withLock } from "./sync-locks";
 import {
     emptyStageHierarchyConfig,
     emptyUIConfig,
@@ -48,8 +49,11 @@ let syncStateWrites: Promise<unknown> = Promise.resolve();
  * regions run in parallel, so each rewriting the row from its own context
  * made the later write clobber the other's newer checkpoint — and a
  * context that never loaded a checkpoint erased it outright. Writes are
- * read-merge-written one at a time (module-level queue) so two patches
- * can't interleave. Rejects when the write fails, so callers can keep the
+ * read-merge-written one at a time — a module-level queue within this tab,
+ * and a Web Lock across tabs (another tab's push and this tab's pull can
+ * patch at the same moment; wayfinder ticket "Do two open tabs' sync
+ * machines conflict, and does sync need a cross-tab lock?") — so two
+ * patches can't interleave. Rejects when the write fails, so callers can keep the
  * previous checkpoint instead of advancing past what's on disk.
  */
 export function patchSyncState(
@@ -58,7 +62,7 @@ export function patchSyncState(
         | Pick<SyncState, "lastPullAt" | "pullScope">
         | Pick<SyncState, "lastPushAt">,
 ): Promise<void> {
-    const write = syncStateWrites.then(async () => {
+    const write = syncStateWrites.then(() => withLock(SYNC_STATE_LOCK_NAME, async () => {
         const existing = await store.getRow<SyncState>("sync_state", "current");
         const row: SyncState = {
             id: "current",
@@ -71,7 +75,7 @@ export function patchSyncState(
             updatedAt: new Date().toISOString(),
         };
         await store.putRow("sync_state", row);
-    });
+    }));
     // Keep the queue alive after a failed write; the caller still sees it.
     syncStateWrites = write.catch(() => undefined);
     return write;

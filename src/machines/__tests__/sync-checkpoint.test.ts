@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createActor, fromPromise, waitFor, type AnyActorLogic } from "xstate";
+import { createActor, fromCallback, fromPromise, waitFor, type AnyActorLogic } from "xstate";
+import { CROSS_TAB_CHANNEL } from "../../db/cross-tab";
 import type { CheckMetadataInfoResult } from "../../db/metadata-operations";
 import type { MetadataStore } from "../../db/metadata-store";
 import { sqliteMetadataStore } from "../../db/sqlite/metadata-store";
@@ -25,6 +26,9 @@ type Overrides = Partial<{
     checkIndexDB: () => Promise<CheckMetadataInfoResult>;
     pullData: (input: { lastDataPull?: string; dataPullMode: string }) => Promise<string | undefined>;
     processBatchSync: () => Promise<unknown>;
+    /** Replaces any actor outright (applied last). */
+    actors: Record<string, AnyActorLogic>;
+    message: { info: (text: string) => void };
 }>;
 
 function checkResult(
@@ -50,6 +54,9 @@ async function setUp(overrides: Overrides, store?: MetadataStore) {
         Object.keys(syncMachine.implementations.actors)
             // The real checkpoint write is what these tests are about.
             .filter((name) => name !== "persistCheckpoint")
+            // The real cross-tab lock (without Web Locks — Node — it grants at
+            // once) and the real watcher of other tabs' changes.
+            .filter((name) => name !== "holdSyncLock" && name !== "watchOtherTabs")
             .filter((name) => !(overrides.engine && name === "pullData"))
             .map((name) => [name, never]),
     );
@@ -61,6 +68,7 @@ async function setUp(overrides: Overrides, store?: MetadataStore) {
         );
     }
     if (overrides.processBatchSync) actors.processBatchSync = fromPromise(overrides.processBatchSync);
+    Object.assign(actors, overrides.actors);
 
     if (overrides.engine) {
         // The SQLite collections are a once-per-process singleton — rebind them to this test's driver.
@@ -73,7 +81,7 @@ async function setUp(overrides: Overrides, store?: MetadataStore) {
             backend: "sqlite",
             metadataStore,
             sqlDriver: overrides.engine ? driver : undefined,
-            message: {} as never,
+            message: (overrides.message ?? {}) as never,
             userInfo: {
                 id: "user-1",
                 organisationUnits: [{ id: "ou-1", path: "/ou-1" }],
@@ -438,3 +446,133 @@ describe("checkpoint scope and reset (Phase 3)", () => {
     });
 });
 
+
+describe("two open tabs (wayfinder ticket \"Do two open tabs' sync machines conflict, and does sync need a cross-tab lock?\")", () => {
+    let cleanup: (() => void) | undefined;
+    afterEach(() => {
+        cleanup?.();
+        cleanup = undefined;
+    });
+
+    /** Another tab holds `busy`'s lock; every other kind is free. */
+    function lockHeldElsewhere(busy: "push" | "pull" | "metadata") {
+        return fromCallback<{ type: string }, { kind: string }>(({ sendBack, input }) => {
+            queueMicrotask(() =>
+                sendBack(
+                    (input.kind === busy
+                        ? { type: "SYNC_LOCK_BUSY", kind: busy }
+                        : { type: "SYNC_LOCK_ACQUIRED", kind: input.kind }) as never,
+                ),
+            );
+        });
+    }
+
+    it("skips a pull another tab is running, says so, and advances nothing", async () => {
+        const pullData = vi.fn(async () => "C2");
+        const info = vi.fn();
+        const { actor, driver, close } = await setUp({
+            checkIndexDB: async () => checkResult({}),
+            pullData,
+            message: { info },
+            actors: { holdSyncLock: lockHeldElsewhere("pull") },
+        });
+        cleanup = close;
+        await waitFor(actor, (snap) => snap.context.lastDataPull === "C1", TIMEOUT);
+
+        actor.send({ type: "START_DATA_SYNC" });
+        const s = await waitFor(actor, (snap) => snap.matches({ dataPull: "waiting" }), TIMEOUT);
+
+        expect(pullData).not.toHaveBeenCalled();
+        expect(info).toHaveBeenCalledWith(expect.stringContaining("already pulling"));
+        expect(s.context.lastDataPull).toBe("C1");
+        expect(await storedSyncState(driver)).toBeUndefined();
+    });
+
+    it("skips a push another tab is running", async () => {
+        const processBatchSync = vi.fn(async () => ({ processed: 1, succeeded: 1, failed: 0 }));
+        const info = vi.fn();
+        const { actor, close } = await setUp({
+            checkIndexDB: async () => checkResult({}),
+            processBatchSync,
+            message: { info },
+            actors: { holdSyncLock: lockHeldElsewhere("push") },
+        });
+        cleanup = close;
+        await waitFor(actor, (snap) => snap.context.lastDataPull === "C1", TIMEOUT);
+
+        actor.send({ type: "PUSH_DATA" });
+        await vi.waitFor(() => expect(info).toHaveBeenCalledWith(expect.stringContaining("already pushing")));
+
+        expect(actor.getSnapshot().matches({ dataSync: "idle" })).toBe(true);
+        expect(processBatchSync).not.toHaveBeenCalled();
+    });
+
+    it("a free lock for one kind doesn't let another kind run past its own busy lock", async () => {
+        // A reconnect starts a push and a pull together: this tab gets the
+        // push lock while another tab holds the pull lock.
+        const pullData = vi.fn(async () => "C2");
+        let finishPush!: () => void;
+        const processBatchSync = vi.fn(
+            () =>
+                new Promise((resolve) => {
+                    finishPush = () => resolve({ processed: 0, succeeded: 0, failed: 0 });
+                }),
+        );
+        const info = vi.fn();
+        const { actor, close } = await setUp({
+            checkIndexDB: async () => checkResult({}),
+            pullData,
+            processBatchSync,
+            message: { info },
+            actors: { holdSyncLock: lockHeldElsewhere("pull") },
+        });
+        cleanup = close;
+        await waitFor(actor, (snap) => snap.context.lastDataPull === "C1", TIMEOUT);
+
+        actor.send({ type: "NETWORK_RECONNECT" });
+        await waitFor(actor, (snap) => snap.matches({ dataPull: "waiting" }), TIMEOUT);
+        await vi.waitFor(() => expect(processBatchSync).toHaveBeenCalledTimes(1));
+
+        expect(pullData).not.toHaveBeenCalled();
+        expect(actor.getSnapshot().matches({ dataSync: { batchSync: "pushing" } })).toBe(true);
+        expect(info).toHaveBeenCalledTimes(1);
+        finishPush();
+    });
+
+    it("picks up checkpoints another tab saved", async () => {
+        const { actor, close } = await setUp(
+            { checkIndexDB: async () => checkResult({}) },
+        );
+        cleanup = close;
+        await waitFor(actor, (snap) => snap.context.lastDataPull === "C1", TIMEOUT);
+        const metadataStore = actor.getSnapshot().context.metadataStore;
+
+        // What another tab's pull and push leave on disk.
+        await metadataStore.putRow("sync_state", {
+            id: "current",
+            lastPullAt: "C9",
+            lastPushAt: "P9",
+        });
+
+        const s = await waitFor(actor, (snap) => snap.context.lastDataPull === "C9", TIMEOUT);
+        expect(s.context.lastDataPush).toBe("P9");
+    });
+
+    it("reloads metadata from the store when another tab finished a metadata sync", async () => {
+        const queryIndexDB = vi.fn(async () => ({ program: undefined }));
+        const { actor, close } = await setUp({
+            checkIndexDB: async () => checkResult({}),
+            actors: { queryIndexDB: fromPromise(queryIndexDB) },
+        });
+        cleanup = close;
+        await waitFor(actor, (snap) => snap.matches({ metadataSync: "waiting" }), TIMEOUT);
+        expect(queryIndexDB).toHaveBeenCalledTimes(1);
+
+        const otherTab = new BroadcastChannel(CROSS_TAB_CHANNEL);
+        otherTab.postMessage({ kind: "metadata" });
+        otherTab.close();
+
+        await vi.waitFor(() => expect(queryIndexDB).toHaveBeenCalledTimes(2));
+        await waitFor(actor, (snap) => snap.matches({ metadataSync: "waiting" }), TIMEOUT);
+    });
+});

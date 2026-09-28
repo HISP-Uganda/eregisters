@@ -1,4 +1,4 @@
-import { assign, fromPromise, not, setup } from "xstate";
+import { assign, fromCallback, fromPromise, not, setup } from "xstate";
 import {
     AggregateData,
     CategoryOptionCombo,
@@ -28,7 +28,10 @@ import {
 import { createActorContext } from "@xstate/react";
 import { MessageInstance } from "antd/es/message/interface";
 import { isEmpty } from "lodash";
+import type { SyncState } from "../db";
 import type { StorageBackend } from "../db/backend";
+import { crossTabBus } from "../db/cross-tab";
+import { subscribeConfigChanged } from "../db/reactive-config";
 import {
     getEnrollmentsCollection,
     getEventsCollection,
@@ -77,6 +80,19 @@ import {
     type PullDataSummary,
 } from "./pull-log";
 import { processBatchSync as processBatchSyncImpl } from "./sync-tracker-actors";
+import {
+    holdLockIfAvailable,
+    SYNC_LOCK_NAMES,
+    type SyncKind,
+} from "./sync-locks";
+
+/** Shown in a tab whose sync was skipped because another tab runs it. */
+const SKIPPED_SYNC_MESSAGES: Record<SyncKind, string> = {
+    push: "Another open tab is already pushing data.",
+    pull: "Another open tab is already pulling data — this tab updates when it finishes.",
+    metadata:
+        "Another open tab is already syncing metadata — this tab updates when it finishes.",
+};
 
 /**
  * Which attribute/data-element ids belong to this program (and, for data
@@ -190,6 +206,16 @@ type SyncEvent =
     | { type: "FULL_INDICATOR_SYNC" }
     | { type: "CANCEL" }
     | { type: "NETWORK_RECONNECT" }
+    // Cross-tab coordination (wayfinder ticket "Do two open tabs' sync
+    // machines conflict, and does sync need a cross-tab lock?").
+    // Carry their kind: the regions run in parallel and every event reaches
+    // all of them, so a push lock's grant must not start a waiting pull.
+    | { type: "SYNC_LOCK_ACQUIRED"; kind: SyncKind }
+    | { type: "SYNC_LOCK_BUSY"; kind: SyncKind }
+    /** `sync_state` changed — possibly another tab's pull or push. */
+    | { type: "SYNC_STATE_CHANGED"; syncState: SyncState | undefined }
+    /** Another tab finished a metadata sync. */
+    | { type: "METADATA_CHANGED_ELSEWHERE" }
     | { type: "SET_CONNECTIVITY_STATUS"; status: ConnectivityStatus }
     | { type: "PARENT_READY" }
     | { type: "SET_PERIOD"; period?: string }
@@ -230,6 +256,15 @@ export const syncMachine = setup({
     actions: {
         markAsSuccessful: () => {},
 
+        announceSkippedSync: ({ context, event }) => {
+            if (event.type === "SYNC_LOCK_BUSY") {
+                context.message.info(SKIPPED_SYNC_MESSAGES[event.kind]);
+            }
+        },
+        announceMetadataSynced: () => {
+            crossTabBus.publish({ kind: "metadata" });
+        },
+
         notifySuccess: ({ context }) => {
             context.message.success(context.info);
         },
@@ -246,6 +281,48 @@ export const syncMachine = setup({
 
     },
     actors: {
+        // Holds a sync kind's cross-tab Web Lock while the invoking state
+        // is active; reports whether another tab already had it.
+        holdSyncLock: fromCallback<SyncEvent, { kind: SyncKind }>(
+            ({ sendBack, input }) =>
+                holdLockIfAvailable(SYNC_LOCK_NAMES[input.kind], (acquired) =>
+                    sendBack(
+                        acquired
+                            ? { type: "SYNC_LOCK_ACQUIRED", kind: input.kind }
+                            : { type: "SYNC_LOCK_BUSY", kind: input.kind },
+                    ),
+                ),
+        ),
+        // What other tabs change underneath this machine: checkpoints
+        // (`sync_state`, re-read so the labels and the next pull's
+        // boundary stay current) and metadata they synced.
+        watchOtherTabs: fromCallback<SyncEvent, { metadataStore: MetadataStore }>(
+            ({ sendBack, input }) => {
+                const offSyncState = subscribeConfigChanged(
+                    "sync_state",
+                    "current",
+                    () => {
+                        input.metadataStore
+                            .getRow<SyncState>("sync_state", "current")
+                            .then((syncState) =>
+                                sendBack({ type: "SYNC_STATE_CHANGED", syncState }),
+                            )
+                            .catch((error) =>
+                                console.warn("Re-reading sync_state failed:", error),
+                            );
+                    },
+                );
+                const offBus = crossTabBus.subscribe((change) => {
+                    if (change.kind === "metadata") {
+                        sendBack({ type: "METADATA_CHANGED_ELSEWHERE" });
+                    }
+                });
+                return () => {
+                    offSyncState();
+                    offBus();
+                };
+            },
+        ),
         pullAggregateData: fromPromise<
             AggregateData,
             { dataSet?: string; period?: string; orgUnit?: string }
@@ -938,7 +1015,23 @@ export const syncMachine = setup({
     /** @xstate-layout N4IgpgJg5mDOIC5SwJ4DsDGA6AtmALgIYSFEDK62AlhADZgDEEA9mmFlWgG7MDW7qTLgLFShCkJr0EnHhlJVWAbQAMAXVVrEoAA7NYVfIrTaQAD0QBmAEwBGLCoAsANgAcrlbduXbAVl+WjgA0ICiItiq+jg6WAJwqAOy2Cc6+7gC+6SGC2HhEJOSUHHSMLGwc3HwCRXmihZIlMpXyRsrqSrZaSCB6Bq0m3RYI1q6WWAmxqd7x1nYJrsGh4bau1uNuNrbxo76Z2TUiBeJFUoxgAE7nzOdYOrSkAGbXOFg5wvliEtSNsswtxppNKZeoZjKYhpsHC53J5vH4AoswghRq4sL55t44o50a5bHsQG9akcvsV6AwyAAVACCACUKQB9ACyAFFqQARKnU+lkACaADkAMJA7og-rgxAJMZRXxeFQqWKWZzWRzykJI2wq6LeVKOWIRWzOTz4wmHT4nEoMABiAFUADK2pmsqkcrm8wXC3T6UGscUISwJLDWVIqDwTZwJXWqpYIPwTcZ2Gx6lRK2LWY0HD71bCwQhcThQRmmohMVjsX78V4ZurHIQ5vNoAtFwhNOQKNoadTAr1iwbhVzOLUq5ypGWWVyxSZq8KOLZYVPjw16xz99NCIlmoQARwArhcUPmAJJoCBgMxsgBCJfK5eqa6bJJ3e8Px9PF5bfzbaEBnZF3bBvZjftB2TEdvHHSdo2SawxiSVwEgSaxYQWFZV1ye8ikfc59wbI8TzPS8LiuG47keZ5KzvTMa2wTDsKgXDX3Pd9-nbD0ej-H0ANmBJfDnZNrAnBUokcCMpxjGcA0cEZJnlDUVyyAkq2JIoT3oIwG0LSirzLSoKxNSiSRUgh8w06smM-b8uk9Pp-1AIYNRGLANWTfwXFiXFHERadLB4zxZliFx7N8FRLFQ95qwMsBVOMpsGEI65bnufAnnOF49PC5TIqM9SmzM-oLK7ayONs6cHKckdXPczzAPHKE3DcqZhLxeS0qU2tKHzLSKh4XTFI3bN2obXKAXaH8rO9AZioQeJYkDXFuPReZfGVBJRLhVFEI8nxJjmSZQvXLNyIwDqym07rbzQ-SihyfMhpYzoCvG313HsJx3GxJUuOE1aZRmraEIWBJImTELmt6g7robWLLnikikrIlq+sOm7fmYr8RsstjCom8xEFWX7HH9cNdQQiMVsgxCeIjYT0RnKIvDTUGKPSoQAHdCFBSHKVpBkWXZTkqW5fkhVGzHHoAgcVHGXFlSW5dlwHVaB2iRqQw8ILrHRXZGYu5nsDZjmoCtO0HV551+cF90RdFGycb9Pw5zSHxcU8Anh0VjysEajaB0CRw9vQ1n2bUw2zFgIh8HYQgHgj84AApDTlFQAEoGARg79eD1jraK23IScNwPC8Hx-ECVaCeiby-A8SwVGg8dQta74yTdAV6WZPkKQPTvmTILP2OxoZEMloLE4NHwh6W0SNcBrA4KCmvnECGW-e1rBG9JRgAAVrTIAAJekXSpPusd9Ie0UTzxF9sCfrCnhesH9dX4lp+CV-2IR19OBhQ-DyPo4uWONdE4pzeJ-Eox8xaTTPiPOUY9r5ykntGWYaRZ7cVrtLSYLgG6IwgFQc4YAMD4C+AwCBPZJrDmcLPfOAkAjcVcL4Ke6I1iP2CsmEm8Etbv2wOvbcdxmDEHzGyPBBD8CdRvIdNeiNeG0H4bghsQj8GENumjDsGNs4D2WIkRyctDQRH8kGMmSJlR2HPkGSwlcogTmwQdaRsjBHCMIVDIiCVSIpQkTwvhAj5EOPwMo-Kv4T7i38p7R+cJF6+FiOiKeKoeJpAicOZc1gOEgy4ZIg6AAjUgGAAAWxCTpdSqO4xGmT8A5K+H49GD0yG2woVQ1yE5aFxKnkGewLCRjX0wc4axVEsAlLKZQJxMNErJVSspYpWTcmUAqaoqpNtB5ynPqPK+N8p4Gh4vxZw8QIiBEiE1VJHiChgFtIQMObIxCb23LAbJJCrb919PAmadg4LcWgvZWIU9861XiJEeYIZfBdNXkcC5tBaAb3JNSOkB9zYt1IXM8IqY5yphWLEQG44FhBm+i9C+iF+KKhed04FoKv42ntFC10QtYU5zsgiicTyUUhjcpJZw0SxgfTiBMOw6sIwEu3CCsFP9SB-xjvHC+ICxlEEJRvSlGiYw0qReOVFjKMVIOCdfaCbkky6lGDyvlDxeW0BpGAB4+CrliJ0udNJhBJV6pBYa41cBsnTOlb6JU0RgrxAjIqccQUGHRi2oGGBgRvJhhSQpD+5z9VYBtQao1JrrlxWIsM+G4qrWRujXauNTrbmBPIcqGIHrXbesiFPJI4wYEazrqkUNoCI18ohobfJ4ia0SsjfWrNai7kAQiEGB+Mo0hJPgp4fsoklqomHBqReE4fCpABfs2toL62DMTa40Z4aW11oGlAdtsyqXhFrpQixqx4KAxWMy6My57AGgnTXaWgRZ1hu4fOrAvDDnHNOfOm5Hac22z0WsGcKoFjCU1L6pEw4eI2FxMXRCY43A6tBRnDqXNIWHwtsLL9kCf1yrpYq9FZ6kRRDGIkSD8o4LeVg4Cp9CHIYkodChmF2aMPUrWLS5FOGmWiUCPYNlE5VjGIVHBrAVGQ5h0FVgKOwqE5yjFWu1NfKhPOq7Vh1jDLcOiV1LEjEQDuKSU1pkeSaBmAnngN0HIO6ZUAFoUGSl1FsaDGsZKiXM3mi+tmBJjn7NWsGVEzO+nMxEcYgQ9SpmCvZvUoluIvU01iHEeyH1hTAfQHzAEEKrRrr9a+Mplz0OSf7S6tZczRUoklyaBphKOXs95bE-FoJVWmDxSSC5a4IRHLl3WWAaLPjwheYrtsKaogCEmSUOpatxGY1JQ0SSgwl1a+vQywcTJHB63ZU9jk57LTcHXQxJVogpD8gTMc3aZuI3rUtxAM4xiKm8v6DVF6FaQUkjtpUyRX42f8kd9OQd8ynYQIvAMgN1PevcGkPD4QUhSjxv8lE813s9IeOzWg258HfeWjNaEHgmX+A1GXa+Dh5jSWPQ1t+cXG7I9q5E-r9S0gzkmMkbpJJTjfZS0gyIqICYorSMFf50E6fKR8V8b7BMeL0KiHQyMkpXCMLK3PVhrD0SeZkySWxXioAKJEd99wqJxzJh02slU7ykGSUlk4A0kTJgymnjzoQfTJmYAFyYtBcphwISCqmKqsxFSoK5cuKmsXm09JfYKt9+Azktqud97wtcQkvM2Sid6zSe1tKSAify96-eEtJ6JRensBKhkTs4LwRO0+RoZwExjiBgm6ieaGeCowRIG61O7lFSKvcCfTbGh1AuvAOCI1sGcIWaYceCmiOIzkfqKh9gJk7pfqlDEA45TwOJFwRGHeemqeoJ38QWPEOIAmA8RyDyH2TtBw8rB4ovEYipZgDiVJnrRMWgHDg877lNkqhOM9vtGKIax-oR419iJIre8OiOYAJ+9CWA5+owH01+H+SIwkzGBeSozy-YkwCQem6QQAA */
     id: "sync",
     type: "parallel",
+    invoke: {
+        src: "watchOtherTabs",
+        input: ({ context }) => ({ metadataStore: context.metadataStore }),
+    },
     on: {
+        // The disk is the source of truth for checkpoints: another tab's
+        // pull or push moved them. Taking an older value is safe (a later
+        // pull re-downloads an overlap), never a skipped update.
+        SYNC_STATE_CHANGED: {
+            actions: assign(({ context, event }) => ({
+                lastDataPull: checkpointForScope(
+                    event.syncState,
+                    currentPullScope(context.userInfo),
+                ),
+                lastDataPush: event.syncState?.lastPushAt,
+            })),
+        },
         SET_CONNECTIVITY_STATUS: {
             actions: assign({
                 connectivityStatus: ({ event }) => event.status,
@@ -1180,63 +1273,174 @@ export const syncMachine = setup({
                         },
                     },
                 },
-                savingMetadata: {
+                syncing: {
+                    // Holds this sync kind's cross-tab Web Lock for as long as the
+                    // flow runs; leaving the state (done, failed, or the machine
+                    // stopping) releases it. Another tab holding it → skip.
                     invoke: {
-                        src: "saveMetadata",
-                        input: ({
-                            context: { metadataStore, rawMetadata },
-                        }) => {
-                            return { metadataStore, metadata: rawMetadata };
-                        },
-                        onDone: {
-                            target: "pullingUIConfig",
-                        },
-                        onError: {
-                            target: "resetIndexDB",
+                        src: "holdSyncLock",
+                        input: { kind: "metadata" as const },
+                    },
+                    initial: "acquiringLock",
+                    on: {
+                        SYNC_LOCK_BUSY: {
+                            guard: ({ event }) => event.kind === "metadata",
+                            target: "#metadataSync.queryingIndexDB",
+                            actions: "announceSkippedSync",
                         },
                     },
-                },
-                resetIndexDB: {
-                    invoke: {
-                        src: "resetDatabase",
-                        input: ({ context: { metadataStore } }) => ({
-                            metadataStore,
-                        }),
-                        onDone: {
-                            target: "idle",
+                    states: {
+                        acquiringLock: {
+                            on: {
+                                SYNC_LOCK_ACQUIRED: {
+                                    guard: ({ event }) => event.kind === "metadata",
+                                    target: "pulling",
+                                },
+                            },
                         },
-                    },
-                },
-                pullingUIConfig: {
-                    invoke: {
-                        src: "pullUIConfig",
-                        input: ({ context: { metadataStore, engine } }) => ({
-                            metadataStore,
-                            engine,
-                        }),
-                        onDone: {
-                            target: "pullingStageHierarchy",
-                            actions: assign(({ event }) => ({
-                                uiConfig: event.output,
-                            })),
+                        pulling: {
+                            invoke: {
+                                src: "pullResource",
+                                input: ({
+                                    context: {
+                                        engine,
+                                        metadataStore,
+                                        resources,
+                                        lastMetadataPull,
+                                        metadataSyncMode,
+                                        userInfo,
+                                    },
+                                }) => {
+                                    return {
+                                        resources,
+                                        engine,
+                                        metadataStore,
+                                        lastMetadataPull,
+                                        metadataSyncMode,
+                                        userOrgUnit: userInfo.organisationUnits[0].id,
+                                    };
+                                },
+
+                                onDone: [
+                                    {
+                                        guard: ({ context: { metadataSyncMode } }) => {
+                                            return metadataSyncMode === "incremental";
+                                        },
+
+                                        actions: assign(({ event }) => ({
+                                            lastMetadataPull:
+                                                event.output.metadataVersion[0]
+                                                    .lastSync,
+                                            rawMetadata: event.output,
+                                        })),
+                                        target: "savingMetadata",
+                                    },
+                                    {
+                                        guard: ({ context: { metadataSyncMode } }) => {
+                                            return metadataSyncMode === "full";
+                                        },
+
+                                        actions: assign(({ event }) => ({
+                                            lastMetadataPull:
+                                                event.output.metadataVersion[0]
+                                                    .lastSync,
+                                            rawMetadata: event.output,
+                                        })),
+                                        target: "deletingMetadata",
+                                    },
+                                ],
+
+                                onError: {
+                                    target: "#metadataSync.failure",
+                                    actions: ({ event }) => {
+                                        console.error(
+                                            "Metadata pull error:",
+                                            event.error,
+                                        );
+                                    },
+                                },
+                            },
                         },
-                        onError: "pullingStageHierarchy",
-                    },
-                },
-                pullingStageHierarchy: {
-                    invoke: {
-                        src: "pullStageHierarchy",
-                        input: ({ context: { metadataStore, engine } }) => ({
-                            metadataStore,
-                            engine,
-                        }),
-                        onDone: {
-                            target: "queryingIndexDB",
-                            actions: assign(({ event }) => ({
-                                stageHierarchyConfig: event.output,
-                            })),
+                        deletingMetadata: {
+                            invoke: {
+                                src: "deleteAllMetadata",
+                                input: ({
+                                    context: { metadataStore, rawMetadata },
+                                }) => ({
+                                    metadataStore,
+                                    metadata: rawMetadata,
+                                }),
+                                onDone: "savingMetadata",
+                                onError: "#metadataSync.failure",
+                            },
                         },
-                        onError: "queryingIndexDB",
+                        savingMetadata: {
+                            invoke: {
+                                src: "saveMetadata",
+                                input: ({
+                                    context: { metadataStore, rawMetadata },
+                                }) => {
+                                    return { metadataStore, metadata: rawMetadata };
+                                },
+                                onDone: {
+                                    target: "pullingUIConfig",
+                                },
+                                onError: {
+                                    target: "resetIndexDB",
+                                },
+                            },
+                        },
+                        resetIndexDB: {
+                            invoke: {
+                                src: "resetDatabase",
+                                input: ({ context: { metadataStore } }) => ({
+                                    metadataStore,
+                                }),
+                                onDone: {
+                                    target: "#metadataSync.idle",
+                                },
+                            },
+                        },
+                        pullingUIConfig: {
+                            invoke: {
+                                src: "pullUIConfig",
+                                input: ({ context: { metadataStore, engine } }) => ({
+                                    metadataStore,
+                                    engine,
+                                }),
+                                onDone: {
+                                    target: "pullingStageHierarchy",
+                                    actions: assign(({ event }) => ({
+                                        uiConfig: event.output,
+                                    })),
+                                },
+                                onError: "pullingStageHierarchy",
+                            },
+                        },
+                        pullingStageHierarchy: {
+                            invoke: {
+                                src: "pullStageHierarchy",
+                                input: ({ context: { metadataStore, engine } }) => ({
+                                    metadataStore,
+                                    engine,
+                                }),
+                                // Tell other tabs, which reload metadata
+                                // from the store (METADATA_CHANGED_ELSEWHERE).
+                                onDone: {
+                                    target: "#metadataSync.queryingIndexDB",
+                                    actions: [
+                                        assign(({ event }) => ({
+                                            stageHierarchyConfig: event.output,
+                                        })),
+                                        "announceMetadataSynced",
+                                    ],
+                                },
+                                onError: {
+                                    target: "#metadataSync.queryingIndexDB",
+                                    actions: "announceMetadataSynced",
+                                },
+                            },
+                        },
                     },
                 },
                 queryingIndexDB: {
@@ -1261,83 +1465,7 @@ export const syncMachine = setup({
                         },
                     },
                 },
-                deletingMetadata: {
-                    invoke: {
-                        src: "deleteAllMetadata",
-                        input: ({
-                            context: { metadataStore, rawMetadata },
-                        }) => ({
-                            metadataStore,
-                            metadata: rawMetadata,
-                        }),
-                        onDone: "savingMetadata",
-                        onError: "failure",
-                    },
-                },
 
-                syncing: {
-                    invoke: {
-                        src: "pullResource",
-                        input: ({
-                            context: {
-                                engine,
-                                metadataStore,
-                                resources,
-                                lastMetadataPull,
-                                metadataSyncMode,
-                                userInfo,
-                            },
-                        }) => {
-                            return {
-                                resources,
-                                engine,
-                                metadataStore,
-                                lastMetadataPull,
-                                metadataSyncMode,
-                                userOrgUnit: userInfo.organisationUnits[0].id,
-                            };
-                        },
-
-                        onDone: [
-                            {
-                                guard: ({ context: { metadataSyncMode } }) => {
-                                    return metadataSyncMode === "incremental";
-                                },
-
-                                actions: assign(({ event }) => ({
-                                    lastMetadataPull:
-                                        event.output.metadataVersion[0]
-                                            .lastSync,
-                                    rawMetadata: event.output,
-                                })),
-                                target: "savingMetadata",
-                            },
-                            {
-                                guard: ({ context: { metadataSyncMode } }) => {
-                                    return metadataSyncMode === "full";
-                                },
-
-                                actions: assign(({ event }) => ({
-                                    lastMetadataPull:
-                                        event.output.metadataVersion[0]
-                                            .lastSync,
-                                    rawMetadata: event.output,
-                                })),
-                                target: "deletingMetadata",
-                            },
-                        ],
-
-                        onError: {
-                            target: "failure",
-                            actions: ({ event }) => {
-                                console.error(
-                                    "Metadata pull error:",
-                                    event.error,
-                                );
-                            },
-                        },
-                    },
-                },
                 waiting: {
                     invoke: {
                         src: "pullUIConfig",
@@ -1352,6 +1480,11 @@ export const syncMachine = setup({
                         },
                     },
                     on: {
+                        // Another tab synced metadata: reload it from the
+                        // store (no server call).
+                        METADATA_CHANGED_ELSEWHERE: {
+                            target: "queryingIndexDB",
+                        },
                         START_METADATA_SYNC: {
                             target: "syncing",
                             actions: assign({
@@ -1412,42 +1545,69 @@ export const syncMachine = setup({
                 },
 
                 batchSync: {
+                    // Holds this sync kind's cross-tab Web Lock for as long as the
+                    // flow runs; leaving the state (done, failed, or the machine
+                    // stopping) releases it. Another tab holding it → skip.
                     invoke: {
-                        src: "processBatchSync",
-                        input: ({ context }) => ({
-                            engine: context.engine,
-                            backend: context.backend,
-                            sqlDriver: context.sqlDriver,
-                            validAttributeIds: context.validAttributeIds,
-                            validDataElementsByStage:
-                                context.validDataElementsByStage,
-                            dataElements: context.metadata.dataElements,
-                            trackedEntityAttributes:
-                                context.metadata.trackedEntityAttributes,
-                            optionSets: context.metadata.optionSets,
-                        }),
-                        onDone: [
-                            {
-                                guard: ({ event }) =>
-                                    shouldRecordDataPush(event.output),
-                                target: "updateLastDataPush",
-                                actions: assign({
-                                    connectivityStatus: ({ context, event }) =>
-                                        nextConnectivityStatus(context, event),
-                                }),
+                        src: "holdSyncLock",
+                        input: { kind: "push" as const },
+                    },
+                    initial: "acquiringLock",
+                    on: {
+                        SYNC_LOCK_BUSY: {
+                            guard: ({ event }) => event.kind === "push",
+                            target: "#dataSync.idle",
+                            actions: "announceSkippedSync",
+                        },
+                    },
+                    states: {
+                        acquiringLock: {
+                            on: {
+                                SYNC_LOCK_ACQUIRED: {
+                                    guard: ({ event }) => event.kind === "push",
+                                    target: "pushing",
+                                },
                             },
-                            {
-                                target: "idle",
-                                actions: assign({
-                                    connectivityStatus: ({ context, event }) =>
-                                        nextConnectivityStatus(context, event),
+                        },
+                        pushing: {
+                            invoke: {
+                                src: "processBatchSync",
+                                input: ({ context }) => ({
+                                    engine: context.engine,
+                                    backend: context.backend,
+                                    sqlDriver: context.sqlDriver,
+                                    validAttributeIds: context.validAttributeIds,
+                                    validDataElementsByStage:
+                                        context.validDataElementsByStage,
+                                    dataElements: context.metadata.dataElements,
+                                    trackedEntityAttributes:
+                                        context.metadata.trackedEntityAttributes,
+                                    optionSets: context.metadata.optionSets,
                                 }),
-                            },
-                        ],
-                        onError: {
-                            target: "idle",
-                            actions: ({ event }) => {
-                                console.error("Batch sync error:", event.error);
+                                onDone: [
+                                    {
+                                        guard: ({ event }) =>
+                                            shouldRecordDataPush(event.output),
+                                        target: "#dataSync.updateLastDataPush",
+                                        actions: assign({
+                                            connectivityStatus: ({ context, event }) =>
+                                                nextConnectivityStatus(context, event),
+                                        }),
+                                    },
+                                    {
+                                        target: "#dataSync.idle",
+                                        actions: assign({
+                                            connectivityStatus: ({ context, event }) =>
+                                                nextConnectivityStatus(context, event),
+                                        }),
+                                    },
+                                ],
+                                onError: {
+                                    target: "#dataSync.idle",
+                                    actions: ({ event }) => {
+                                        console.error("Batch sync error:", event.error);
+                                    },
+                                },
                             },
                         },
                     },
@@ -1539,45 +1699,72 @@ export const syncMachine = setup({
                 },
 
                 syncing: {
+                    // Holds this sync kind's cross-tab Web Lock for as long as the
+                    // flow runs; leaving the state (done, failed, or the machine
+                    // stopping) releases it. Another tab holding it → skip.
                     invoke: {
-                        src: "pullData",
-                        input: ({
-                            context: {
-                                engine,
-                                backend,
-                                metadataStore,
-                                sqlDriver,
-                                lastDataPull,
-                                userInfo,
-                                dataPullMode,
-                            },
-                        }) => ({
-                            engine,
-                            backend,
-                            metadataStore,
-                            sqlDriver,
-                            lastDataPull,
-                            orgUnit: userInfo.organisationUnits[0].id,
-                            program: PULL_PROGRAM,
-                            dataPullMode,
-                        }),
-
-                        onDone: {
-                            target: "updateLastDataPull",
-                            // The server-clock boundary returned by
-                            // `pullData` (captured before the pull) — not
-                            // the device clock; see the Android SDK parity
-                            // note in the actor. Pending until persisted.
-                            actions: assign({
-                                pendingDataPull: ({ event }) => event.output,
-                                dataPullMode: () => "incremental",
-                            }),
+                        src: "holdSyncLock",
+                        input: { kind: "pull" as const },
+                    },
+                    initial: "acquiringLock",
+                    on: {
+                        SYNC_LOCK_BUSY: {
+                            guard: ({ event }) => event.kind === "pull",
+                            target: "#dataPull.waiting",
+                            actions: "announceSkippedSync",
                         },
+                    },
+                    states: {
+                        acquiringLock: {
+                            on: {
+                                SYNC_LOCK_ACQUIRED: {
+                                    guard: ({ event }) => event.kind === "pull",
+                                    target: "pulling",
+                                },
+                            },
+                        },
+                        pulling: {
+                            invoke: {
+                                src: "pullData",
+                                input: ({
+                                    context: {
+                                        engine,
+                                        backend,
+                                        metadataStore,
+                                        sqlDriver,
+                                        lastDataPull,
+                                        userInfo,
+                                        dataPullMode,
+                                    },
+                                }) => ({
+                                    engine,
+                                    backend,
+                                    metadataStore,
+                                    sqlDriver,
+                                    lastDataPull,
+                                    orgUnit: userInfo.organisationUnits[0].id,
+                                    program: PULL_PROGRAM,
+                                    dataPullMode,
+                                }),
 
-                        onError: {
-                            target: "failure",
-                            actions: ({ event }) => {
-                                console.error("Data pull error:", event.error);
+                                onDone: {
+                                    target: "#dataPull.updateLastDataPull",
+                                    // The server-clock boundary returned by
+                                    // `pullData` (captured before the pull) — not
+                                    // the device clock; see the Android SDK parity
+                                    // note in the actor. Pending until persisted.
+                                    actions: assign({
+                                        pendingDataPull: ({ event }) => event.output,
+                                        dataPullMode: () => "incremental",
+                                    }),
+                                },
+
+                                onError: {
+                                    target: "#dataPull.failure",
+                                    actions: ({ event }) => {
+                                        console.error("Data pull error:", event.error);
+                                    },
+                                },
                             },
                         },
                     },

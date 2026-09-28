@@ -17,7 +17,9 @@
 export type CrossTabChange =
     | { kind: "config"; table: string; id: string }
     /** No `keys`: the write's scope is unknown — re-read the whole collection. */
-    | { kind: "collection"; id: string; keys?: Array<string | number> };
+    | { kind: "collection"; id: string; keys?: Array<string | number> }
+    /** A tab finished a metadata sync; others reload metadata from the store. */
+    | { kind: "metadata" };
 
 export interface CrossTabBus {
     publish(change: CrossTabChange): void;

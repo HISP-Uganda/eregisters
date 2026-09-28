@@ -129,6 +129,8 @@ being redirected away.
 
 - [How should config changes made in one tab reach other open tabs?](tickets/006-cross-tab-config-reactivity.md) — a `BroadcastChannel` (`src/db/cross-tab.ts`) tells other tabs what changed (config rows `ui_config`/`stage_hierarchy`, SQLite collection keys) and they re-read it; a thawed frozen tab re-reads everything. Fixed a real bug on the way: a pull could fail on a duplicate key (or lose a row) when another tab had written it — the insert/update choice now reads the database, not the snapshot. Dexie collections were already cross-tab. In-memory metadata refresh moved to the concurrent-sync ticket.
 
+- [Do two open tabs' sync machines conflict, and does sync need a cross-tab lock?](tickets/007-concurrent-tab-sync.md) — yes (a reconnect started push + pull in every tab; checkpoint patches could overwrite each other). One Web Lock per sync kind held by a parent state; a busy lock means skip with a message; `sync_state` writes are locked and broadcast so other tabs' checkpoints follow; another tab's metadata sync makes the rest reload metadata from the store. Verified with two tabs.
+
 ## Implementation progress
 
 All three tickets' decisions are now fully wired and built (commit

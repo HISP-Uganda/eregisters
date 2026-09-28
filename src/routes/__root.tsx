@@ -554,10 +554,9 @@ function LayoutWithDrafts() {
     );
     const storageView = useSelector(getStorageBootActor(), bootView);
     const syncingMetadata = SyncContext.useSelector((snapshot) => {
+        // `syncing` spans the whole flow: lock, pull, delete/save, configs.
         return isMetadataSyncLoading(
-            snapshot.matches({ metadataSync: "syncing" }) ||
-                snapshot.matches({ metadataSync: "deletingMetadata" }) ||
-                snapshot.matches({ metadataSync: "savingMetadata" }),
+            snapshot.matches({ metadataSync: "syncing" }),
             snapshot.context.lastMetadataPull,
         );
     });

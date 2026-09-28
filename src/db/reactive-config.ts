@@ -53,13 +53,15 @@ function subscribeToOtherTabs(): void {
 
 /**
  * The tables `useConfigRow` reads (`useUIConfig`, `useStageHierarchyConfig`)
- * — the only ones worth telling other tabs about. Both metadata stores'
+ * plus `sync_state`, whose checkpoints `sync.ts` reloads when another tab
+ * pulls or pushes — the only ones worth telling other tabs about. Both metadata stores'
  * `putRows` notify for every row they write, and a metadata sync writes
  * thousands; broadcasting those would flood every other tab for nothing.
  */
 export const CROSS_TAB_CONFIG_TABLES: ReadonlySet<string> = new Set([
     "ui_config",
     "stage_hierarchy",
+    "sync_state",
 ]);
 
 export function notifyConfigChanged(table: string, id: string): void {
