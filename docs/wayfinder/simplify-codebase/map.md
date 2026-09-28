@@ -56,7 +56,7 @@ penalty well below today's 10.0, with dead code and cycles still at 0.
 - [Split SyncFailuresModal](tickets/015-split-sync-failures-modal.md) — moved under the root layout: error-name lookup as tested pure code, shared failure columns, and the failed rows passed in instead of queried twice. Also a flaky update-controller test fixed.
 - [Split the client search page](tickets/016-split-client-search.md) — into `src/screens/client-search/`; the two copies of "Register New Client" became one flow that deletes the draft on Cancel (the results page used to leak drafts).
 - [Split the HMIS form renderer](tickets/017-split-hmis-form.md) — 1,082 → 160 + 6 small modules; the dead antd-table prototype, per-keystroke debug logging and an unused `syncStatus` prop removed; a rowspan/sticky-column off-by-one found and pinned, not fixed.
-- [Split the data set reports page](tickets/018-split-data-set-reports.md) — into `src/screens/data-set-report/`: loading and verify/revoke as modules, the ten form blocks as one table. Found: the ereports service's API key is hard-coded in the client (pending a decision).
+- [Split the data set reports page](tickets/018-split-data-set-reports.md) — into `src/screens/data-set-report/`: loading and verify/revoke as modules, the ten form blocks as one table. Found: the ereports API key is hard-coded in the client — moved to its own map.
 
 ## Not yet specified
 
@@ -70,3 +70,4 @@ penalty well below today's 10.0, with dead code and cycles still at 0.
 
 - The generated HMIS form configs.
 - [Should each device report its storage backend to the server?](tickets/007-report-storage-backend.md) — a new feature (device id, dataStore report, admin view); Dexie's removal is already decided (kept as the fallback), so gathering evidence for removing it later is a separate effort.
+- The ereports API key hard-coded in the client (found in [Split the data set reports page](tickets/018-split-data-set-reports.md)) — a security fix, not simplification: map [Keep the ereports API key out of the browser](../ereports-key/map.md) (rotate the key, then the DHIS2 Route API).
