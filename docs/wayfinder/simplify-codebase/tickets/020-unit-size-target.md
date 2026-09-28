@@ -1,8 +1,8 @@
 ---
 title: What should the function-size target be?
 type: wayfinder:grilling
-status: open
-assignee:
+status: closed
+assignee: claude-session
 blocked_by: []
 ---
 
@@ -23,3 +23,21 @@ past 60 lines.
 Decide the target: keep the ~300-line rule and drop the fallow metric;
 exclude tests from health and aim for a number; split the largest
 remaining app functions (list in the count); or some mix.
+
+## Resolution
+
+Decided 2026-09-28 (the user took the recommendations):
+
+1. **The map finishes on the ~300-line rule — met** (largest app
+   function: `buildColumnRegistry`, 268). fallow's `unit_size` is
+   **dropped as a goal** and kept as information only: it counts
+   functions over 60 lines, and reaching "well below 10" would mean
+   splitting ~40 mostly JSX-heavy components where splitting adds files
+   without adding clarity. The screens pattern's ~150 lines per component
+   still guides new code; any of the 16 functions over 150 (listed in
+   this ticket's question) gets its own ticket if it gets in someone's
+   way.
+2. **fallow's health config is left alone** — tests stay in; hiding big
+   `describe` blocks would only flatter the number.
+
+The map's Destination is updated to match.

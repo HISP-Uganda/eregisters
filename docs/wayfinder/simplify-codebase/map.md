@@ -10,8 +10,9 @@ tracker: local-markdown
 A smaller, easier-to-follow codebase with the same behaviour: paths that
 no longer earn their keep removed, and the giant units broken up. Done =
 every removal candidate decided; no non-test function or component over
-~300 lines; `src/utils/utils.ts` split by topic; fallow's `unit_size`
-penalty well below today's 10.0, with dead code and cycles still at 0.
+~300 lines; `src/utils/utils.ts` split by topic; dead code and cycles
+still at 0. (fallow's `unit_size` penalty was dropped as a goal — see
+"What should the function-size target be?".)
 
 ## Notes
 
@@ -58,6 +59,7 @@ penalty well below today's 10.0, with dead code and cycles still at 0.
 - [Split the HMIS form renderer](tickets/017-split-hmis-form.md) — 1,082 → 160 + 6 small modules; the dead antd-table prototype, per-keystroke debug logging and an unused `syncStatus` prop removed; a rowspan/sticky-column off-by-one found and pinned, not fixed.
 - [Split the data set reports page](tickets/018-split-data-set-reports.md) — into `src/screens/data-set-report/`: loading and verify/revoke as modules, the ten form blocks as one table. Found: the ereports API key is hard-coded in the client — moved to its own map.
 - [Do the data set and category option combo pulls miss pages?](tickets/019-metadata-paging.md) — data sets yes past 50 (11 today): `paging: false` added; the category option combo endpoint isn't paged.
+- [What should the function-size target be?](tickets/020-unit-size-target.md) — the ~300-line rule (met) is the finish line; fallow's `unit_size` (functions over 60 lines) dropped as a goal; tests stay in fallow's health.
 
 ## Not yet specified
 
