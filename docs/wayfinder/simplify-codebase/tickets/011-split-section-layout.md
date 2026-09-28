@@ -44,10 +44,11 @@ work, no console errors. The browser tool then stopped responding
 colouring and adding into an active section weren't clicked through —
 they're covered by the `layout.ts` tests.
 
-**Follow-up (same day):** a second walk-through added a section
-("Alpha") fine, then the tab froze again right after the next click —
-the renderer stopped answering even plain JavaScript. The first freeze
-cleared by itself, so it isn't an endless loop; whether it comes from
-this page or from app-wide work on the main thread (a background sync)
-is **not yet known**. Worth reproducing by hand before release: on
-Section Layout, add a section, then click it / add another.
+**Follow-up (same day):** the "freezes" during the walk-throughs were
+the browser tab being hidden (`document.visibilityState === "hidden"`):
+Chrome throttles a hidden tab's timers to about once a minute and runs
+no animation frames, so clicks, popups and screenshots stalled. Not this
+page — the analytics page's stuck loading screen had the same cause and
+cleared once the tab was shown. The remaining actions (move, rename,
+colour, add into an active section) are still to be clicked through with
+the tab visible; they're covered by the `layout.ts` tests.
