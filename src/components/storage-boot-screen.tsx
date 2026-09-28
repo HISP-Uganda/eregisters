@@ -68,10 +68,10 @@ export const StorageBootScreen: FC<{
     );
 };
 
-export const FALLBACK_NOTICE =
+const FALLBACK_NOTICE =
     "Local storage upgrade didn't complete — you're on your previous storage for now, and it will retry the next time you open the app. Your data is safe.";
 
-export const PAUSED_NOTICE =
+const PAUSED_NOTICE =
     "Local storage upgrade is paused after repeated failures — you're on your previous storage and your data is safe. If this persists, contact your administrator.";
 
 /**

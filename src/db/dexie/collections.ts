@@ -3,7 +3,6 @@ import type {
     FlattenedEnrollment,
     FlattenedEvent,
     FlattenedTrackedEntity,
-    RuleResult,
 } from "../../schemas";
 import { dexieTrackerCollectionOptions } from "./dexie-collection-adapter";
 import { localEditStamp } from "../local-author";
@@ -63,13 +62,3 @@ export function createEventsDexieCollection() {
     );
 }
 
-export function createRuleResultsDexieCollection() {
-    return createCollection(
-        dexieTrackerCollectionOptions<RuleResult, string>({
-            id: "ruleResults",
-            dbName: "MOHRegister_RuleResults",
-            tableName: "ruleResults",
-            getKey: (row) => row.id,
-        }),
-    );
-}

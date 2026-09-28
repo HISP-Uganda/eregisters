@@ -66,9 +66,3 @@ export function getEventsDexieCollection(): EventsCollection {
     return requireInitialized(eventsCollection, "eventsCollection");
 }
 
-/** Test-only escape hatch — see the SQL side's identical helper for why. */
-export function resetDexieTrackerCollectionsForTests(): void {
-    trackedEntitiesCollection = null;
-    enrollmentsCollection = null;
-    eventsCollection = null;
-}

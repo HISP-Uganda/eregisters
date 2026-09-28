@@ -92,8 +92,3 @@ export function dexieMetadataStore(): MetadataStore {
     };
 }
 
-/** Test-only escape hatch, mirroring the tracker collections' equivalent. */
-export function resetDexieMetadataStoreForTests(): void {
-    dbInstance?.close();
-    dbInstance = null;
-}

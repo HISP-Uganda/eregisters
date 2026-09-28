@@ -4,8 +4,6 @@ import { FormLayoutItem, SubsectionConfig } from "../schemas";
 import { groupByLayout, groupBySubsections } from "../utils/subsection-grouping";
 import { FORM_ROW_GUTTER } from "../utils/utils";
 
-export { groupByLayout, groupBySubsections };
-
 export function SubsectionGroups<T extends { id: string }>({
     items,
     subsections,

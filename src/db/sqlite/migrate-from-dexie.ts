@@ -21,7 +21,11 @@ import { enrollmentsRowAdapter } from "./row-adapters/enrollments";
 import { eventsRowAdapter } from "./row-adapters/events";
 import { trackedEntitiesRowAdapter } from "./row-adapters/tracked-entities";
 import { sqliteMetadataStore } from "./metadata-store";
-import { hasAnySqliteData } from "../dexie/migrate-from-sqlite";
+import {
+    hasAnySqliteData,
+    MIGRATION_STATUS_ID,
+    MIGRATION_STATUS_TABLE,
+} from "./sqlite-store-state";
 import { dropAllSqliteData } from "./drop-all-data";
 import { createSchema } from "./schema";
 import {
@@ -86,8 +90,6 @@ export interface DexieMigrationSource {
     dropAll(): Promise<void>;
 }
 
-const MIGRATION_STATUS_TABLE = "migration_status";
-const MIGRATION_STATUS_ID = "dexie-migration";
 
 type MigrationStatusRow = { id: string; completedAt: string };
 
@@ -110,19 +112,6 @@ async function isMigrationCurrent(
     if (!existing) return false;
     const dexieLastLiveAt = await source.readDexieLastLiveAt();
     return !dexieLastLiveAt || dexieLastLiveAt <= existing.completedAt;
-}
-
-/**
- * Clears this migration's completion flag, so the NEXT boot on SQLite
- * copies Dexie's data again. Called whenever Dexie becomes the live store
- * (see `migrate-from-sqlite.ts`): from then on new data lands in Dexie,
- * and a stale flag here would make a later switch back to SQLite skip
- * copying it.
- */
-export async function clearDexieMigrationFlag(db: SqlDriver): Promise<void> {
-    await db.execute(`DELETE FROM ${MIGRATION_STATUS_TABLE} WHERE id = ?`, [
-        MIGRATION_STATUS_ID,
-    ]);
 }
 
 async function markComplete(db: SqlDriver): Promise<void> {

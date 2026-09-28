@@ -7,7 +7,6 @@ import {
     FlattenedEnrollment,
     FlattenedEvent,
     FlattenedTrackedEntity,
-    MeUser,
     Program,
     ProgramRule,
     ProgramRuleResult,
@@ -1535,93 +1534,6 @@ export async function cancelDataModal(
         await deleteRecursiveDraftSubtree(undefined, data.trackedEntity);
     }
 }
-
-export const queryInfo = async (userInfo: MeUser) => {
-    const dataElements = await db.dataElements.toArray();
-    const trackedEntityAttributes = await db.trackedEntityAttributes.toArray();
-    const programRules = await db.programRules.toArray();
-    const programRuleVariables = await db.programRuleVariables.toArray();
-    const optionGroups = await db.optionGroups.toArray();
-    const optionSets = await db.optionSets.toArray();
-    const [program] = await db.programs.toArray();
-    const dataSets = await db.dataSets.toArray();
-    const categoryOptionCombos = await db.categoryOptionCombos.toArray();
-    const organisationUnits = await db.organisationUnits
-        .where("path")
-        .startsWith(userInfo.organisationUnits[0].path)
-        .toArray();
-
-    return {
-        dataElements: new Map(dataElements.map((de) => [de.id, de])),
-        trackedEntityAttributes: new Map(
-            trackedEntityAttributes.map((ta) => [ta.id, ta]),
-        ),
-        programRules,
-        programRuleVariables,
-        optionGroups: new Map(
-            Object.entries(groupBy(optionGroups, "optionGroup")),
-        ),
-        optionSets: new Map(Object.entries(groupBy(optionSets, "optionSet"))),
-        program,
-        orgUnit: userInfo.organisationUnits[0].id,
-        orgUnitName: userInfo.organisationUnits[0].name,
-        dataSets,
-        organisationUnits,
-        categoryOptionCombos,
-    };
-};
-
-export const checkInfo = async () => {
-    try {
-        const queries = await Promise.all([
-            db.dataElements.count(),
-            db.trackedEntityAttributes.count(),
-            db.programRules.count(),
-            db.programRuleVariables.count(),
-            db.optionGroups.count(),
-            db.optionSets.count(),
-            db.programs.count(),
-            db.dataSets.count(),
-            db.organisationUnits.count(),
-            db.categoryOptionCombos.count(),
-        ]);
-
-        const hasEmptyTables = queries.some((a) => a === 0);
-        const [metadataVersion] = await db.metadataVersions
-            .where({ id: "metadata-version" })
-            .toArray();
-
-        const [syncStatus] = await db.syncState
-            .where({ id: "current" })
-            .toArray();
-        const wasIndexedDBDeleted = !metadataVersion?.lastSync;
-        const [program] = await db.programs.toArray();
-
-        // const syncedWithin24Hours = metadataVersion?.lastSync
-        //     ? dayjs().diff(dayjs(metadataVersion.lastSync), "hour") < 24
-        //     : false
-        return {
-            needsSyncing: hasEmptyTables || wasIndexedDBDeleted,
-            hasEmptyTables,
-            wasIndexedDBDeleted,
-            // syncedWithin24Hours,
-            metadataVersion,
-            syncStatus,
-            program,
-        };
-    } catch (error) {
-        await db.delete();
-        await db.open();
-        return {
-            needsSyncing: true,
-            hasEmptyTables: true,
-            wasIndexedDBDeleted: true,
-            // syncedWithin24Hours: false,
-            metadataVersion: undefined,
-            program: undefined,
-        };
-    }
-};
 
 // export function redirectByAuthorities(
 //     authorities: string[],

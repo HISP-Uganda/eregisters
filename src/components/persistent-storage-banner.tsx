@@ -1,3 +1,4 @@
+// fallow-ignore-file unused-file -- switched off on purpose (see __root.tsx); kept for re-enabling.
 import { Alert } from "antd";
 import React, { useEffect, useState } from "react";
 import { requestPersistentStorage } from "../db/persistent-storage";

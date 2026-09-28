@@ -1,4 +1,4 @@
-import dayjs, { Dayjs, OpUnitType } from "dayjs";
+import dayjs, { Dayjs } from "dayjs";
 import advancedFormat from "dayjs/plugin/advancedFormat";
 import isoWeek from "dayjs/plugin/isoWeek";
 
@@ -254,37 +254,6 @@ function financial(
             end,
         },
     ];
-}
-
-export function whichPeriod(type: DhisPeriodType): OpUnitType | "isoWeek" {
-    switch (type) {
-        case "Daily":
-            return "day";
-        case "Weekly":
-            return "week";
-        case "BiWeekly":
-            return "week";
-        case "Monthly":
-            return "month";
-        case "BiMonthly":
-            return "month";
-        case "Quarterly":
-            return "month";
-        case "SixMonthly":
-            return "month";
-        case "SixMonthlyApril":
-            return "month";
-        case "Yearly":
-            return "year";
-        case "FinancialApril":
-            return "year";
-        case "FinancialJuly":
-            return "year";
-        case "FinancialOct":
-            return "year";
-				default:
-					return "day"
-    }
 }
 
 export function enumeratePeriods(type: DhisPeriodType, year: number): Period[] {

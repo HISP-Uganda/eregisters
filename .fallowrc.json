@@ -3,7 +3,9 @@
   "entry": [
     "src/index.{ts,tsx,js,jsx}",
     "src/main.{ts,tsx,js,jsx}",
-    "src/App.tsx"
+    "src/App.tsx",
+    // Loaded by d2.config.js (viteConfigExtensions), which fallow doesn't read.
+    "viteConfigExtensions.mts"
   ],
   "duplicates": {
     // Hide pair-only clones; focus on widespread copy-paste
@@ -26,6 +28,12 @@
     {
       "file": "src/schemas.ts",
       "exports": ["*"]
+    },
+    // Generated from DHIS2 custom-form HTML: each also has a default export
+    // the wrappers don't use (they import the named HMIS_*_CONFIG).
+    {
+      "file": "src/form-configs/*.config.ts",
+      "exports": ["default"]
     }
   ]
 }
