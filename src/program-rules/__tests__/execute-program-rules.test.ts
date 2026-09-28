@@ -153,7 +153,7 @@ describe("d2 functions", () => {
         expect(evaluate("d2:round(#{a}, 1)", { deA: "2.46" })).toBe(2.5);
     });
 
-    it("nested calls, innermost first", () => {
+    it("nested calls", () => {
         expect(evaluate("d2:round(d2:daysBetween(#{a}, #{b}) / 7)", {
             deA: "2020-01-01",
             deB: "2020-01-20",

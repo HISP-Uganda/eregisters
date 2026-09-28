@@ -151,6 +151,13 @@ function scenarios(): Scenario[] {
     return out;
 }
 
+/** The result with its fields in a fixed order — which order they're built in isn't behaviour. */
+function sortedKeys<T extends object>(result: T): T {
+    return Object.fromEntries(
+        Object.entries(result).sort(([a], [b]) => a.localeCompare(b)),
+    ) as T;
+}
+
 describe("executeProgramRules on the real Medical Registers rules", () => {
     beforeAll(() => {
         vi.useFakeTimers({ toFake: ["Date"] });
@@ -165,7 +172,7 @@ describe("executeProgramRules on the real Medical Registers rules", () => {
 
     it("gives the same results as before", async () => {
         const lines = scenarios().map(({ name, input }) =>
-            JSON.stringify({ name, result: executeProgramRules(input) }),
+            JSON.stringify({ name, result: sortedKeys(executeProgramRules(input)) }),
         );
         await expect(lines.join("\n") + "\n").toMatchFileSnapshot(
             "./__snapshots__/golden.jsonl",
