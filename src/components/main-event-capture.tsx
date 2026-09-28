@@ -33,7 +33,7 @@ import { useUIConfig } from "../hooks/useUIConfig";
 import { DataElementField } from "./data-element-field";
 import { DataElementRenderer } from "./data-element-renderer";
 import { DataModal } from "./data-modal";
-import { ProgramStageCapture } from "./program-stage-capture";
+import { ProgramStageCapture } from "../screens/program-stage-capture/program-stage-capture";
 import RelationshipEvent from "./relationship-event";
 import { TrackedEntityRuleAwareForm } from "./rule-aware-form";
 import { SubsectionGroups } from "./subsection-groups";
@@ -328,6 +328,7 @@ export default function MainEventCapture({
                                     trackedEntity={trackedEntity}
                                     mainEvent={mainEvent}
                                     enrollment={enrollment}
+                                    captureMode="inline-row"
                                 />
                             ) : (
                                 <ProgramStageCapture
