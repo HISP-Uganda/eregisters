@@ -6,7 +6,6 @@ import { Alert, Button, Drawer, Flex, Grid, Layout, Tooltip, Typography } from "
 import React, { useState } from "react";
 import { StorageFallbackNotice } from "../../components/storage-boot-screen";
 // import { PersistentStorageBanner } from "../../components/persistent-storage-banner";
-import { SyncFailuresModal } from "../../components/sync-failures-modal";
 import { getStoreKey } from "../../db/store-names";
 import { useMetadata } from "../../hooks/useMetadata";
 import { bootView } from "../../machines/storage-boot";
@@ -14,6 +13,7 @@ import { getStorageBootActor } from "../../machines/storage-boot-actor";
 import { SyncContext } from "../../machines/sync";
 import { parseServerTime } from "../../utils/server-time";
 import { NavItems } from "./nav-items";
+import { SyncFailuresModal } from "./sync-failures/sync-failures-modal";
 import {
     useConnectivityEvents,
     useMetadataReloadBanner,
@@ -144,7 +144,13 @@ export function RootLayout() {
                 />
             )}
             <Outlet />
-            <SyncFailuresModal open={failuresOpen} onClose={() => setFailuresOpen(false)} />
+            <SyncFailuresModal
+                open={failuresOpen}
+                onClose={() => setFailuresOpen(false)}
+                failedEvents={records.failedEvents}
+                failedEnrollments={records.failedEnrollments}
+                failedTrackedEntities={records.failedTrackedEntities}
+            />
         </Layout>
     );
 }

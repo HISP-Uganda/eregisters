@@ -53,6 +53,7 @@ penalty well below today's 10.0, with dead code and cycles still at 0.
 - [Split the analytics page](tickets/012-split-analytics.md) — into `src/screens/analytics/` (9 files): the dataset build, line-list columns and return snapshot as hooks/pure code, `ComputedColumnModal` moved in with its validation as a tested pure module. Checked in the browser (saved list, pivot, record round trip, computed-column editor).
 - [Split the root layout](tickets/013-split-root-layout.md) — into `src/screens/root-layout/` (6 files): sync-state hooks, the failures preview as tested pure code, sync buttons, nav items, shell; the route keeps only `RootRoute`; header checked in the DOM.
 - [Split DataElementField](tickets/014-split-data-element-field.md) — which input a field gets is now a tested pure `fieldKind` (numeric limits as one table), inputs in `FieldInput`; Form.Item's `onChange` chained explicitly; a latent conditional-hooks bug gone. Select/radio/date inputs still to click through.
+- [Split SyncFailuresModal](tickets/015-split-sync-failures-modal.md) — moved under the root layout: error-name lookup as tested pure code, shared failure columns, and the failed rows passed in instead of queried twice. Also a flaky update-controller test fixed.
 
 ## Not yet specified
 
