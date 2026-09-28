@@ -6,14 +6,12 @@ import { eventsRowAdapter } from "./row-adapters/events";
 import { trackedEntitiesRowAdapter } from "./row-adapters/tracked-entities";
 
 /**
- * What the two store copies need to know about the SQLite store, shared
- * here so neither copy module imports the other (`migrate-from-dexie.ts`
- * and `dexie/migrate-from-sqlite.ts` used to import one helper each from
- * the other — a circular dependency fallow reported).
+ * What the Dexie → SQLite copy (`migrate-from-dexie.ts`) needs to know
+ * about the SQLite store.
  */
 
 /** `metadata_versions` row the metadata checkpoint lives in. */
-export const METADATA_VERSION_ID = "metadata-version";
+const METADATA_VERSION_ID = "metadata-version";
 
 /** The Dexie → SQLite copy's completion flag (`migration_status` row). */
 export const MIGRATION_STATUS_TABLE = "migration_status";
@@ -49,17 +47,4 @@ export async function hasAnySqliteData(db: SqlDriver): Promise<boolean> {
         hmisDrafts.length > 0 ||
         metadataVersion !== undefined
     );
-}
-
-/**
- * Clears this migration's completion flag, so the NEXT boot on SQLite
- * copies Dexie's data again. Called whenever Dexie becomes the live store
- * (see `migrate-from-sqlite.ts`): from then on new data lands in Dexie,
- * and a stale flag here would make a later switch back to SQLite skip
- * copying it.
- */
-export async function clearDexieMigrationFlag(db: SqlDriver): Promise<void> {
-    await db.execute(`DELETE FROM ${MIGRATION_STATUS_TABLE} WHERE id = ?`, [
-        MIGRATION_STATUS_ID,
-    ]);
 }

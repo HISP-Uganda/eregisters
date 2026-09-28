@@ -61,14 +61,14 @@ async function clearTable(store: MetadataStore, table: string): Promise<void> {
 }
 
 /**
- * Every metadata table a backend switch carries across (both directions:
- * `sqlite/migrate-from-dexie.ts` and `dexie/migrate-from-sqlite.ts`) —
+ * Every metadata table the Dexie → SQLite copy carries across
+ * (`sqlite/migrate-from-dexie.ts`) —
  * everything the app writes through `MetadataStore` except `sync_state`/
  * `metadata_versions` (single rows, copied separately), `hmis_drafts`
  * (lives in Dexie's MOHRegisterDB on both backends) and `migration_status`
  * (per-backend bookkeeping).
  */
-export const MIGRATED_METADATA_TABLES = [
+const MIGRATED_METADATA_TABLES = [
     "programs",
     "data_elements",
     "tracked_entity_attribute_definitions",

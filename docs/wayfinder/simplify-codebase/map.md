@@ -40,6 +40,8 @@ penalty well below today's 10.0, with dead code and cycles still at 0.
 
 ## Decisions so far
 
+- [Is the Dexie storage backend still needed?](tickets/001-dexie-backend.md) — only as the fallback where OPFS fails: removed the SQLite → Dexie copy and every way to force a backend (per-device setting, admin policy, the boot machine's forced paths); kept the Dexie → SQLite copy. ~1,265 lines of app code gone. Whether Dexie can go entirely waits on device reports.
+
 ## Not yet specified
 
 - Breaking up each giant screen (`tracked-entity.tsx`,

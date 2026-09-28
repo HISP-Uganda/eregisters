@@ -1,20 +1,8 @@
 import { createActor, type Actor } from "xstate";
-import {
-    clearCachedOpfsFailure,
-    getBackendSetting,
-    markSqliteUsed,
-    resolveBackend,
-    setCachedOpfsFailure,
-    shouldAttemptSqliteToDexieCopy,
-} from "../db/backend";
+import { resolveBackend } from "../db/backend";
 import { initCollections } from "../db/collections";
 import { dexieMetadataStore } from "../db/dexie/metadata-store";
-import { reverseCopySteps } from "../db/dexie/migrate-from-sqlite";
-import {
-    clearSqliteMigrationFlag,
-    markDexieLive,
-    realDexieMigrationTarget,
-} from "../db/dexie/real-dexie-migration-target";
+import { markDexieLive } from "../db/dexie/dexie-live";
 import { realDexieMigrationSource } from "../db/sqlite/dexie-migration-source";
 import type { SqlDriver } from "../db/sqlite/driver-types";
 import { sqliteMetadataStore } from "../db/sqlite/metadata-store";
@@ -57,9 +45,9 @@ function acquireCopyLock(): Promise<() => void> {
 }
 
 const realStorageBootDeps: StorageBootDeps = {
-    async resolveBackend(setting) {
+    async resolveBackend() {
         let liveDriver: SqlDriver | undefined;
-        const backend = await resolveBackend(setting, async () => {
+        const backend = await resolveBackend(async () => {
             liveDriver = await createWaSqliteDriver(storeName(SQLITE_DB_NAME));
         });
         return {
@@ -70,55 +58,16 @@ const realStorageBootDeps: StorageBootDeps = {
 
     initCollections,
 
-    /**
-     * The reverse copy runs on a Dexie boot, where `resolveBackend` opened
-     * no SQLite driver — so it opens its own, used only to read from and
-     * closed when the copy is over. `hasCompletedMigration()` is cheap and
-     * Dexie-only, so it gates the (costly) Worker start. Reuses
-     * `backend.ts`'s OPFS-failure cache so a device structurally incapable
-     * of OPFS pays the failed attempt only once — see
-     * `shouldAttemptSqliteToDexieCopy` for when that cache is ignored.
-     */
-    async prepareReverseCopy(setting) {
-        // Complete AND known clean: nothing to copy or clean up. Complete
-        // but not known clean still opens SQLite, so a failed cleanup (or
-        // one from before cleanup was retried) gets another go.
-        if (
-            (await realDexieMigrationTarget.hasCompletedMigration()) &&
-            (await realDexieMigrationTarget.isSqliteCleaned())
-        ) {
-            return undefined;
-        }
-        if (!shouldAttemptSqliteToDexieCopy(setting)) return undefined;
-        try {
-            const driver = await createWaSqliteDriver(storeName(SQLITE_DB_NAME));
-            clearCachedOpfsFailure();
-            return driver;
-        } catch {
-            setCachedOpfsFailure();
-            return undefined;
-        }
-    },
-
     forwardCopySteps: (liveDriver) =>
         forwardCopySteps(liveDriver, realDexieMigrationSource),
-
-    reverseCopySteps: (copyDriver) =>
-        reverseCopySteps(copyDriver, realDexieMigrationTarget),
 
     acquireCopyLock,
 
     async commitLiveStore(backend) {
-        if (backend === "sqlite") {
-            markSqliteUsed();
-            // SQLite is live now, so a later switch to Dexie must copy its
-            // data back — see clearSqliteMigrationFlag's doc comment.
-            await clearSqliteMigrationFlag().catch(() => undefined);
-        } else {
-            // Lets the next SQLite boot see that Dexie data may be newer
-            // than its last copy — see markDexieLive's doc comment.
-            await markDexieLive().catch(() => undefined);
-        }
+        // A Dexie boot (fallback where OPFS fails) lets the next SQLite boot
+        // see that Dexie data may be newer than its last copy — see
+        // markDexieLive's doc comment.
+        if (backend === "dexie") await markDexieLive().catch(() => undefined);
     },
 
     readCopyFailures: readStoreCopyFailures,
@@ -142,7 +91,7 @@ let bootActor: Actor<typeof storageBootMachine> | undefined;
 export function getStorageBootActor(): Actor<typeof storageBootMachine> {
     if (!bootActor) {
         bootActor = createActor(storageBootMachine, {
-            input: { setting: getBackendSetting(), deps: realStorageBootDeps },
+            input: { deps: realStorageBootDeps },
         });
         bootActor.start();
     }

@@ -6,7 +6,7 @@ import { valueKindFromDhis2 } from "./value-format";
 /** The two `UIConfig` fields this file actually needs — callers pass the
  * whole `UIConfig` (from `useUIConfig()`), but narrowing the parameter
  * type keeps this module decoupled from `UIConfig`'s other, unrelated
- * fields (reloadSignal, storageBackendPolicy, etc). */
+ * fields (reloadSignal, etc). */
 type SubsectionLayoutConfig = Partial<
     Pick<UIConfig, "subsections" | "formLayouts">
 >;

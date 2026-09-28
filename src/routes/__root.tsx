@@ -46,7 +46,6 @@ import { getStorageBootActor } from "../machines/storage-boot-actor";
 // import { PersistentStorageBanner } from "../components/persistent-storage-banner";
 import { Spinner } from "../components/spinner";
 import { SyncFailuresModal } from "../components/sync-failures-modal";
-import { getBackendSetting, setBackendSetting } from "../db/backend";
 import { getStoreKey } from "../db/store-names";
 import { useMetadata } from "../hooks/useMetadata";
 import { useUIConfig } from "../hooks/useUIConfig";
@@ -603,25 +602,8 @@ function LayoutWithDrafts() {
     );
     const uiConfig = useUIConfig();
     const [showMetadataReload, setShowMetadataReload] = useState(false);
-    const [showStorageBackendReload, setShowStorageBackendReload] =
-        useState(false);
 
     useEffect(() => {
-        // Shared "is this timestamp newer than the one we last saw" check
-        // for every reload-style signal below — each still owns its own
-        // "mark as seen" timing (app/metadata only mark seen when the
-        // user interacts with the banner; the storage-backend policy marks
-        // seen immediately, see its own comment below), so only the
-        // read-and-compare shape is factored out.
-        function isNewSignal(
-            timestamp: string | undefined,
-            lastSeenKey: string,
-        ): boolean {
-            if (!timestamp) return false;
-            const lastSeen = localStorage.getItem(lastSeenKey);
-            return !lastSeen || timestamp > lastSeen;
-        }
-
         const lastMetadataPullAt = lastMetadataPull
             ? parseServerTime(lastMetadataPull, serverTimeZoneId).toISOString()
             : undefined;
@@ -638,45 +620,12 @@ function LayoutWithDrafts() {
                     lastMetadataPullAt,
                 }),
             );
-
-            // Admin-controlled device storage backend policy — wayfinder
-            // map "Centrally admin-controlled device storage
-            // configuration" (docs/wayfinder/admin-storage-backend-policy/map.md).
-            // Unlike the two signals above (pure "please reload" nags),
-            // this one has a real side effect: the resolved policy value
-            // is written into the same localStorage slot resolveBackend()
-            // reads at bootstrap as soon as it's detected — not deferred
-            // to the user clicking "Reload now" — so it takes effect on
-            // ANY subsequent reload, not only one triggered from this
-            // banner. "Seen" is marked at the same time, since that
-            // durable write is the real event being tracked here, not the
-            // banner's dismissal.
-            const policy = uiConfig.storageBackendPolicy;
-            if (
-                isNewSignal(
-                    policy?.timestamp,
-                    "eregisters.lastSeenStorageBackendPolicy",
-                )
-            ) {
-                // Only ask for a reload when the policy actually changes
-                // this device's setting — a device already on it (e.g. a
-                // first load, which read it before this check) has nothing
-                // to reload for.
-                const changesSetting = getBackendSetting() !== policy!.value;
-                setBackendSetting(policy!.value);
-                localStorage.setItem(
-                    "eregisters.lastSeenStorageBackendPolicy",
-                    policy!.timestamp,
-                );
-                if (changesSetting) setShowStorageBackendReload(true);
-            }
         }
         checkSignals();
         const interval = setInterval(checkSignals, 60_000);
         return () => clearInterval(interval);
     }, [
         uiConfig.reloadSignal,
-        uiConfig.storageBackendPolicy,
         lastMetadataPull,
         serverTimeZoneId,
     ]);
@@ -1019,29 +968,6 @@ function LayoutWithDrafts() {
                                 );
                             setShowMetadataReload(false);
                         },
-                    }}
-                    style={{ borderRadius: 0 }}
-                />
-            )}
-            {showStorageBackendReload && (
-                <Alert
-                    type="warning"
-                    title="Device storage policy changed by your administrator — reload to apply it."
-                    action={
-                        <Button
-                            size="small"
-                            type="primary"
-                            style={{
-                                background: "#d97706",
-                                borderColor: "#d97706",
-                            }}
-                            onClick={() => window.location.reload()}
-                        >
-                            Reload now
-                        </Button>
-                    }
-                    closable={{
-                        onClose: () => setShowStorageBackendReload(false),
                     }}
                     style={{ borderRadius: 0 }}
                 />

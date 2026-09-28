@@ -5,6 +5,11 @@ tracker: local-markdown
 
 # Centrally admin-controlled device storage configuration
 
+> **Superseded (2026-09-28):** the admin storage backend policy this map
+> built was removed — wayfinder "Simplify the codebase", ticket "Is the
+> Dexie storage backend still needed?". Every device now picks its
+> backend automatically (SQLite, Dexie only where OPFS fails).
+
 ## Destination
 
 Replace the per-device, self-service storage backend setting (wayfinder

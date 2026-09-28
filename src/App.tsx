@@ -85,8 +85,6 @@ const FullApp: FC<{
         return (
             <StorageBootScreen
                 view={view}
-                onRetry={() => bootActor.send({ type: "RETRY" })}
-                onContinue={() => bootActor.send({ type: "CONTINUE" })}
             />
         );
     }

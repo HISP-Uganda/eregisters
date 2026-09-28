@@ -1,5 +1,5 @@
 import { assign, fromPromise, setup, type SnapshotFrom } from "xstate";
-import type { BackendSetting, StorageBackend } from "../db/backend";
+import type { StorageBackend } from "../db/backend";
 import type { MetadataStore } from "../db/metadata-store";
 import type { SqlDriver } from "../db/sqlite/driver-types";
 import type {
@@ -27,15 +27,11 @@ import type {
  */
 
 export interface StorageBootDeps {
-    /** Opens the live SQLite driver when the live store is SQLite. Throws when "sqlite" is forced but can't open. */
-    resolveBackend(
-        setting: BackendSetting,
-    ): Promise<{ backend: StorageBackend; liveDriver?: SqlDriver }>;
+    /** Opens the live SQLite driver when the live store is SQLite (Dexie where OPFS doesn't work). */
+    resolveBackend(): Promise<{ backend: StorageBackend; liveDriver?: SqlDriver }>;
     initCollections(backend: StorageBackend, driver?: SqlDriver): void;
-    /** A read-only SQLite driver for the reverse copy, or undefined when there is nothing to copy / SQLite can't open. */
-    prepareReverseCopy(setting: BackendSetting): Promise<SqlDriver | undefined>;
+    /** The Dexie → SQLite copy (a device's older Dexie data into SQLite). */
     forwardCopySteps(liveDriver: SqlDriver): StoreCopySteps;
-    reverseCopySteps(copyDriver: SqlDriver): StoreCopySteps;
     /** Resolves once this tab holds the cross-tab store-copy lock; call the result to release it. */
     acquireCopyLock(): Promise<() => void>;
     /** Per-boot bookkeeping flags for the live store. Best-effort. */
@@ -44,17 +40,16 @@ export interface StorageBootDeps {
         backend: StorageBackend,
         driver?: SqlDriver,
     ): MetadataStore;
-    /** Consecutive failed copies on "auto" for this direction (see `store-copy-failures.ts`). */
-    readCopyFailures(direction: CopyDirection): number;
-    recordCopyFailure(direction: CopyDirection): void;
+    /** Consecutive failed copies (see `store-copy-failures.ts`). */
+    readCopyFailures(): number;
+    recordCopyFailure(): void;
     clearCopyFailures(): void;
 }
 
-/** After this many consecutive failures on "auto", the copy is skipped until reset. */
+/** After this many consecutive failures, the copy is skipped until reset. */
 const MAX_COPY_FAILURES = 3;
 
 interface StorageBootInput {
-    setting: BackendSetting;
     deps: StorageBootDeps;
 }
 
@@ -64,16 +59,11 @@ interface StorageBootOutput {
     sqlDriver?: SqlDriver;
 }
 
-export type CopyDirection = "forward" | "reverse";
-
 export interface StorageBootContext {
-    setting: BackendSetting;
     deps: StorageBootDeps;
     backend?: StorageBackend;
     liveDriver?: SqlDriver;
-    /** The reverse copy's own read-only driver; closed once the copy is over. */
-    copyDriver?: SqlDriver;
-    direction?: CopyDirection;
+    /** The Dexie → SQLite copy, set when SQLite is live. */
     steps?: StoreCopySteps;
     verdict?: CopyVerdict;
     written: WrittenKeys;
@@ -100,10 +90,7 @@ export type StepStatus = "ok" | "failed" | "not-run";
 
 type StorageBootEvent =
     | { type: "PROGRESS"; progress: MigrationProgress }
-    | { type: "WRITTEN"; table: string; ids: string[] }
-    | { type: "RETRY" }
-    /** From `failed`: run on the copy's source store for this session only. */
-    | { type: "CONTINUE" };
+    | { type: "WRITTEN"; table: string; ids: string[] };
 
 function errorMessage(error: unknown): string {
     return error instanceof Error ? error.message : String(error);
@@ -127,12 +114,8 @@ export const storageBootMachine = setup({
     actors: {
         resolveBackend: fromPromise<
             { backend: StorageBackend; liveDriver?: SqlDriver },
-            { deps: StorageBootDeps; setting: BackendSetting }
-        >(({ input }) => input.deps.resolveBackend(input.setting)),
-        prepareReverseCopy: fromPromise<
-            SqlDriver | undefined,
-            { deps: StorageBootDeps; setting: BackendSetting }
-        >(({ input }) => input.deps.prepareReverseCopy(input.setting)),
+            { deps: StorageBootDeps }
+        >(({ input }) => input.deps.resolveBackend()),
         acquireCopyLock: fromPromise<() => void, { deps: StorageBootDeps }>(
             ({ input }) => input.deps.acquireCopyLock(),
         ),
@@ -183,30 +166,17 @@ export const storageBootMachine = setup({
             context.releaseLock?.();
             return { releaseLock: undefined };
         }),
-        closeCopyDriver: assign(({ context }) => {
-            closeQuietly(context.copyDriver);
-            return { copyDriver: undefined };
-        }),
         /**
-         * Session-only fallback to the copy's source store (the setting is
-         * untouched), so a failed copy never leaves the user on an empty
-         * live store. Deliberately skips `committingLiveStore`: marking
-         * Dexie live, or copying SQLite back over it, would corrupt the
-         * next attempt's baseline.
+         * Session-only fallback to Dexie, the copy's source store, so a
+         * failed copy never leaves the user on an empty live store.
+         * Deliberately skips `committingLiveStore`: marking Dexie live
+         * would corrupt the next attempt's baseline.
          */
         switchToSourceStore: assign(({ context }) => {
-            if (context.direction === "forward") {
-                closeQuietly(context.liveDriver);
-                return {
-                    backend: "dexie" as const,
-                    liveDriver: undefined,
-                    fellBack: true,
-                };
-            }
+            closeQuietly(context.liveDriver);
             return {
-                backend: "sqlite" as const,
-                liveDriver: context.copyDriver,
-                copyDriver: undefined,
+                backend: "dexie" as const,
+                liveDriver: undefined,
                 fellBack: true,
             };
         }),
@@ -215,16 +185,12 @@ export const storageBootMachine = setup({
         },
     },
     guards: {
-        canFallBack: ({ context }) => context.setting === "auto",
         copyGivenUp: ({ context }) =>
-            context.setting === "auto" &&
-            context.deps.readCopyFailures(context.direction!) >=
-                MAX_COPY_FAILURES,
+            context.deps.readCopyFailures() >= MAX_COPY_FAILURES,
     },
 }).createMachine({
     id: "storageBoot",
     context: ({ input }) => ({
-        setting: input.setting,
         deps: input.deps,
         written: {},
         copyFailed: false,
@@ -250,10 +216,7 @@ export const storageBootMachine = setup({
         resolvingBackend: {
             invoke: {
                 src: "resolveBackend",
-                input: ({ context }) => ({
-                    deps: context.deps,
-                    setting: context.setting,
-                }),
+                input: ({ context }) => ({ deps: context.deps }),
                 onDone: [
                     {
                         guard: ({ event }) =>
@@ -264,7 +227,6 @@ export const storageBootMachine = setup({
                             assign(({ context, event }) => ({
                                 backend: "sqlite" as const,
                                 liveDriver: event.output.liveDriver,
-                                direction: "forward" as const,
                                 steps: context.deps.forwardCopySteps(
                                     event.output.liveDriver!,
                                 ),
@@ -274,7 +236,7 @@ export const storageBootMachine = setup({
                     },
                     {
                         guard: ({ event }) => event.output.backend === "dexie",
-                        target: "preparingReverseCopy",
+                        target: "committingLiveStore",
                         actions: [
                             assign({ backend: "dexie" as const }),
                             "initLiveCollections",
@@ -297,31 +259,6 @@ export const storageBootMachine = setup({
                         }),
                     },
                 },
-            },
-        },
-
-        preparingReverseCopy: {
-            invoke: {
-                src: "prepareReverseCopy",
-                input: ({ context }) => ({
-                    deps: context.deps,
-                    setting: context.setting,
-                }),
-                onDone: [
-                    {
-                        guard: ({ event }) => event.output !== undefined,
-                        target: "copying",
-                        actions: assign(({ context, event }) => ({
-                            copyDriver: event.output,
-                            direction: "reverse" as const,
-                            steps: context.deps.reverseCopySteps(event.output!),
-                        })),
-                    },
-                    { target: "committingLiveStore" },
-                ],
-                // Same as today: SQLite unreadable right now means "can't
-                // copy yet", retried next boot — not a failed copy.
-                onError: { target: "committingLiveStore" },
             },
         },
 
@@ -639,23 +576,16 @@ export const storageBootMachine = setup({
                 {
                     guard: ({ context }) => !context.copyFailed,
                     target: "committingLiveStore",
-                    actions: [
-                        "closeCopyDriver",
-                        ({ context }) => context.deps.clearCopyFailures(),
-                    ],
+                    actions: ({ context }) => context.deps.clearCopyFailures(),
                 },
                 {
-                    guard: "canFallBack",
                     target: "fallingBack",
                     actions: ({ context }) => {
                         if (!context.copySkipped) {
-                            context.deps.recordCopyFailure(context.direction!);
+                            context.deps.recordCopyFailure();
                         }
                     },
                 },
-                // The copy's driver stays open: CONTINUE runs on it
-                // (reverse), and RETRY closes it.
-                { target: "failed" },
             ],
         },
 
@@ -685,33 +615,7 @@ export const storageBootMachine = setup({
             },
         },
 
-        /** A forced backend's copy failed; the setting says there is no other store to run on. */
-        failed: {
-            entry: { type: "logBoot", params: { outcome: "failed" as const } },
-            on: {
-                CONTINUE: { target: "fallingBack" },
-                RETRY: {
-                    target: "resolvingBackend",
-                    actions: assign(({ context }) => {
-                        closeQuietly(context.liveDriver);
-                        closeQuietly(context.copyDriver);
-                        return {
-                            bootId: newBootId(),
-                            startedAt: Date.now(),
-                            copyDriver: undefined,
-                            backend: undefined,
-                            liveDriver: undefined,
-                            direction: undefined,
-                            steps: undefined,
-                            error: undefined,
-                            progress: { phase: "idle" as const },
-                        };
-                    }),
-                },
-            },
-        },
-
-        /** Local storage can't be opened at all (forced "sqlite" whose driver won't open). */
+        /** Local storage can't be opened at all. */
         unavailable: {
             entry: {
                 type: "logBoot",
@@ -737,7 +641,6 @@ export type BootView =
           total: number;
       }
     | { kind: "finishing" }
-    | { kind: "failed"; error: string }
     | { kind: "unavailable"; error: string }
     | { kind: "ready"; fellBack: boolean; copyPaused: boolean };
 
@@ -764,9 +667,6 @@ export function bootView(
     if (snapshot.matches("unavailable")) {
         return { kind: "unavailable", error: context.error ?? "Unknown error" };
     }
-    if (snapshot.matches("failed")) {
-        return { kind: "failed", error: context.error ?? "Store copy failed" };
-    }
     if (
         snapshot.matches({ copying: "copyingTracker" }) &&
         context.progress.phase === "copying"
@@ -788,14 +688,12 @@ export function bootView(
 
 export interface BootSummary {
     bootId: string;
-    setting: BackendSetting;
     backend?: StorageBackend;
-    outcome: "ready" | "failed" | "unavailable";
+    outcome: "ready" | "unavailable";
     fellBack: boolean;
     durationMs: number;
     error?: string;
     copy?: {
-        direction: CopyDirection;
         verdict?: CopyVerdict;
         result:
             | "copied"
@@ -838,16 +736,14 @@ export function bootSummary(
 ): BootSummary {
     const summary: BootSummary = {
         bootId: context.bootId,
-        setting: context.setting,
         backend: context.backend,
         outcome,
         fellBack: context.fellBack,
         durationMs: now - context.startedAt,
         error: context.error,
     };
-    if (context.direction) {
+    if (context.steps) {
         summary.copy = {
-            direction: context.direction,
             verdict: context.verdict,
             result: context.copySkipped
                 ? "skipped"

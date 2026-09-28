@@ -10,7 +10,7 @@ export type MigrationProgress =
 /**
  * The steps of one store copy (previous store -> live store), in either
  * direction — the shape both `sqlite/migrate-from-dexie.ts` (forward) and
- * `dexie/migrate-from-sqlite.ts` (reverse) expose, so the storage-boot
+ * (the SQLite → Dexie reverse copy was removed) exposes, so the storage-boot
  * machine (`machines/storage-boot.ts`) can drive each step as its own
  * state, and `runStoreCopy` below can run them in sequence for the
  * pre-machine callers.

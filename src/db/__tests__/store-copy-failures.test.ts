@@ -17,14 +17,26 @@ describe("store copy failure count", () => {
     });
     afterEach(() => vi.unstubAllGlobals());
 
-    it("counts per direction and clears", () => {
-        recordStoreCopyFailure("forward");
-        recordStoreCopyFailure("forward");
-        expect(readStoreCopyFailures("forward")).toBe(2);
-        expect(readStoreCopyFailures("reverse")).toBe(0);
+    it("counts and clears", () => {
+        recordStoreCopyFailure();
+        recordStoreCopyFailure();
+        expect(readStoreCopyFailures()).toBe(2);
 
         clearStoreCopyFailures();
-        expect(readStoreCopyFailures("forward")).toBe(0);
+        expect(readStoreCopyFailures()).toBe(0);
+    });
+
+    it("keeps a forward count saved before directions were dropped, and ignores a reverse one", () => {
+        localStorage.setItem(
+            "eregisters.storeCopyFailures",
+            JSON.stringify({ version: STORE_COPY_RETRY_VERSION, direction: "forward", count: 2 }),
+        );
+        expect(readStoreCopyFailures()).toBe(2);
+        localStorage.setItem(
+            "eregisters.storeCopyFailures",
+            JSON.stringify({ version: STORE_COPY_RETRY_VERSION, direction: "reverse", count: 2 }),
+        );
+        expect(readStoreCopyFailures()).toBe(0);
     });
 
     it("ignores a count recorded under an older retry version", () => {
@@ -32,6 +44,6 @@ describe("store copy failure count", () => {
             "eregisters.storeCopyFailures",
             JSON.stringify({ version: `${STORE_COPY_RETRY_VERSION}-old`, direction: "forward", count: 5 }),
         );
-        expect(readStoreCopyFailures("forward")).toBe(0);
+        expect(readStoreCopyFailures()).toBe(0);
     });
 });
