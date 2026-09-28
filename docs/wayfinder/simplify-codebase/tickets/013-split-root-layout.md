@@ -37,6 +37,9 @@ unused `dropdownItems`) — that's the map's "commented-out code" item.
 fallow no longer flags the prop only because it is now destructured.
 
 Checked: typecheck clean; 77 test files / 543 tests pass (3 new); fallow
-clean, no cycles. **Browser check owed:** the browser tab stayed hidden
-(Chrome throttles hidden tabs), and after a reload the app didn't finish
-loading there, so the new header hasn't been seen running yet.
+clean, no cycles. **Browser check** (test server, the tab hidden so read from the DOM once
+the new modules had loaded): the header shows the facility, Pull Data /
+Sync Metadata / Push Data with their last-run times, the pending (0) and
+failed (0) badges, Errors, Verify Reports, Line Lists and Administration,
+linking to `/`, `/reports`, `/analytics` and `/admin/section-layout`.
+Not clicked: the drawer, the errors menu, the metadata banner.
