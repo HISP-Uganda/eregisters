@@ -4,12 +4,13 @@ import { Flex, Form, Select, TreeSelect } from "antd";
 import dayjs from "dayjs";
 import advancedFormat from "dayjs/plugin/advancedFormat";
 import isoWeek from "dayjs/plugin/isoWeek";
-import { every, isArray, orderBy } from "lodash";
+import { isArray, orderBy } from "lodash";
 import React, { useEffect, useMemo, useState } from "react";
 import PeriodPicker from "@/components/period-picker";
 import { Spinner } from "@/components/spinner";
 import { useMetadata } from "@/hooks/useMetadata";
-import { CategoryOptionCombo, DataSet, ReportSchema } from "@/schemas";
+import { DataSet, ReportSchema } from "@/schemas";
+import { attributionOptions } from "@/screens/data-set-report/attribution-options";
 import { RootRoute } from "./__root";
 import { SafeKey } from "antd/es/table/interface";
 import { buildOrgUnitSearchIndex, matchOrgUnit } from "./org-unit-search";
@@ -80,6 +81,7 @@ function Reports() {
                                     dataSet: value,
                                     periodType,
                                     period: undefined,
+                                    attribution: undefined,
                                 }),
                             });
                         }}
@@ -140,23 +142,8 @@ function Reports() {
 
                 {dataSet !== "C4oUitImBPK" && (
                     <Form.Item label="Nationality">
-                        <Select<string, CategoryOptionCombo>
-                            options={orderBy(
-                                categoryOptionCombos.flatMap((a) => {
-                                    if (
-                                        every(
-                                            a.categoryOptions.map(
-                                                (a) => a.access.data.write,
-                                            ),
-                                        )
-                                    ) {
-                                        return a;
-                                    }
-                                    return [];
-                                }),
-                                "name",
-                                "asc",
-                            )}
+                        <Select
+                            options={attributionOptions(categoryOptionCombos)}
                             fieldNames={{ label: "name", value: "id" }}
                             style={{ width: 400 }}
                             value={attribution}
