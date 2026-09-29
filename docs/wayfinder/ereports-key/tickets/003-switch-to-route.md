@@ -1,7 +1,7 @@
 ---
 title: Switch the report page to the DHIS2 route
 type: wayfinder:task
-status: open
+status: closed
 assignee: claude-session
 blocked_by: [002-route-api-research]
 ---
@@ -44,5 +44,21 @@ ticket, so no copy of the key is left in `src`.
   `api/43/routes/ereports-query/run` — and nothing from ereports directly
   — and showed an empty form, correctly (July has 0 values).
 
-Remaining for this ticket: create the same route on **production**
-(needs the user's OK), before deploying a build with `23f8a55`.
+## Resolution (2026-09-29)
+
+**Production route created** (the user's OK; the user ran the POST in
+the browser console themselves, key pasted in, since the agent may not
+read the key back out of git history): `ereports-query`, uid
+`tuincdXhDh6`, on eregisters.health.go.ug (2.42.5.1), same settings as
+the test server. Checked read-only through the dev proxy:
+
+- reading it back returns no key;
+- HMIS 105:1, Kisugu, 202608 → 200, **143 values** via the route
+  (~1.7 s), the same count ereports gave directly;
+- no parameters → ereports' 422, passed through.
+
+The DHIS2 server reaches ereports fine, which answers the map's fog
+about network reachability. Builds with `23f8a55` can now be deployed to
+production. The old key still has to be rotated: ticket "Rotate the
+exposed ereports API key". After rotating, update only the route's
+`api-headers` on both servers.

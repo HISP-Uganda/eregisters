@@ -29,14 +29,14 @@ whichever DHIS2 server the app runs against, not always production.
 
 ## Decisions so far
 
-- [Switch the report page to the DHIS2 route](tickets/003-switch-to-route.md) (in progress) — code switched (`23f8a55`, no key left in `src`); route live and checked on the test server; production route pending the user's OK.
+- [Switch the report page to the DHIS2 route](tickets/003-switch-to-route.md) — code switched (`23f8a55`, no key left in `src`); route `ereports-query` live and checked on the test server and on production (143 values match); safe to deploy.
 - [Rotate the exposed ereports API key](tickets/001-rotate-key.md) (decision part) — short overlap: the old key works until the route is live on production, then is revoked; the rotation itself is the user's, still pending.
 - [How does the DHIS2 Route API proxy the ereports query?](tickets/002-route-api-research.md) — `POST /api/routes` with `api-headers` auth (key encrypted at rest), run via `routes/<code>/run` through the data engine, access by the app's authority; query-parameter forwarding to confirm when the route is made.
 
 ## Not yet specified
 
-- Whether the ereports service can be reached from the DHIS2 server's
-  network, and what the route's access (sharing) should be.
+- (none: reachability confirmed on both servers; access is the
+  `M_eregisters` authority.)
 
 ## Out of scope
 
