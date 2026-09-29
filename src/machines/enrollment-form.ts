@@ -6,11 +6,11 @@ import {
     fromPromise,
     setup,
 } from "xstate";
-import { getEnrollmentsCollection } from "../db/collections";
-import { FlattenedEnrollment, FlattenedTrackedEntity } from "../schemas";
+import { getEnrollmentsCollection } from "@/db/collections";
+import { FlattenedEnrollment, FlattenedTrackedEntity } from "@/schemas";
 
 import { FormEvent } from "./common";
-import { whileSaving } from "../app-update/unsaved-work";
+import { whileSaving } from "@/app-update/unsaved-work";
 
 const enrollmentFormMachine = setup({
     types: {

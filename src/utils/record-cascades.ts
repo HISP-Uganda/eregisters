@@ -1,5 +1,5 @@
-import { Event, FlattenedEnrollment, FlattenedEvent, FlattenedTrackedEntity, TrackedEntity } from "../schemas";
-import { getEnrollmentsCollection, getEventsCollection, getTrackedEntitiesCollection } from "../db/collections";
+import { Event, FlattenedEnrollment, FlattenedEvent, FlattenedTrackedEntity, TrackedEntity } from "@/schemas";
+import { getEnrollmentsCollection, getEventsCollection, getTrackedEntitiesCollection } from "@/db/collections";
 
 /**
  * Backend-agnostic local lookups for the cascade-delete/resend walks below.

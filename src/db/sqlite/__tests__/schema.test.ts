@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { createNodeSqliteDriver } from ".././test-support/node-sqlite-driver";
+import { createNodeSqliteDriver } from "@/db/sqlite/test-support/node-sqlite-driver";
 import {
     ALL_SCHEMA_STATEMENTS,
     UNIFORM_METADATA_TABLES,
     createSchema,
-} from ".././schema";
+} from "@/db/sqlite/schema";
 
 describe("SQLite schema", () => {
     let close: (() => void) | undefined;

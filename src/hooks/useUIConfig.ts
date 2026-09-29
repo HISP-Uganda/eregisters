@@ -1,4 +1,4 @@
-import { emptyUIConfig, UIConfig } from "../schemas";
+import { emptyUIConfig, UIConfig } from "@/schemas";
 import { useConfigRow } from "./useConfigRow";
 
 export const useUIConfig = (): UIConfig => {

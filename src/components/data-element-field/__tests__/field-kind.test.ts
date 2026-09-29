@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { DataElement } from "../../../schemas";
-import { fieldKind, takesFullRow } from "../field-kind";
+import type { DataElement } from "@/schemas";
+import { fieldKind, takesFullRow } from "@/components/data-element-field/field-kind";
 
 const de = (valueType: string, extra: Partial<DataElement> = {}) =>
     ({ id: "de", name: "DE", valueType, optionSetValue: false, ...extra }) as unknown as DataElement;

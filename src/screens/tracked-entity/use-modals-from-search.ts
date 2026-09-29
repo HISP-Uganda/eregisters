@@ -3,7 +3,7 @@ import {
     FlattenedEnrollment,
     FlattenedEvent,
     FlattenedTrackedEntity,
-} from "../../schemas";
+} from "@/schemas";
 import { clientForEditing } from "./client";
 
 export type ClientSearch = {

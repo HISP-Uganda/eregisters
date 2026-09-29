@@ -1,8 +1,8 @@
 import { DeleteOutlined, PlusOutlined } from "@ant-design/icons";
 import { Alert, Button, Flex, Input, InputNumber, Select, Typography } from "antd";
 import React from "react";
-import type { ComputedColumnRange } from "../../../analytics/computed-columns";
-import type { AnalyticsColumn } from "../../../analytics/types";
+import type { ComputedColumnRange } from "@/analytics/computed-columns";
+import type { AnalyticsColumn } from "@/analytics/types";
 import { Draft, newRange } from "./draft";
 
 const { Text } = Typography;

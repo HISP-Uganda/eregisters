@@ -1,9 +1,9 @@
 import { CalculatorOutlined, DeleteOutlined, EditOutlined, PlusOutlined } from "@ant-design/icons";
 import { Button, Empty, Flex, Modal, Typography } from "antd";
 import React, { useState } from "react";
-import type { ComputedColumnDefinition } from "../../../analytics/computed-columns";
-import type { AnalyticsColumn } from "../../../analytics/types";
-import { useIsMobile } from "../../../hooks/useIsMobile";
+import type { ComputedColumnDefinition } from "@/analytics/computed-columns";
+import type { AnalyticsColumn } from "@/analytics/types";
+import { useIsMobile } from "@/hooks/useIsMobile";
 import { Draft, draftError, emptyDraft, toDefinition, toDraft } from "./draft";
 import { DraftEditor } from "./draft-editor";
 

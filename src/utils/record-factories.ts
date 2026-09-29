@@ -1,7 +1,7 @@
 import dayjs from "dayjs";
-import { FlattenedEnrollment, FlattenedEvent, FlattenedTrackedEntity } from "../schemas";
+import { FlattenedEnrollment, FlattenedEvent, FlattenedTrackedEntity } from "@/schemas";
 import { generateUid } from "./id";
-import { getLocalAuthor } from "../db/local-author";
+import { getLocalAuthor } from "@/db/local-author";
 
 /**
  * The signed-in user as the new record's author — kept locally and sent as

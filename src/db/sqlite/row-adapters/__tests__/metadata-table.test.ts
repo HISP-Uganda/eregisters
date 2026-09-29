@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it } from "vitest";
-import type { DataSet } from "../../../../schemas";
-import { createNodeSqliteDriver } from "../../test-support/node-sqlite-driver";
-import { createSchema } from "../../schema";
-import { createMetadataTableRowAdapter } from ".././metadata-table";
+import type { DataSet } from "@/schemas";
+import { createNodeSqliteDriver } from "@/db/sqlite/test-support/node-sqlite-driver";
+import { createSchema } from "@/db/sqlite/schema";
+import { createMetadataTableRowAdapter } from "@/db/sqlite/row-adapters/metadata-table";
 
 describe("createMetadataTableRowAdapter", () => {
     let close: (() => void) | undefined;

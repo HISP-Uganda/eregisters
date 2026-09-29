@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { createNodeSqliteDriver } from ".././test-support/node-sqlite-driver";
-import { createSchema } from ".././schema";
-import { applyPushResults } from ".././push-results";
-import { trackedEntitiesRowAdapter } from ".././row-adapters/tracked-entities";
-import { enrollmentsRowAdapter } from ".././row-adapters/enrollments";
-import { eventsRowAdapter } from ".././row-adapters/events";
+import { createNodeSqliteDriver } from "@/db/sqlite/test-support/node-sqlite-driver";
+import { createSchema } from "@/db/sqlite/schema";
+import { applyPushResults } from "@/db/sqlite/push-results";
+import { trackedEntitiesRowAdapter } from "@/db/sqlite/row-adapters/tracked-entities";
+import { enrollmentsRowAdapter } from "@/db/sqlite/row-adapters/enrollments";
+import { eventsRowAdapter } from "@/db/sqlite/row-adapters/events";
 
 async function seed(driver: Parameters<typeof trackedEntitiesRowAdapter.insertRow>[0]) {
     await trackedEntitiesRowAdapter.insertRow(driver, {

@@ -1,20 +1,20 @@
 import { createActor, type Actor } from "xstate";
-import { resolveBackend } from "../db/backend";
-import { initCollections } from "../db/collections";
-import { dexieMetadataStore } from "../db/dexie/metadata-store";
-import { markDexieLive } from "../db/dexie/dexie-live";
-import { realDexieMigrationSource } from "../db/sqlite/dexie-migration-source";
-import type { SqlDriver } from "../db/sqlite/driver-types";
-import { sqliteMetadataStore } from "../db/sqlite/metadata-store";
-import { forwardCopySteps } from "../db/sqlite/migrate-from-dexie";
-import { createWaSqliteDriver } from "../db/sqlite/wa-sqlite-driver";
+import { resolveBackend } from "@/db/backend";
+import { initCollections } from "@/db/collections";
+import { dexieMetadataStore } from "@/db/dexie/metadata-store";
+import { markDexieLive } from "@/db/dexie/dexie-live";
+import { realDexieMigrationSource } from "@/db/sqlite/dexie-migration-source";
+import type { SqlDriver } from "@/db/sqlite/driver-types";
+import { sqliteMetadataStore } from "@/db/sqlite/metadata-store";
+import { forwardCopySteps } from "@/db/sqlite/migrate-from-dexie";
+import { createWaSqliteDriver } from "@/db/sqlite/wa-sqlite-driver";
 import {
     clearStoreCopyFailures,
     readStoreCopyFailures,
     recordStoreCopyFailure,
-} from "../db/store-copy-failures";
+} from "@/db/store-copy-failures";
 import { storageBootMachine, type StorageBootDeps } from "./storage-boot";
-import { storeName } from "../db/store-names";
+import { storeName } from "@/db/store-names";
 
 /** Base name; `storeName` adds the facility suffix — see store-names.ts. */
 const SQLITE_DB_NAME = "eregisters-metadata";

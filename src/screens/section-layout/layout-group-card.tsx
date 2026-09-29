@@ -10,7 +10,7 @@ import {
 } from "@ant-design/icons";
 import { Button, Card, Flex, Tag, Tooltip, Typography } from "antd";
 import React from "react";
-import { SectionStyle } from "../../schemas";
+import { SectionStyle } from "@/schemas";
 import { LayoutGroup } from "./layout";
 import { SectionColors } from "./section-colors";
 

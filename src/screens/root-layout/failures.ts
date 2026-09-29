@@ -2,7 +2,7 @@ import type {
     FlattenedEnrollment,
     FlattenedEvent,
     FlattenedTrackedEntity,
-} from "../../schemas";
+} from "@/schemas";
 
 /** One failed record as the errors menu lists it. */
 export type FailurePreview = {

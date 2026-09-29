@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import type { ProgramRule, ProgramRuleAction, ProgramRuleVariable } from "../../schemas";
-import { executeProgramRules } from "../execute-program-rules";
+import type { ProgramRule, ProgramRuleAction, ProgramRuleVariable } from "@/schemas";
+import { executeProgramRules } from "@/program-rules/execute-program-rules";
 
 /**
  * Behaviour of `executeProgramRules` one piece at a time — companions to

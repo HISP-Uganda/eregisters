@@ -2,7 +2,7 @@ import type {
     FlattenedEnrollment,
     FlattenedEvent,
     FlattenedTrackedEntity,
-} from "../schemas";
+} from "@/schemas";
 
 export interface ParentSaveCascadeInput {
     parentEvent: FlattenedEvent;

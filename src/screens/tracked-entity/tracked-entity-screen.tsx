@@ -1,12 +1,12 @@
 import { Flex, Grid, Splitter, Typography } from "antd";
 import React, { useCallback } from "react";
-import { useModalState } from "../../hooks/useModalState";
-import { SyncContext } from "../../machines/sync";
+import { useModalState } from "@/hooks/useModalState";
+import { SyncContext } from "@/machines/sync";
 import {
     FlattenedEnrollment,
     FlattenedEvent,
     FlattenedTrackedEntity,
-} from "../../schemas";
+} from "@/schemas";
 import { createVisit, deleteClient, deleteVisit, resendVisit } from "./actions";
 import { clientForEditing } from "./client";
 import { ClientHeader } from "./client-header";

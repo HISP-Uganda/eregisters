@@ -1,5 +1,5 @@
-import type { RuleResult } from "../../../schemas";
-import type { RowAdapter } from "../row-adapter";
+import type { RuleResult } from "@/schemas";
+import type { RowAdapter } from "@/db/sqlite/row-adapter";
 
 type RuleResultRow = {
     id: string;

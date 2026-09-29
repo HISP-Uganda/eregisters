@@ -1,4 +1,4 @@
-import { draftId, getHmisDraft, mergeDraftAndServer } from "../../db/hmis-drafts";
+import { draftId, getHmisDraft, mergeDraftAndServer } from "@/db/hmis-drafts";
 
 /** A report's identity: which data set, for which facility and period. */
 export type ReportIdentity = {

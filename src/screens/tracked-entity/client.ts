@@ -1,6 +1,6 @@
 import dayjs, { Dayjs } from "dayjs";
 import { isEmpty } from "lodash";
-import { FlattenedEnrollment, FlattenedTrackedEntity } from "../../schemas";
+import { FlattenedEnrollment, FlattenedTrackedEntity } from "@/schemas";
 
 /** The Medical Registers program and its main (visit) stage. */
 export const PROGRAM = "ueBhWkWll5v";

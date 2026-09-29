@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { useMetadata } from "../../hooks/useMetadata";
+import { useMetadata } from "@/hooks/useMetadata";
 import { MAIN_STAGE } from "./client";
 
 /** The metadata the visit and client forms need: fields, labels, mandatory ids. */

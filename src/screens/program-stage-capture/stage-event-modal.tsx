@@ -1,13 +1,13 @@
 import { Form } from "antd";
 import React, { useMemo, useState } from "react";
-import { DataModal } from "../../components/data-modal";
-import ProgramStageForm from "../../components/program-stage-form";
-import { EventRuleAwareForm } from "../../components/rule-aware-form";
-import { useMetadata } from "../../hooks/useMetadata";
-import { EventContext } from "../../machines";
-import { FlattenedEvent, ProgramRuleResult } from "../../schemas";
-import { cancelDataModal } from "../../utils/record-cascades";
-import { computeSaveBlock } from "../../utils/save-block";
+import { DataModal } from "@/components/data-modal";
+import ProgramStageForm from "@/components/program-stage-form";
+import { EventRuleAwareForm } from "@/components/rule-aware-form";
+import { useMetadata } from "@/hooks/useMetadata";
+import { EventContext } from "@/machines";
+import { FlattenedEvent, ProgramRuleResult } from "@/schemas";
+import { cancelDataModal } from "@/utils/record-cascades";
+import { computeSaveBlock } from "@/utils/save-block";
 import { saveStageEvent } from "./actions";
 import { eventFormInput, StageFormContext, stageLabels, stageMandatoryIds } from "./stage";
 

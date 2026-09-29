@@ -10,8 +10,8 @@ import {
     Typography,
 } from "antd";
 import React, { useMemo, useState } from "react";
-import type { AnalyticsColumn } from "../../analytics/types";
-import { useIsMobile } from "../../hooks/useIsMobile";
+import type { AnalyticsColumn } from "@/analytics/types";
+import { useIsMobile } from "@/hooks/useIsMobile";
 
 const { Text } = Typography;
 

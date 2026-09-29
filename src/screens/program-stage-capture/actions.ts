@@ -1,12 +1,12 @@
 import { message } from "antd";
-import { getEventsCollection } from "../../db/collections";
+import { getEventsCollection } from "@/db/collections";
 import {
     FlattenedEnrollment,
     FlattenedEvent,
     FlattenedTrackedEntity,
-} from "../../schemas";
-import { deleteEventWithChildren } from "../../utils/record-cascades";
-import { createEmptyEvent } from "../../utils/record-factories";
+} from "@/schemas";
+import { deleteEventWithChildren } from "@/utils/record-cascades";
+import { createEmptyEvent } from "@/utils/record-factories";
 
 /** What a visit's stage table writes. `pushData` starts a push to DHIS2. */
 
@@ -87,7 +87,10 @@ export async function deleteStageEvent(event: string, pushData: () => void) {
  * so the table and the DHIS2 push agree with the visit. A synced event
  * goes back to draft.
  */
-export function moveEventsToVisitDate(events: FlattenedEvent[], visitDate: string) {
+export function moveEventsToVisitDate(
+    events: FlattenedEvent[],
+    visitDate: string,
+) {
     const eventsCollection = getEventsCollection();
     for (const event of events) {
         // Skip rows not yet committed to the collection — a live-query
@@ -105,7 +108,11 @@ export function moveEventsToVisitDate(events: FlattenedEvent[], visitDate: strin
             .isPersisted.promise.catch((err) => {
                 const text = err instanceof Error ? err.message : String(err);
                 if (text.includes("not found in the collection")) return;
-                console.error("Failed to cascade visit date to child event", event.event, err);
+                console.error(
+                    "Failed to cascade visit date to child event",
+                    event.event,
+                    err,
+                );
             });
     }
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { buildPivot } from ".././pivot-engine";
-import type { AnalyticsColumn, AnalyticsRow } from ".././types";
+import { buildPivot } from "@/analytics/pivot-engine";
+import type { AnalyticsColumn, AnalyticsRow } from "@/analytics/types";
 
 const columns: AnalyticsColumn[] = [
     column("status", "Status", "string"),

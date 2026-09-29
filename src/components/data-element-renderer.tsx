@@ -2,10 +2,10 @@ import { FormInstance } from "antd";
 import dayjs from "dayjs";
 import { orderBy } from "lodash";
 import React from "react";
-import { ProgramRuleResult } from "../schemas";
-import { buildCurrentDataElements, calculateColSpan } from "../utils/form-fields";
+import { ProgramRuleResult } from "@/schemas";
+import { buildCurrentDataElements, calculateColSpan } from "@/utils/form-fields";
 import { DataElementField } from "./data-element-field";
-import { useMetadata } from "../hooks/useMetadata";
+import { useMetadata } from "@/hooks/useMetadata";
 
 interface DataElementRendererProps {
     dataElementId: string;

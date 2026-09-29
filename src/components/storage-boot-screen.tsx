@@ -1,6 +1,6 @@
 import { Alert, Typography } from "antd";
 import React, { FC } from "react";
-import type { BootView } from "../machines/storage-boot";
+import type { BootView } from "@/machines/storage-boot";
 import { Spinner } from "./spinner";
 
 /**

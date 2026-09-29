@@ -1,4 +1,4 @@
-import type { LocalLookups } from "../pull-page";
+import type { LocalLookups } from "@/db/pull-page";
 import type { SqlDriver } from "./driver-types";
 import { getEnrollmentById } from "./row-adapters/enrollments";
 import { getEventById } from "./row-adapters/events";

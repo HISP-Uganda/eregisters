@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { displayValue, numericValue, valueKindFromDhis2 } from ".././value-format";
+import { displayValue, numericValue, valueKindFromDhis2 } from "@/analytics/value-format";
 
 const optionSets = new Map([
     [

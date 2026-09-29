@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { buildColumnRegistry } from ".././column-registry";
-import type { AnalyticsMetadata } from ".././types";
+import { buildColumnRegistry } from "@/analytics/column-registry";
+import type { AnalyticsMetadata } from "@/analytics/types";
 
 const weight = {
     id: "weightuid01",

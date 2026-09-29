@@ -1,17 +1,17 @@
 import { useNavigate } from "@tanstack/react-router";
 import { Form } from "antd";
 import React, { useMemo } from "react";
-import { DataModal } from "../../components/data-modal";
-import { TrackedEntityRuleAwareForm } from "../../components/rule-aware-form";
-import { TrackerRegistration } from "../../components/tracker-registration";
-import { getEnrollmentsCollection, getTrackedEntitiesCollection } from "../../db/collections";
-import { useMetadata } from "../../hooks/useMetadata";
-import { useModalState } from "../../hooks/useModalState";
-import { useTrackedEntitySaveBlock } from "../../hooks/useTrackedEntitySaveBlock";
-import { TrackedEntityContext } from "../../machines";
-import { FlattenedEnrollment, FlattenedTrackedEntity } from "../../schemas";
-import { cancelDataModal } from "../../utils/record-cascades";
-import { createEmptyEnrollment, createEmptyTrackedEntity } from "../../utils/record-factories";
+import { DataModal } from "@/components/data-modal";
+import { TrackedEntityRuleAwareForm } from "@/components/rule-aware-form";
+import { TrackerRegistration } from "@/components/tracker-registration";
+import { getEnrollmentsCollection, getTrackedEntitiesCollection } from "@/db/collections";
+import { useMetadata } from "@/hooks/useMetadata";
+import { useModalState } from "@/hooks/useModalState";
+import { useTrackedEntitySaveBlock } from "@/hooks/useTrackedEntitySaveBlock";
+import { TrackedEntityContext } from "@/machines";
+import { FlattenedEnrollment, FlattenedTrackedEntity } from "@/schemas";
+import { cancelDataModal } from "@/utils/record-cascades";
+import { createEmptyEnrollment, createEmptyTrackedEntity } from "@/utils/record-factories";
 
 /** Saves the registration form's values on the new client and its enrollment. */
 async function saveRegistration(

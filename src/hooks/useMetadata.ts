@@ -1,5 +1,5 @@
-import { SyncContext } from "../machines";
-import { DataElement, Program, TrackedEntityAttribute } from "../schemas";
+import { SyncContext } from "@/machines";
+import { DataElement, Program, TrackedEntityAttribute } from "@/schemas";
 
 export const useMetadata = () => {
     const metadata = SyncContext.useSelector((a) => a.context.metadata);

@@ -1,10 +1,10 @@
 import { Card, Col, Form, FormInstance, Row, Select } from "antd";
 import dayjs from "dayjs";
 import React, { useEffect, useState } from "react";
-import { DataElementField } from "../../components/data-element-field";
-import { useMetadata } from "../../hooks/useMetadata";
-import { ProgramRuleResult } from "../../schemas";
-import { createGetValueProps, createNormalize, FORM_ROW_GUTTER } from "../../utils/form-fields";
+import { DataElementField } from "@/components/data-element-field";
+import { useMetadata } from "@/hooks/useMetadata";
+import { ProgramRuleResult } from "@/schemas";
+import { createGetValueProps, createNormalize, FORM_ROW_GUTTER } from "@/utils/form-fields";
 import { SERVICE_TYPE } from "./visit-tabs";
 
 const SERVICE_TYPES_OPTION_SET = "QwsvSPpnRul";

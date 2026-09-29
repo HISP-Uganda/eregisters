@@ -3,7 +3,7 @@ import type {
     FlattenedEvent,
     FlattenedTrackedEntity,
     TrackedEntity,
-} from "../schemas";
+} from "@/schemas";
 import {
     mergeBulkEnrollments,
     mergeBulkEvents,

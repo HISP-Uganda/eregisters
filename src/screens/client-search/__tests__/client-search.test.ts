@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import type { FlattenedTrackedEntity } from "../../../schemas";
-import { clientColumns } from "../client-columns";
-import { filledTerms } from "../use-client-search";
+import type { FlattenedTrackedEntity } from "@/schemas";
+import { clientColumns } from "@/screens/client-search/client-columns";
+import { filledTerms } from "@/screens/client-search/use-client-search";
 
 describe("filledTerms", () => {
     it("keeps only the terms that were filled in", () => {

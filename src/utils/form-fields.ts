@@ -1,6 +1,6 @@
 import { FormItemProps } from "antd";
 import dayjs from "dayjs";
-import { Program, ProgramStage } from "../schemas";
+import { Program, ProgramStage } from "@/schemas";
 
 const GRID_TOTAL = 24;
 

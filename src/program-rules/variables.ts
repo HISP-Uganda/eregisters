@@ -1,5 +1,5 @@
 import dayjs from "dayjs";
-import { ProgramRuleVariable } from "../schemas";
+import { ProgramRuleVariable } from "@/schemas";
 
 export type EventForRules = {
     event: string;

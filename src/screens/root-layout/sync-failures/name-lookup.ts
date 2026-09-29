@@ -1,4 +1,4 @@
-import type { useMetadata } from "../../../hooks/useMetadata";
+import type { useMetadata } from "@/hooks/useMetadata";
 
 type Metadata = Pick<
     ReturnType<typeof useMetadata>,

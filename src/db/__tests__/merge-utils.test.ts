@@ -3,12 +3,12 @@ import {
     mergeBulkEnrollments,
     mergeBulkEvents,
     mergeBulkTrackedEntities,
-} from ".././merge-utils";
+} from "@/db/merge-utils";
 import type {
     FlattenedEnrollment,
     FlattenedEvent,
     FlattenedTrackedEntity,
-} from "../../schemas";
+} from "@/schemas";
 
 const serverUser = {
     uid: "serveruid1",

@@ -7,7 +7,7 @@ import {
     runStoreCopy,
     type MigrationProgress,
     type StoreCopySteps,
-} from "../store-copy";
+} from "@/db/store-copy";
 
 function steps(overrides: Partial<StoreCopySteps> = {}): StoreCopySteps {
     return {

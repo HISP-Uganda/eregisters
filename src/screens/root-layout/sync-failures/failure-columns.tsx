@@ -7,8 +7,8 @@ import type {
     FlattenedEnrollment,
     FlattenedEvent,
     FlattenedTrackedEntity,
-} from "../../../schemas";
-import { humanizeSyncError } from "../../../utils/sync-error-messages";
+} from "@/schemas";
+import { humanizeSyncError } from "@/utils/sync-error-messages";
 
 const { Text, Paragraph } = Typography;
 

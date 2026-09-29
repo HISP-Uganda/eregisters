@@ -1,15 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
 import { createActor, waitFor } from "xstate";
-import type { StorageBackend } from "../../db/backend";
-import type { MetadataStore } from "../../db/metadata-store";
-import type { SqlDriver } from "../../db/sqlite/driver-types";
-import type { CopyVerdict, StoreCopySteps } from "../../db/store-copy";
+import type { StorageBackend } from "@/db/backend";
+import type { MetadataStore } from "@/db/metadata-store";
+import type { SqlDriver } from "@/db/sqlite/driver-types";
+import type { CopyVerdict, StoreCopySteps } from "@/db/store-copy";
 import {
     bootSummary,
     bootView,
     storageBootMachine,
     type StorageBootDeps,
-} from "../storage-boot";
+} from "@/machines/storage-boot";
 
 function fakeDriver(name: string): SqlDriver & { close: ReturnType<typeof vi.fn> } {
     return {

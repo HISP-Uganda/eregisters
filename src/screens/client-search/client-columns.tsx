@@ -1,6 +1,6 @@
 import type { ColumnsType } from "antd/es/table";
-import type { useMetadata } from "../../hooks/useMetadata";
-import { FlattenedTrackedEntity, TrackedEntityAttribute } from "../../schemas";
+import type { useMetadata } from "@/hooks/useMetadata";
+import { FlattenedTrackedEntity, TrackedEntityAttribute } from "@/schemas";
 
 /** Not an attribute: which facility registered the client. */
 const REGISTERING_FACILITY = {

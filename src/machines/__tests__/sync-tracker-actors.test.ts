@@ -7,19 +7,19 @@ import { FetchError } from "@dhis2/app-runtime";
 // these tests exercise the actual reachable/unreachable branches instead of
 // always hitting the unreachable short-circuit.
 vi.stubGlobal("navigator", { onLine: true });
-import { createNodeSqliteDriver } from "../../db/sqlite/test-support/node-sqlite-driver";
-import { createSchema } from "../../db/sqlite/schema";
-import { initCollections } from "../../db/collections";
-import { enrollmentsRowAdapter } from "../../db/sqlite/row-adapters/enrollments";
-import { eventsRowAdapter } from "../../db/sqlite/row-adapters/events";
-import { trackedEntitiesRowAdapter } from "../../db/sqlite/row-adapters/tracked-entities";
-import type { Dhis2Report, Engine } from "../../schemas";
+import { createNodeSqliteDriver } from "@/db/sqlite/test-support/node-sqlite-driver";
+import { createSchema } from "@/db/sqlite/schema";
+import { initCollections } from "@/db/collections";
+import { enrollmentsRowAdapter } from "@/db/sqlite/row-adapters/enrollments";
+import { eventsRowAdapter } from "@/db/sqlite/row-adapters/events";
+import { trackedEntitiesRowAdapter } from "@/db/sqlite/row-adapters/tracked-entities";
+import type { Dhis2Report, Engine } from "@/schemas";
 import {
     processBatchSync,
     syncDeleteToLocal,
     syncReportToLocal,
-} from ".././sync-tracker-actors";
-import { classifyFetchError, SYNC_TIMEOUTS_MS } from ".././network-reachability";
+} from "@/machines/sync-tracker-actors";
+import { classifyFetchError, SYNC_TIMEOUTS_MS } from "@/machines/network-reachability";
 
 const { driver } = createNodeSqliteDriver();
 

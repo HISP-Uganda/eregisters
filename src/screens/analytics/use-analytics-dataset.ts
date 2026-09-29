@@ -1,16 +1,16 @@
 import { and, eq, useLiveSuspenseQuery } from "@tanstack/react-db";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { buildParentEventDataset } from "../../analytics/parent-event-dataset";
-import type { AnalyticsDataset } from "../../analytics/types";
-import type { AnalyticsFilters } from "../../components/analytics/analytics-filter-bar";
+import { buildParentEventDataset } from "@/analytics/parent-event-dataset";
+import type { AnalyticsDataset } from "@/analytics/types";
+import type { AnalyticsFilters } from "@/components/analytics/analytics-filter-bar";
 import {
     getEnrollmentsCollection,
     getEventsCollection,
     getTrackedEntitiesCollection,
-} from "../../db/collections";
-import { useMetadata } from "../../hooks/useMetadata";
-import { useStageHierarchyConfig } from "../../hooks/useStageHierarchyConfig";
-import { useUIConfig } from "../../hooks/useUIConfig";
+} from "@/db/collections";
+import { useMetadata } from "@/hooks/useMetadata";
+import { useStageHierarchyConfig } from "@/hooks/useStageHierarchyConfig";
+import { useUIConfig } from "@/hooks/useUIConfig";
 
 export type DatasetStatus = "idle" | "loading" | "ready";
 

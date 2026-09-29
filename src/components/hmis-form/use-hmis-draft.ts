@@ -1,7 +1,7 @@
 import React from "react";
-import { holdUnsavedWork } from "../../app-update/unsaved-work";
-import { draftId, getHmisDraft, upsertHmisDraft } from "../../db/hmis-drafts";
-import type { HmisFormValues } from "../../form-configs/types";
+import { holdUnsavedWork } from "@/app-update/unsaved-work";
+import { draftId, getHmisDraft, upsertHmisDraft } from "@/db/hmis-drafts";
+import type { HmisFormValues } from "@/form-configs/types";
 import { dataValueKey } from "./values";
 
 const DRAFT_DEBOUNCE_MS = 500;

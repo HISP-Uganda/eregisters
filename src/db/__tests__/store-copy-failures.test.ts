@@ -4,7 +4,7 @@ import {
     readStoreCopyFailures,
     recordStoreCopyFailure,
     STORE_COPY_RETRY_VERSION,
-} from "../store-copy-failures";
+} from "@/db/store-copy-failures";
 
 describe("store copy failure count", () => {
     beforeEach(() => {

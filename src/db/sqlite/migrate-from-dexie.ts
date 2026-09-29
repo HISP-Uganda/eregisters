@@ -3,12 +3,12 @@ import type {
     FlattenedEvent,
     FlattenedTrackedEntity,
     MetadataVersion,
-} from "../../schemas";
-import type { SyncState } from "../../schemas";
+} from "@/schemas";
+import type { SyncState } from "@/schemas";
 import {
     distinctMetadataKeys,
     replaceMetadataTables,
-} from "../metadata-operations";
+} from "@/db/metadata-operations";
 import { getConfigRow, putConfigRow } from "./config-rows";
 import {
     deleteEnrollmentCascade,
@@ -36,7 +36,7 @@ import {
     metadataShortfalls,
     type CopiedCheckpoint,
     type StoreCopySteps,
-} from "../store-copy";
+} from "@/db/store-copy";
 import {
     getSqliteEnrollmentsCollection,
     getSqliteEventsCollection,

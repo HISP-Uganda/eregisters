@@ -1,17 +1,17 @@
 import { useDataEngine } from "@dhis2/app-runtime";
 import { App } from "antd";
 import React from "react";
-import Hmis033bForm from "../../components/Hmis033b";
-import Hmis10501Form from "../../components/Hmis10501";
-import Hmis1050203Form from "../../components/Hmis1050203";
-import Hmis1050405Form from "../../components/Hmis1050405";
-import Hmis1050609Form from "../../components/Hmis1050609";
-import Hmis10510Form from "../../components/Hmis10510";
-import Hmis106A0102Form from "../../components/Hmis106A0102";
-import Hmis106A03Form from "../../components/Hmis106A03";
-import Hmis106A04Form from "../../components/Hmis106A04";
-import Hmis108Form from "../../components/Hmis108";
-import type { HmisFormProps } from "../../components/HmisForm";
+import Hmis033bForm from "@/components/Hmis033b";
+import Hmis10501Form from "@/components/Hmis10501";
+import Hmis1050203Form from "@/components/Hmis1050203";
+import Hmis1050405Form from "@/components/Hmis1050405";
+import Hmis1050609Form from "@/components/Hmis1050609";
+import Hmis10510Form from "@/components/Hmis10510";
+import Hmis106A0102Form from "@/components/Hmis106A0102";
+import Hmis106A03Form from "@/components/Hmis106A03";
+import Hmis106A04Form from "@/components/Hmis106A04";
+import Hmis108Form from "@/components/Hmis108";
+import type { HmisFormProps } from "@/components/HmisForm";
 import { revokeReport, verifyReport } from "./report-actions";
 import { describeError, FIXED_ATTRIBUTION, LoadedReport, ReportIdentity } from "./report-data";
 

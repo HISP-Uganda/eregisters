@@ -5,7 +5,7 @@ import type {
     FlattenedOptionSet,
     FlattenedTrackedEntity,
     TrackedEntityAttribute,
-} from "../schemas";
+} from "@/schemas";
 
 /**
  * Shared DHIS2 transformation utilities

@@ -1,4 +1,4 @@
-import { emptyStageHierarchyConfig, StageHierarchyConfig } from "../schemas";
+import { emptyStageHierarchyConfig, StageHierarchyConfig } from "@/schemas";
 import { useConfigRow } from "./useConfigRow";
 
 export const useStageHierarchyConfig = (): StageHierarchyConfig => {

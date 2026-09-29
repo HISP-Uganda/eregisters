@@ -1,7 +1,7 @@
 import { CheckCircleOutlined } from "@ant-design/icons";
 import { Button, Popconfirm } from "antd";
 import React from "react";
-import { isPeriodFullyPast } from "../../utils/periods";
+import { isPeriodFullyPast } from "@/utils/periods";
 import { TEAL } from "./theme";
 import { formatVerifiedAt } from "./values";
 

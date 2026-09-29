@@ -1,7 +1,7 @@
 import { assign, fromPromise, setup, type SnapshotFrom } from "xstate";
-import type { StorageBackend } from "../db/backend";
-import type { MetadataStore } from "../db/metadata-store";
-import type { SqlDriver } from "../db/sqlite/driver-types";
+import type { StorageBackend } from "@/db/backend";
+import type { MetadataStore } from "@/db/metadata-store";
+import type { SqlDriver } from "@/db/sqlite/driver-types";
 import type {
     CopiedCheckpoint,
     CopyVerdict,
@@ -9,7 +9,7 @@ import type {
     StoreCopySteps,
     VerifyReport,
     WrittenKeys,
-} from "../db/store-copy";
+} from "@/db/store-copy";
 
 /**
  * Boots local storage: resolves the live store, runs any store copy from

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { UIConfig } from "../../../schemas";
+import type { UIConfig } from "@/schemas";
 import {
     afterGroup,
     layoutGroups,
@@ -15,7 +15,7 @@ import {
     withSectionRenamed,
     withSectionStyle,
     type Layout,
-} from "../layout";
+} from "@/screens/section-layout/layout";
 
 const S = (id: string) => ({ kind: "section" as const, id, name: id.toUpperCase() });
 const E = (id: string) => ({ kind: "element" as const, id });

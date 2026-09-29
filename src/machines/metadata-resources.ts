@@ -10,7 +10,7 @@ import type {
     ProgramRuleVariable,
     Resource,
     TrackedEntityAttribute,
-} from "../schemas";
+} from "@/schemas";
 import { SYNC_TIMEOUTS_MS } from "./network-reachability";
 
 /**

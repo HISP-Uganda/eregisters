@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { draftError, emptyDraft, toDefinition, type Draft } from "../computed-columns/draft";
+import { draftError, emptyDraft, toDefinition, type Draft } from "@/screens/analytics/computed-columns/draft";
 import {
     decodeReturnSearch,
     encodeReturnSearch,
     MAX_RETURN_SEARCH_LENGTH,
     type AnalyticsRestoredState,
-} from "../return-search";
+} from "@/screens/analytics/return-search";
 
 const range = (min: number, max: number | null, label: string, minInclusive = true, maxInclusive = false) => ({
     id: label,

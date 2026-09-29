@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { applyComputedColumns, computedColumnKey } from "../../analytics/computed-columns";
-import type { ComputedColumnDefinition } from "../../analytics/computed-columns";
-import type { AnalyticsDataset, AnalyticsRow } from "../../analytics/types";
-import { useComputedColumns } from "../../hooks/useComputedColumns";
+import { applyComputedColumns, computedColumnKey } from "@/analytics/computed-columns";
+import type { ComputedColumnDefinition } from "@/analytics/computed-columns";
+import type { AnalyticsDataset, AnalyticsRow } from "@/analytics/types";
+import { useComputedColumns } from "@/hooks/useComputedColumns";
 
 /**
  * The line list's columns — the dataset's plus this program's computed

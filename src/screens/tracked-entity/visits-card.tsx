@@ -9,9 +9,9 @@ import type { TableProps } from "antd";
 import { Button, Card, Flex, Popconfirm, Space, Table, Tag } from "antd";
 import dayjs from "dayjs";
 import React, { useMemo } from "react";
-import { SyncStatusComp } from "../../components/sync-status-comp";
-import { SyncContext } from "../../machines/sync";
-import { FlattenedEvent } from "../../schemas";
+import { SyncStatusComp } from "@/components/sync-status-comp";
+import { SyncContext } from "@/machines/sync";
+import { FlattenedEvent } from "@/schemas";
 
 function renderTags(text: string | string[] | undefined, color: string) {
     if (!text) return null;

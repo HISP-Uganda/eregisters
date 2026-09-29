@@ -1,7 +1,7 @@
 import { Form, Typography } from "antd";
 import React from "react";
-import { EventContext } from "../../machines";
-import { FlattenedEvent } from "../../schemas";
+import { EventContext } from "@/machines";
+import { FlattenedEvent } from "@/schemas";
 import { EditableCell, OptionRow } from "./editable-cell";
 import { eventFormInput, StageFormContext } from "./stage";
 

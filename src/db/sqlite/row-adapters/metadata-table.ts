@@ -1,4 +1,4 @@
-import type { RowAdapter } from "../row-adapter";
+import type { RowAdapter } from "@/db/sqlite/row-adapter";
 
 /**
  * Generic row adapter for the 13 metadata tables sharing the uniform

@@ -1,6 +1,6 @@
 import dayjs from "dayjs";
 import { isEmpty } from "lodash";
-import { zScoreBMIFA, zScoreHFA, zScoreWFA, zScoreWFH } from "../utils/who-zscore";
+import { zScoreBMIFA, zScoreHFA, zScoreWFA, zScoreWFH } from "@/utils/who-zscore";
 import { VariableValues } from "./variables";
 
 /** Arguments these functions take as a variable's name, not its value. */

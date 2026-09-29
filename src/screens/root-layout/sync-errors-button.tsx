@@ -6,7 +6,7 @@ import type {
     FlattenedEnrollment,
     FlattenedEvent,
     FlattenedTrackedEntity,
-} from "../../schemas";
+} from "@/schemas";
 import { FailurePreview, failurePreview } from "./failures";
 
 const { Text } = Typography;

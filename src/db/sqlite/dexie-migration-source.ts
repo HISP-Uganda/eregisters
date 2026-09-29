@@ -1,13 +1,13 @@
 import Dexie from "dexie";
-import type { SyncState } from "../../schemas";
+import type { SyncState } from "@/schemas";
 import type {
     FlattenedEnrollment,
     FlattenedEvent,
     FlattenedTrackedEntity,
     MetadataVersion,
-} from "../../schemas";
+} from "@/schemas";
 import type { DexieMigrationSource } from "./migrate-from-dexie";
-import { storeName } from "../store-names";
+import { storeName } from "@/db/store-names";
 
 /**
  * `dexieMetadataStore()`'s own database (`src/db/dexie/metadata-store.ts`)

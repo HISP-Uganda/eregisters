@@ -1,6 +1,6 @@
 import { App, Card, ConfigProvider, Tabs, Typography } from "antd";
 import React, { useState } from "react";
-import type { HmisFormConfig, HmisFormValues } from "../form-configs/types";
+import type { HmisFormConfig, HmisFormValues } from "@/form-configs/types";
 import { HMIS_FORM_CSS } from "./hmis-form/hmis-form-css";
 import { SectionTable } from "./hmis-form/section-table";
 import { TEAL } from "./hmis-form/theme";
@@ -8,7 +8,7 @@ import { useHmisDraft } from "./hmis-form/use-hmis-draft";
 import { toDataValues } from "./hmis-form/values";
 import { VerifyActions } from "./hmis-form/verify-actions";
 
-export type { HmisFormValues } from "../form-configs/types";
+export type { HmisFormValues } from "@/form-configs/types";
 
 export interface HmisFormProps {
     period?: string;

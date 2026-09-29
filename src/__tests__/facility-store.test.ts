@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { MetadataStore } from "../db/metadata-store";
+import type { MetadataStore } from "@/db/metadata-store";
 import {
     LAST_ORG_UNIT_KEY,
     setStoreKey,
     SLOT_ZERO_OWNER_KEY,
-} from "../db/store-names";
+} from "@/db/store-names";
 
-vi.mock("../machines/storage-boot-actor", () => ({
+vi.mock("@/machines/storage-boot-actor", () => ({
     getStorageBootActor: vi.fn(),
 }));
 
@@ -29,7 +29,7 @@ function storeWithPullScope(pullScope?: string): MetadataStore {
 // Fresh module state (which facility this page booted for) per test.
 async function load() {
     vi.resetModules();
-    return import("../facility-store");
+    return import("@/facility-store");
 }
 
 describe("facility store (wayfinder ticket \"What should happen to local data when a different DHIS2 user signs in on the same device?\")", () => {
@@ -47,7 +47,7 @@ describe("facility store (wayfinder ticket \"What should happen to local data wh
         const storage = memoryStorage({ [LAST_ORG_UNIT_KEY]: "OU_B", [SLOT_ZERO_OWNER_KEY]: "OU_A" });
         vi.stubGlobal("localStorage", storage);
         const facility = await load();
-        const { getStoreKey: keyNow } = await import("../db/store-names");
+        const { getStoreKey: keyNow } = await import("@/db/store-names");
 
         facility.startRememberedFacilityBoot();
         expect(keyNow()).toBe("OU_B");
@@ -70,10 +70,10 @@ describe("facility store (wayfinder ticket \"What should happen to local data wh
         const storage = memoryStorage();
         vi.stubGlobal("localStorage", storage);
         const facility = await load();
-        const { getStoreKey: keyNow } = await import("../db/store-names");
+        const { getStoreKey: keyNow } = await import("@/db/store-names");
 
         facility.startRememberedFacilityBoot();
-        const { getStorageBootActor } = await import("../machines/storage-boot-actor");
+        const { getStorageBootActor } = await import("@/machines/storage-boot-actor");
         expect(getStorageBootActor).not.toHaveBeenCalled();
 
         expect(facility.ensureFacilityBoot("OU_A")).toBe("ready");
@@ -96,7 +96,7 @@ describe("facility store (wayfinder ticket \"What should happen to local data wh
         const storage = memoryStorage();
         vi.stubGlobal("localStorage", storage);
         const facility = await load();
-        const names = await import("../db/store-names");
+        const names = await import("@/db/store-names");
         names.setStoreKey(null);
 
         await expect(
@@ -111,7 +111,7 @@ describe("facility store (wayfinder ticket \"What should happen to local data wh
     it("never questions a facility's own suffixed store", async () => {
         vi.stubGlobal("localStorage", memoryStorage());
         const facility = await load();
-        const names = await import("../db/store-names");
+        const names = await import("@/db/store-names");
         names.setStoreKey("OU_B");
         const store = storeWithPullScope("p:OU_A");
 

@@ -4,14 +4,14 @@ import type {
     FlattenedEvent,
     FlattenedTrackedEntity,
     RuleResult,
-} from "../../schemas";
+} from "@/schemas";
 import { sqliteCollectionOptions } from "./collection-adapter";
 import type { SqlDriver } from "./driver-types";
 import { enrollmentsRowAdapter } from "./row-adapters/enrollments";
 import { eventsRowAdapter } from "./row-adapters/events";
 import { ruleResultsRowAdapter } from "./row-adapters/rule-results";
 import { trackedEntitiesRowAdapter } from "./row-adapters/tracked-entities";
-import { localEditStamp } from "../local-author";
+import { localEditStamp } from "@/db/local-author";
 
 /**
  * Factory functions (not module-level singletons, unlike

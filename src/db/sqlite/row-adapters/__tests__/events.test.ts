@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it } from "vitest";
-import type { FlattenedEvent } from "../../../../schemas";
-import { createNodeSqliteDriver } from "../../test-support/node-sqlite-driver";
-import { createSchema } from "../../schema";
-import type { SqlDriver } from "../../driver-types";
+import type { FlattenedEvent } from "@/schemas";
+import { createNodeSqliteDriver } from "@/db/sqlite/test-support/node-sqlite-driver";
+import { createSchema } from "@/db/sqlite/schema";
+import type { SqlDriver } from "@/db/sqlite/driver-types";
 import {
     eventsRowAdapter,
     findEventsByEnrollment,
@@ -11,7 +11,7 @@ import {
     findEventsByTrackedEntity,
     findEventsByTrackedEntityIn,
     getEventById,
-} from ".././events";
+} from "@/db/sqlite/row-adapters/events";
 
 function makeEvent(overrides: Partial<FlattenedEvent> = {}): FlattenedEvent {
     return {

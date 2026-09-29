@@ -1,6 +1,6 @@
 import { Button, Card, Flex, Table, Typography } from "antd";
 import React from "react";
-import { useMetadata } from "../../hooks/useMetadata";
+import { useMetadata } from "@/hooks/useMetadata";
 import { clientColumns } from "./client-columns";
 import { NoClientsCard } from "./no-clients-card";
 import { RegisterClientModal, useClientRegistration } from "./register-client";

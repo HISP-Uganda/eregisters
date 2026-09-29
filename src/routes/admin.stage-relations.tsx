@@ -1,14 +1,14 @@
 import { useDataEngine } from "@dhis2/app-runtime";
-import { saveToDataStore } from "../db/app-data-store";
+import { saveToDataStore } from "@/db/app-data-store";
 import { createRoute } from "@tanstack/react-router";
 import { Button, Flex, message, Select, Table, Typography } from "antd";
 import React, { useState } from "react";
-import { useMetadataStore } from "../hooks/useMetadataStore";
-import { useMetadata } from "../hooks/useMetadata";
-import { useStageHierarchyConfig } from "../hooks/useStageHierarchyConfig";
-import type { StagePair } from "../schemas";
+import { useMetadataStore } from "@/hooks/useMetadataStore";
+import { useMetadata } from "@/hooks/useMetadata";
+import { useStageHierarchyConfig } from "@/hooks/useStageHierarchyConfig";
+import type { StagePair } from "@/schemas";
 import { AdminRoute } from "./admin";
-import { useUnsavedWork } from "../app-update/unsaved-work";
+import { useUnsavedWork } from "@/app-update/unsaved-work";
 
 export const AdminStageRelationsRoute = createRoute({
     getParentRoute: () => AdminRoute,

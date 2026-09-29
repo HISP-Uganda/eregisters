@@ -1,13 +1,13 @@
 import type { FormInstance } from "antd";
-import type { useMetadata } from "../../hooks/useMetadata";
-import type { EventForRules } from "../../program-rules/execute-program-rules";
+import type { useMetadata } from "@/hooks/useMetadata";
+import type { EventForRules } from "@/program-rules/execute-program-rules";
 import type {
     DataElement,
     FlattenedEnrollment,
     FlattenedEvent,
     FlattenedTrackedEntity,
     ProgramStage,
-} from "../../schemas";
+} from "@/schemas";
 
 const PROGRAM = "ueBhWkWll5v";
 

@@ -1,5 +1,5 @@
 import { createRoute } from "@tanstack/react-router";
-import { SectionLayoutScreen } from "../screens/section-layout/section-layout-screen";
+import { SectionLayoutScreen } from "@/screens/section-layout/section-layout-screen";
 import { AdminRoute } from "./admin";
 
 export const AdminSectionLayoutRoute = createRoute({

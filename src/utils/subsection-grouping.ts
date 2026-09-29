@@ -1,4 +1,4 @@
-import type { FormLayoutItem, SectionStyle, SubsectionConfig } from "../schemas";
+import type { FormLayoutItem, SectionStyle, SubsectionConfig } from "@/schemas";
 
 /**
  * Pure grouping logic shared between `components/subsection-groups.tsx`

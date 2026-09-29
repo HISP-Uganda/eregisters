@@ -2,15 +2,15 @@ import { ExperimentOutlined, PlusOutlined } from "@ant-design/icons";
 import { Button, Flex, Grid, Table, Typography } from "antd";
 import type { TableProps } from "antd";
 import React, { useCallback, useMemo, useState } from "react";
-import { useMetadata } from "../../hooks/useMetadata";
-import { useModalState } from "../../hooks/useModalState";
-import { SyncContext } from "../../machines/sync";
+import { useMetadata } from "@/hooks/useMetadata";
+import { useModalState } from "@/hooks/useModalState";
+import { SyncContext } from "@/machines/sync";
 import {
     FlattenedEnrollment,
     FlattenedEvent,
     FlattenedTrackedEntity,
     ProgramStage,
-} from "../../schemas";
+} from "@/schemas";
 import { createStageEvent, deleteStageEvent } from "./actions";
 import { SELECT_WRAP_CSS } from "./editable-cell";
 import { InlineEventEditor } from "./inline-event-editor";

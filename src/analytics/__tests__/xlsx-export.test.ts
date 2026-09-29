@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import * as XLSX from "xlsx";
-import { exportLineListWorkbook, exportPivotWorkbook } from ".././xlsx-export";
-import type { AnalyticsColumn, AnalyticsRow, PivotResult } from ".././types";
+import { exportLineListWorkbook, exportPivotWorkbook } from "@/analytics/xlsx-export";
+import type { AnalyticsColumn, AnalyticsRow, PivotResult } from "@/analytics/types";
 
 describe("xlsx export", () => {
     it("exports the visible line list columns to one worksheet", () => {

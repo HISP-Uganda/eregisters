@@ -3,9 +3,9 @@ import dayjs from "dayjs";
 import advancedFormat from "dayjs/plugin/advancedFormat";
 import isoWeek from "dayjs/plugin/isoWeek";
 import React from "react";
-import { Spinner } from "../components/spinner";
-import { DataSetReportScreen } from "../screens/data-set-report/data-set-report-screen";
-import { loadReport } from "../screens/data-set-report/report-data";
+import { Spinner } from "@/components/spinner";
+import { DataSetReportScreen } from "@/screens/data-set-report/data-set-report-screen";
+import { loadReport } from "@/screens/data-set-report/report-data";
 import { ReportsRoute } from "./reports";
 
 dayjs.extend(advancedFormat);

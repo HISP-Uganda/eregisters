@@ -2,7 +2,7 @@ import {
     FlattenedEvent,
     FlattenedTrackedEntity,
     FlattenedEnrollment,
-} from "../schemas";
+} from "@/schemas";
 
 function mergeEvent(
     serverEvent: FlattenedEvent,

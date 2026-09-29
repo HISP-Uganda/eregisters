@@ -4,16 +4,16 @@ import {
     getEnrollmentsCollection,
     getEventsCollection,
     getTrackedEntitiesCollection,
-} from "../../db/collections";
-import { useUIConfig } from "../../hooks/useUIConfig";
-import { SyncContext } from "../../machines/sync";
+} from "@/db/collections";
+import { useUIConfig } from "@/hooks/useUIConfig";
+import { SyncContext } from "@/machines/sync";
 import {
     isDataPullLoading,
     isDataPushLoading,
     isMetadataSyncLoading,
-} from "../../machines/sync-metadata-mode";
-import { shouldShowMetadataReload } from "../../utils/reload-signals";
-import { parseServerTime } from "../../utils/server-time";
+} from "@/machines/sync-metadata-mode";
+import { shouldShowMetadataReload } from "@/utils/reload-signals";
+import { parseServerTime } from "@/utils/server-time";
 
 /** What the header shows about syncing: what's running, when each last ran, who may do what. */
 export function useSyncStatus() {

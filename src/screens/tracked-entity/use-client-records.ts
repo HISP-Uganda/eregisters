@@ -3,8 +3,8 @@ import {
     getEnrollmentsCollection,
     getEventsCollection,
     getTrackedEntitiesCollection,
-} from "../../db/collections";
-import { useMetadata } from "../../hooks/useMetadata";
+} from "@/db/collections";
+import { useMetadata } from "@/hooks/useMetadata";
 import { MAIN_STAGE } from "./client";
 
 /** A client's live local records: the client, enrollment and events. */

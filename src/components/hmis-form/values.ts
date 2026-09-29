@@ -3,7 +3,7 @@ import type {
     HmisEditableScope,
     HmisFormValues,
     HmisRowConfig,
-} from "../../form-configs/types";
+} from "@/form-configs/types";
 
 const SEPARATOR = "_";
 

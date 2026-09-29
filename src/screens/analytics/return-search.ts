@@ -1,5 +1,5 @@
-import type { AnalyticsFilters } from "../../components/analytics/analytics-filter-bar";
-import type { LineListTableState } from "../../components/analytics/line-list-table";
+import type { AnalyticsFilters } from "@/components/analytics/analytics-filter-bar";
+import type { LineListTableState } from "@/components/analytics/line-list-table";
 
 /**
  * The page's selections, carried to a record opened from the line list

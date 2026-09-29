@@ -1,6 +1,6 @@
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
-import { CROSS_TAB_CHANNEL, type CrossTabChange } from "../cross-tab";
-import { notifyConfigChanged, subscribeConfigChanged } from "../reactive-config";
+import { CROSS_TAB_CHANNEL, type CrossTabChange } from "@/db/cross-tab";
+import { notifyConfigChanged, subscribeConfigChanged } from "@/db/reactive-config";
 
 // A second channel object on the app's channel name plays "another tab":
 // BroadcastChannel delivers to every other object with that name.

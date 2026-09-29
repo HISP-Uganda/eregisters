@@ -1,6 +1,6 @@
 import { FormInstance, Select } from "antd";
 import React from "react";
-import { Village } from "../schemas";
+import { Village } from "@/schemas";
 
 interface WatchField {
     fieldId: string | string[];

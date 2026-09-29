@@ -1,4 +1,4 @@
-import { ProgramRuleResult } from "../schemas";
+import { ProgramRuleResult } from "@/schemas";
 
 /**
  * Structural equality check for ProgramRuleResult.

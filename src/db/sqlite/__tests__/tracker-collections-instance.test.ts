@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { createNodeSqliteDriver } from ".././test-support/node-sqlite-driver";
-import { createSchema } from ".././schema";
+import { createNodeSqliteDriver } from "@/db/sqlite/test-support/node-sqlite-driver";
+import { createSchema } from "@/db/sqlite/schema";
 import {
     getSqliteEnrollmentsCollection,
     getSqliteEventsCollection,
     getSqliteTrackedEntitiesCollection,
     initTrackerCollections,
-} from ".././tracker-collections-instance";
+} from "@/db/sqlite/tracker-collections-instance";
 
 // Module-level singleton state, like the singleton pattern the old op-sqlite driver module used —
 // these tests are ordered (throw-before-init, then init, then

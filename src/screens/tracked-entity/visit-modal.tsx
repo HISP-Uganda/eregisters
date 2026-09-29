@@ -1,20 +1,20 @@
 import { and, eq, not, useLiveSuspenseQuery } from "@tanstack/react-db";
 import { Form } from "antd";
 import React, { useState } from "react";
-import { DataModal } from "../../components/data-modal";
-import { MainEventCapture } from "../main-event-capture/main-event-capture";
-import { EventRuleAwareForm } from "../../components/rule-aware-form";
-import { getEventsCollection } from "../../db/collections";
-import { useMetadata } from "../../hooks/useMetadata";
-import { EventContext } from "../../machines";
+import { DataModal } from "@/components/data-modal";
+import { MainEventCapture } from "@/screens/main-event-capture/main-event-capture";
+import { EventRuleAwareForm } from "@/components/rule-aware-form";
+import { getEventsCollection } from "@/db/collections";
+import { useMetadata } from "@/hooks/useMetadata";
+import { EventContext } from "@/machines";
 import {
     FlattenedEnrollment,
     FlattenedEvent,
     FlattenedTrackedEntity,
     ProgramRuleResult,
-} from "../../schemas";
-import { cancelDataModal } from "../../utils/record-cascades";
-import { computeSaveBlock } from "../../utils/save-block";
+} from "@/schemas";
+import { cancelDataModal } from "@/utils/record-cascades";
+import { computeSaveBlock } from "@/utils/save-block";
 import { saveVisit } from "./actions";
 import { MAIN_STAGE, PROGRAM } from "./client";
 import { useFormMetadata } from "./use-form-metadata";

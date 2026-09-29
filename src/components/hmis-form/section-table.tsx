@@ -7,7 +7,7 @@ import type {
     HmisRowConfig,
     HmisSectionConfig,
     setValue,
-} from "../../form-configs/types";
+} from "@/form-configs/types";
 import { cleanNumericValue, dataValueKey, isCellEditable, placeCells, RowSpanCarry } from "./values";
 
 const STICKY_COL_WIDTH = 80;

@@ -1,6 +1,6 @@
 import React from "react";
-import { HMIS_106A_03_CONFIG } from "../form-configs/Hmis106A03.config";
-import type { HmisFormConfig } from "../form-configs/types";
+import { HMIS_106A_03_CONFIG } from "@/form-configs/Hmis106A03.config";
+import type { HmisFormConfig } from "@/form-configs/types";
 import HmisForm, { type HmisFormProps } from "./HmisForm";
 
 type Hmis106A03FormProps = Omit<HmisFormProps, "config"> & {

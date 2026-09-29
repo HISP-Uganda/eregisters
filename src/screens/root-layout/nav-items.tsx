@@ -8,12 +8,12 @@ import {
 import { Link } from "@tanstack/react-router";
 import { Flex, Tooltip, Typography } from "antd";
 import React from "react";
-import { SyncContext } from "../../machines/sync";
+import { SyncContext } from "@/machines/sync";
 import type {
     FlattenedEnrollment,
     FlattenedEvent,
     FlattenedTrackedEntity,
-} from "../../schemas";
+} from "@/schemas";
 import { PushDataButton, SplitSyncButton, SyncButton } from "./sync-buttons";
 import { SyncErrorsButton } from "./sync-errors-button";
 import { useSyncStatus } from "./use-shell-state";

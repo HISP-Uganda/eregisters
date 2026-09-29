@@ -1,4 +1,4 @@
-import { ProgramRule, ProgramRuleResult, ProgramRuleVariable } from "../schemas";
+import { ProgramRule, ProgramRuleResult, ProgramRuleVariable } from "@/schemas";
 import { applyAction } from "./actions";
 import { createD2Functions } from "./d2-functions";
 import { createEvaluator } from "./expression";

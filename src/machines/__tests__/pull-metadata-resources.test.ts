@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import { createActor, toPromise, type AnyActorLogic } from "xstate";
-import type { MetadataStore } from "../../db/metadata-store";
-import type { Engine, Metadata, MetadataVersion, Resource } from "../../schemas";
-import { syncMachine } from "../sync";
+import type { MetadataStore } from "@/db/metadata-store";
+import type { Engine, Metadata, MetadataVersion, Resource } from "@/schemas";
+import { syncMachine } from "@/machines/sync";
 
 // Hands the timeout to the engine, so each recorded request shows it.
-vi.mock("../network-reachability", async (importOriginal) => ({
-    ...(await importOriginal<typeof import("../network-reachability")>()),
+vi.mock("@/machines/network-reachability", async (importOriginal) => ({
+    ...(await importOriginal<typeof import("@/machines/network-reachability")>()),
     queryWithTimeout: (engine: Engine, query: unknown, timeoutMs: number) =>
         engine.query(query as never, { timeoutMs } as never),
 }));

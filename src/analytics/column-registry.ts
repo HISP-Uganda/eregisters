@@ -1,5 +1,5 @@
-import type { Program, ProgramStage, UIConfig } from "../schemas";
-import { groupByLayout, groupBySubsections } from "../utils/subsection-grouping";
+import type { Program, ProgramStage, UIConfig } from "@/schemas";
+import { groupByLayout, groupBySubsections } from "@/utils/subsection-grouping";
 import type { AnalyticsColumn, AnalyticsMetadata } from "./types";
 import { valueKindFromDhis2 } from "./value-format";
 

@@ -1,10 +1,10 @@
 import { CloseOutlined, SaveOutlined } from "@ant-design/icons";
 import { Button, Flex, Form, message } from "antd";
 import React, { useState } from "react";
-import ProgramStageForm from "../../components/program-stage-form";
-import { EventContext } from "../../machines";
-import { FlattenedEvent } from "../../schemas";
-import { cancelDataModal } from "../../utils/record-cascades";
+import ProgramStageForm from "@/components/program-stage-form";
+import { EventContext } from "@/machines";
+import { FlattenedEvent } from "@/schemas";
+import { cancelDataModal } from "@/utils/record-cascades";
 import { saveStageEvent } from "./actions";
 import { eventFormInput, StageFormContext } from "./stage";
 

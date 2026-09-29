@@ -1,7 +1,7 @@
 import dayjs from "dayjs";
 import { describe, expect, it } from "vitest";
-import type { FlattenedEnrollment, FlattenedTrackedEntity } from "../../../schemas";
-import { clientForEditing, clientSummary, profileEntries } from "../client";
+import type { FlattenedEnrollment, FlattenedTrackedEntity } from "@/schemas";
+import { clientForEditing, clientSummary, profileEntries } from "@/screens/tracked-entity/client";
 
 const client = (attributes: Record<string, any>) =>
     ({ trackedEntity: "te1", attributes }) as unknown as FlattenedTrackedEntity;

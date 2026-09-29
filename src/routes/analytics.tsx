@@ -1,8 +1,8 @@
 import { createRoute } from "@tanstack/react-router";
 import React, { useLayoutEffect, useState } from "react";
 import { z } from "zod";
-import { AnalyticsScreen } from "../screens/analytics/analytics-screen";
-import { decodeReturnSearch } from "../screens/analytics/return-search";
+import { AnalyticsScreen } from "@/screens/analytics/analytics-screen";
+import { decodeReturnSearch } from "@/screens/analytics/return-search";
 import { RootRoute } from "./__root";
 
 export const AnalyticsRoute = createRoute({

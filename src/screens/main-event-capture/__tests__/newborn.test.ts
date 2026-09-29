@@ -1,8 +1,8 @@
 import dayjs from "dayjs";
 import { describe, expect, it } from "vitest";
-import type { FlattenedEnrollment, FlattenedTrackedEntity } from "../../../schemas";
-import { newbornAttributes, newbornFirstVisit } from "../newborn";
-import { showsFollowUpStage } from "../visit-tabs";
+import type { FlattenedEnrollment, FlattenedTrackedEntity } from "@/schemas";
+import { newbornAttributes, newbornFirstVisit } from "@/screens/main-event-capture/newborn";
+import { showsFollowUpStage } from "@/screens/main-event-capture/visit-tabs";
 
 const mother = {
     trackedEntity: "mum",

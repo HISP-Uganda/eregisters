@@ -1,6 +1,6 @@
 import { Button, ColorPicker, Flex, Popover, Space, Tooltip, Typography } from "antd";
 import React from "react";
-import { SectionStyle } from "../../schemas";
+import { SectionStyle } from "@/schemas";
 
 const COLORS: Array<{ key: keyof SectionStyle; label: string }> = [
     { key: "titleColor", label: "Title color" },

@@ -1,7 +1,7 @@
 import { CaretRightOutlined, DeleteOutlined, EditOutlined } from "@ant-design/icons";
 import { Button, Collapse, Descriptions, Flex, Popconfirm, Typography } from "antd";
 import React from "react";
-import { FlattenedEnrollment, FlattenedTrackedEntity } from "../../schemas";
+import { FlattenedEnrollment, FlattenedTrackedEntity } from "@/schemas";
 import { profileEntries } from "./client";
 
 /** The client's attributes, with edit and delete. */

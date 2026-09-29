@@ -1,6 +1,6 @@
 import { createRoute } from "@tanstack/react-router";
 import React from "react";
-import { ClientSearchScreen } from "../screens/client-search/client-search-screen";
+import { ClientSearchScreen } from "@/screens/client-search/client-search-screen";
 import { TrackedEntitiesRoute } from "./tracked-entities";
 
 export const TrackedEntitiesIndexRoute = createRoute({

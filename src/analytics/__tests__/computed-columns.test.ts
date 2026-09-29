@@ -8,8 +8,8 @@ import {
     normalizeDefinition,
     type ComputedColumnDefinition,
     type ComputedColumnRange,
-} from ".././computed-columns";
-import type { AnalyticsColumn, AnalyticsRow } from ".././types";
+} from "@/analytics/computed-columns";
+import type { AnalyticsColumn, AnalyticsRow } from "@/analytics/types";
 
 const ageColumn: AnalyticsColumn = {
     key: "te.attribute.age",

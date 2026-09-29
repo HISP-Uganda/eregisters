@@ -1,8 +1,8 @@
 import type {
     ComputedColumnDefinition,
     ComputedColumnRange,
-} from "../../../analytics/computed-columns";
-import { findGap, findOverlappingRanges } from "../../../analytics/computed-columns";
+} from "@/analytics/computed-columns";
+import { findGap, findOverlappingRanges } from "@/analytics/computed-columns";
 
 /** A computed column being written or edited, before it's saved. */
 export type Draft = {

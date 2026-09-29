@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { FlattenedEnrollment, FlattenedEvent, FlattenedTrackedEntity } from "../../../schemas";
-import { failurePreview, firstErrorLine, shortId } from "../failures";
+import type { FlattenedEnrollment, FlattenedEvent, FlattenedTrackedEntity } from "@/schemas";
+import { failurePreview, firstErrorLine, shortId } from "@/screens/root-layout/failures";
 
 const ev = (id: string, error = "boom") =>
     ({ event: id, programStage: "ps1", syncError: error }) as unknown as FlattenedEvent;

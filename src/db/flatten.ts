@@ -1,4 +1,4 @@
-import { Enrollment, Event, FlattenedEnrollment, FlattenedEvent, FlattenedTrackedEntity, TrackedEntity } from "../schemas";
+import { Enrollment, Event, FlattenedEnrollment, FlattenedEvent, FlattenedTrackedEntity, TrackedEntity } from "@/schemas";
 
 export const flattenEnrollment = ({
     attributes,

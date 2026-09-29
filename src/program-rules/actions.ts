@@ -1,4 +1,4 @@
-import { ProgramRuleAction, ProgramRuleResult } from "../schemas";
+import { ProgramRuleAction, ProgramRuleResult } from "@/schemas";
 
 function addOnce(list: string[], id: string) {
     if (!list.includes(id)) list.push(id);

@@ -1,10 +1,10 @@
 import { createCollection } from "@tanstack/db";
 import { afterEach, describe, expect, it } from "vitest";
-import type { FlattenedOptionSet } from "../../../../schemas";
-import { createNodeSqliteDriver } from "../../test-support/node-sqlite-driver";
-import { createSchema } from "../../schema";
-import { sqliteCollectionOptions } from "../../collection-adapter";
-import { optionSetKey, optionSetsRowAdapter } from ".././option-sets";
+import type { FlattenedOptionSet } from "@/schemas";
+import { createNodeSqliteDriver } from "@/db/sqlite/test-support/node-sqlite-driver";
+import { createSchema } from "@/db/sqlite/schema";
+import { sqliteCollectionOptions } from "@/db/sqlite/collection-adapter";
+import { optionSetKey, optionSetsRowAdapter } from "@/db/sqlite/row-adapters/option-sets";
 
 function plain(rows: FlattenedOptionSet[]): FlattenedOptionSet[] {
     return rows.map(({ id, name, code, optionSet, optionSetName, sortOrder }) => ({

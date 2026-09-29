@@ -3,13 +3,13 @@ import { useNavigate } from "@tanstack/react-router";
 import { Button, Empty, Modal, Space, Table, Tabs, Tag } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import React, { useMemo } from "react";
-import { useMetadata } from "../../../hooks/useMetadata";
-import { SyncContext } from "../../../machines/sync";
+import { useMetadata } from "@/hooks/useMetadata";
+import { SyncContext } from "@/machines/sync";
 import type {
     FlattenedEnrollment,
     FlattenedEvent,
     FlattenedTrackedEntity,
-} from "../../../schemas";
+} from "@/schemas";
 import { clientColumns, enrollmentColumns, eventColumns } from "./failure-columns";
 import { buildNameLookup } from "./name-lookup";
 

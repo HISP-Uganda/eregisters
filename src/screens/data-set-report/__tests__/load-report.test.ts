@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 
-vi.mock("../../../db/hmis-drafts", () => ({
+vi.mock("@/db/hmis-drafts", () => ({
     draftId: () => "draft1",
     getHmisDraft: async () => undefined,
     mergeDraftAndServer: (_draft: unknown, server: Map<string, string>) => server,
 }));
 
-import { EREPORTS_ROUTE, loadReport } from "../report-data";
+import { EREPORTS_ROUTE, loadReport } from "@/screens/data-set-report/report-data";
 
 describe("loadReport", () => {
     it("reads the server's values through the DHIS2 route, not the ereports service directly", async () => {

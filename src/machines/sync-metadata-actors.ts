@@ -1,4 +1,4 @@
-import type { SyncState } from "../schemas";
+import type { SyncState } from "@/schemas";
 import {
     checkMetadataInfoGeneric,
     deleteMetadataForResyncGeneric,
@@ -7,8 +7,8 @@ import {
     saveMetadataGeneric,
     type CheckMetadataInfoResult,
     type QueryMetadataInfoResult,
-} from "../db/metadata-operations";
-import type { MetadataStore } from "../db/metadata-store";
+} from "@/db/metadata-operations";
+import type { MetadataStore } from "@/db/metadata-store";
 import { SYNC_STATE_LOCK_NAME, withLock } from "./sync-locks";
 import { queryWithTimeout, SYNC_TIMEOUTS_MS } from "./network-reachability";
 import { METADATA_RESOURCES } from "./metadata-resources";
@@ -26,7 +26,7 @@ import {
     Resource,
     StageHierarchyConfig,
     UIConfig,
-} from "../schemas";
+} from "@/schemas";
 
 /**
  * Backend-agnostic bodies for `src/machines/sync.ts`'s metadata-pipeline

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { revokeReport, verifyReport } from "../report-actions";
-import { describeError, resolveAttribution, toFormValues } from "../report-data";
+import { revokeReport, verifyReport } from "@/screens/data-set-report/report-actions";
+import { describeError, resolveAttribution, toFormValues } from "@/screens/data-set-report/report-data";
 
 describe("resolveAttribution", () => {
     it("takes the URL's, else the data set's fixed one", () => {

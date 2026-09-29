@@ -1,4 +1,4 @@
-import type { TrackedEntity } from "../schemas";
+import type { TrackedEntity } from "@/schemas";
 import { FetchError } from "@dhis2/app-runtime";
 import { classifyFetchError } from "./network-reachability";
 

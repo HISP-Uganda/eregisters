@@ -16,7 +16,7 @@ import type {
     ProgramRuleVariable,
     Resource,
     TrackedEntityAttribute,
-} from "../schemas";
+} from "@/schemas";
 
 /**
  * Backend-agnostic equivalents of `src/db/sqlite/metadata-info.ts`/

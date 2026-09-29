@@ -1,8 +1,8 @@
 import { createRoute, useNavigate } from "@tanstack/react-router";
 import React, { useCallback } from "react";
 import { z } from "zod";
-import { Spinner } from "../components/spinner";
-import { TrackedEntityScreen } from "../screens/tracked-entity/tracked-entity-screen";
+import { Spinner } from "@/components/spinner";
+import { TrackedEntityScreen } from "@/screens/tracked-entity/tracked-entity-screen";
 import { RootRoute } from "./__root";
 
 export const TrackedEntityRoute = createRoute({

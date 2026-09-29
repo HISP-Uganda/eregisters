@@ -1,17 +1,17 @@
 import { Form } from "antd";
 import React, { useState } from "react";
-import { DataModal } from "../../components/data-modal";
-import { TrackedEntityRuleAwareForm } from "../../components/rule-aware-form";
-import { TrackerRegistration } from "../../components/tracker-registration";
-import { useMetadata } from "../../hooks/useMetadata";
-import { TrackedEntityContext } from "../../machines";
+import { DataModal } from "@/components/data-modal";
+import { TrackedEntityRuleAwareForm } from "@/components/rule-aware-form";
+import { TrackerRegistration } from "@/components/tracker-registration";
+import { useMetadata } from "@/hooks/useMetadata";
+import { TrackedEntityContext } from "@/machines";
 import {
     FlattenedEnrollment,
     FlattenedTrackedEntity,
     ProgramRuleResult,
-} from "../../schemas";
-import { cancelDataModal } from "../../utils/record-cascades";
-import { computeSaveBlock } from "../../utils/save-block";
+} from "@/schemas";
+import { cancelDataModal } from "@/utils/record-cascades";
+import { computeSaveBlock } from "@/utils/save-block";
 import { saveClient } from "./actions";
 import { PROGRAM } from "./client";
 import { useFormMetadata } from "./use-form-metadata";

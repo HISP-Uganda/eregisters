@@ -1,7 +1,7 @@
 import { and, eq, ilike, not, useLiveSuspenseQuery } from "@tanstack/react-db";
 import { useMemo } from "react";
-import { getTrackedEntitiesCollection } from "../../db/collections";
-import { useMetadata } from "../../hooks/useMetadata";
+import { getTrackedEntitiesCollection } from "@/db/collections";
+import { useMetadata } from "@/hooks/useMetadata";
 
 /** Search terms by attribute id, from the search form. */
 export type ClientSearchTerms = Record<string, string> | undefined;

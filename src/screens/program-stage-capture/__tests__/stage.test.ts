@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { DataElement, FlattenedEvent, ProgramStage } from "../../../schemas";
+import type { DataElement, FlattenedEvent, ProgramStage } from "@/schemas";
 import {
     eventDate,
     eventsOffVisitDate,
@@ -7,7 +7,7 @@ import {
     stageLabels,
     stageMandatoryIds,
     toRuleEvents,
-} from "../stage";
+} from "@/screens/program-stage-capture/stage";
 
 const event = (id: string, occurredAt: string, dataValues: Record<string, any> = {}) =>
     ({ event: id, programStage: "ps", occurredAt, dataValues }) as unknown as FlattenedEvent;

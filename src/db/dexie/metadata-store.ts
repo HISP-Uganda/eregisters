@@ -1,7 +1,7 @@
 import Dexie, { type Table } from "dexie";
-import type { MetadataStore } from "../metadata-store";
-import { notifyConfigChanged } from "../reactive-config";
-import { storeName } from "../store-names";
+import type { MetadataStore } from "@/db/metadata-store";
+import { notifyConfigChanged } from "@/db/reactive-config";
+import { storeName } from "@/db/store-names";
 
 /**
  * Dexie implementation of `MetadataStore` — see `../metadata-store.ts` for

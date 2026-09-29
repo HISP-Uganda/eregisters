@@ -1,13 +1,13 @@
 import { afterEach, describe, expect, it } from "vitest";
-import type { FlattenedTrackedEntity } from "../../../../schemas";
-import { createNodeSqliteDriver } from "../../test-support/node-sqlite-driver";
-import { createSchema } from "../../schema";
+import type { FlattenedTrackedEntity } from "@/schemas";
+import { createNodeSqliteDriver } from "@/db/sqlite/test-support/node-sqlite-driver";
+import { createSchema } from "@/db/sqlite/schema";
 import {
     findTrackedEntitiesByParentEntity,
     findTrackedEntitiesBySyncStatusIn,
     getTrackedEntityById,
     trackedEntitiesRowAdapter,
-} from ".././tracked-entities";
+} from "@/db/sqlite/row-adapters/tracked-entities";
 
 function makeTrackedEntity(
     overrides: Partial<FlattenedTrackedEntity> = {},

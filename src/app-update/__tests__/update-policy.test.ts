@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { syncsBlocked, UPDATE_TIMING as T, updateDeadline, updatePhase } from "../update-policy";
+import { syncsBlocked, UPDATE_TIMING as T, updateDeadline, updatePhase } from "@/app-update/update-policy";
 
 const at = (ms: number) => ({ now: ms, detectedAt: 0 });
 const clear = { unsavedAnywhere: false, syncingAnywhere: false };

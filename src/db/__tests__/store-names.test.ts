@@ -6,7 +6,7 @@ import {
     storeFlagKey,
     storeKeyFor,
     storeName,
-} from "../store-names";
+} from "@/db/store-names";
 
 describe("store names per facility", () => {
     afterEach(() => setStoreKey(null));

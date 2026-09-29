@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { instantiateWasmFromUrl } from "../wasm-loader";
+import { instantiateWasmFromUrl } from "@/db/sqlite/wasm-loader";
 
 // The smallest valid WebAssembly module: magic "\0asm" + version 1.
 const EMPTY_MODULE = new Uint8Array([0x00, 0x61, 0x73, 0x6d, 0x01, 0, 0, 0]);

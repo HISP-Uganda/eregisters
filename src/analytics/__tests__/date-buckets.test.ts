@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bucketDate } from ".././date-buckets";
+import { bucketDate } from "@/analytics/date-buckets";
 
 describe("bucketDate", () => {
     it("returns Missing for blank or invalid dates", () => {

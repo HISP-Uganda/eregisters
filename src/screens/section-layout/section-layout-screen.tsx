@@ -1,7 +1,7 @@
 import { CaretRightOutlined, FolderAddOutlined } from "@ant-design/icons";
 import { Button, Empty, Flex, Tabs, Tooltip, Typography } from "antd";
 import React, { useMemo, useState } from "react";
-import { useMetadata } from "../../hooks/useMetadata";
+import { useMetadata } from "@/hooks/useMetadata";
 import { afterGroup, LayoutGroup, sectionBounds } from "./layout";
 import { LayoutGroupCard } from "./layout-group-card";
 import { AvailableElements, SectionList, SectionListItem, SectionNameModal } from "./section-panels";

@@ -34,7 +34,7 @@ describe("backend", () => {
     describe("hasOpfsCapability", () => {
         it("is false when navigator.storage.getDirectory doesn't exist", async () => {
             vi.stubGlobal("navigator", {});
-            const { hasOpfsCapability } = await import("../backend");
+            const { hasOpfsCapability } = await import("@/db/backend");
             expect(hasOpfsCapability()).toBe(false);
         });
 
@@ -42,7 +42,7 @@ describe("backend", () => {
             vi.stubGlobal("navigator", {
                 storage: { getDirectory: async () => undefined },
             });
-            const { hasOpfsCapability } = await import("../backend");
+            const { hasOpfsCapability } = await import("@/db/backend");
             expect(hasOpfsCapability()).toBe(true);
         });
     });
@@ -51,7 +51,7 @@ describe("backend", () => {
 
         it("auto: skips init and goes straight to dexie when OPFS capability is absent", async () => {
             vi.stubGlobal("navigator", {});
-            const { resolveBackend } = await import("../backend");
+            const { resolveBackend } = await import("@/db/backend");
             const attemptSqliteInit = vi.fn().mockResolvedValue(undefined);
 
             expect(await resolveBackend(attemptSqliteInit)).toBe(
@@ -64,7 +64,7 @@ describe("backend", () => {
             vi.stubGlobal("navigator", {
                 storage: { getDirectory: async () => undefined },
             });
-            const { resolveBackend } = await import("../backend");
+            const { resolveBackend } = await import("@/db/backend");
             const attemptSqliteInit = vi.fn().mockResolvedValue(undefined);
 
             expect(await resolveBackend(attemptSqliteInit)).toBe(
@@ -78,7 +78,7 @@ describe("backend", () => {
                 storage: { getDirectory: async () => undefined },
             });
             const { resolveBackend, OPFS_PROBE_CACHE_VERSION } = await import(
-                "../backend"
+                "@/db/backend"
             );
             const attemptSqliteInit = vi
                 .fn()
@@ -100,7 +100,7 @@ describe("backend", () => {
                 storage: { getDirectory: async () => undefined },
             });
             const { resolveBackend, OPFS_PROBE_CACHE_VERSION } = await import(
-                "../backend"
+                "@/db/backend"
             );
             localStorage.setItem(
                 "eregisters.opfsInitFailed",
@@ -117,7 +117,7 @@ describe("backend", () => {
             vi.stubGlobal("navigator", {
                 storage: { getDirectory: async () => undefined },
             });
-            const { resolveBackend, getCachedOpfsFailure } = await import("../backend");
+            const { resolveBackend, getCachedOpfsFailure } = await import("@/db/backend");
             const failing = vi.fn().mockRejectedValue(new Error("boom"));
 
             await resolveBackend(failing);
@@ -131,7 +131,7 @@ describe("backend", () => {
                 storage: { getDirectory: async () => undefined },
             });
             const { resolveBackend, OPFS_PROBE_CACHE_VERSION } = await import(
-                "../backend"
+                "@/db/backend"
             );
             localStorage.setItem(
                 "eregisters.opfsInitFailed",
@@ -149,7 +149,7 @@ describe("backend", () => {
             vi.stubGlobal("navigator", {
                 storage: { getDirectory: async () => undefined },
             });
-            const { resolveBackend } = await import("../backend");
+            const { resolveBackend } = await import("@/db/backend");
             localStorage.setItem(
                 "eregisters.opfsInitFailed",
                 JSON.stringify({ version: "some-old-version" }),

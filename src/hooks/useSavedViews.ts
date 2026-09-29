@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { SavedLineListView } from "../analytics/saved-views";
+import type { SavedLineListView } from "@/analytics/saved-views";
 
 const STORAGE_KEY = "eregisters.analytics.savedViews";
 

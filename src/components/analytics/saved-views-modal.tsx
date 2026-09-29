@@ -6,8 +6,8 @@ import {
 } from "@ant-design/icons";
 import { Alert, Button, Empty, Flex, Input, Modal, Typography } from "antd";
 import React, { useState } from "react";
-import type { SavedLineListView } from "../../analytics/saved-views";
-import { useIsMobile } from "../../hooks/useIsMobile";
+import type { SavedLineListView } from "@/analytics/saved-views";
+import { useIsMobile } from "@/hooks/useIsMobile";
 
 const { Text } = Typography;
 

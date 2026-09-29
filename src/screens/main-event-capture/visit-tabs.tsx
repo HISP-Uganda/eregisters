@@ -1,9 +1,9 @@
 import { Card, FormInstance } from "antd";
 import { orderBy } from "lodash";
 import React from "react";
-import { DataElementRenderer } from "../../components/data-element-renderer";
-import RelationshipEvent from "../../components/relationship-event";
-import { SubsectionGroups } from "../../components/subsection-groups";
+import { DataElementRenderer } from "@/components/data-element-renderer";
+import RelationshipEvent from "@/components/relationship-event";
+import { SubsectionGroups } from "@/components/subsection-groups";
 import {
     FlattenedEnrollment,
     FlattenedEvent,
@@ -11,9 +11,9 @@ import {
     ProgramRuleResult,
     ProgramStage,
     UIConfig,
-} from "../../schemas";
-import { buildCurrentDataElements, FORM_ROW_GUTTER } from "../../utils/form-fields";
-import { ProgramStageCapture } from "../program-stage-capture/program-stage-capture";
+} from "@/schemas";
+import { buildCurrentDataElements, FORM_ROW_GUTTER } from "@/utils/form-fields";
+import { ProgramStageCapture } from "@/screens/program-stage-capture/program-stage-capture";
 
 /** The visit's stage tabs, in this order. */
 const STAGE_ORDER: Map<string, number> = new Map([

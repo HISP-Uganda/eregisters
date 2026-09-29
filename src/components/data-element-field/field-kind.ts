@@ -1,6 +1,6 @@
 import type { InputNumberProps } from "antd";
-import { DataElement, RenderType, TrackedEntityAttribute } from "../../schemas";
-import { isDate } from "../../utils/form-fields";
+import { DataElement, RenderType, TrackedEntityAttribute } from "@/schemas";
+import { isDate } from "@/utils/form-fields";
 
 /** Which input a data element or attribute is entered with. */
 export type FieldKind =

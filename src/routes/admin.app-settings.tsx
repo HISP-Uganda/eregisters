@@ -1,5 +1,5 @@
 import { useDataEngine } from "@dhis2/app-runtime";
-import { saveToDataStore } from "../db/app-data-store";
+import { saveToDataStore } from "@/db/app-data-store";
 import { createRoute } from "@tanstack/react-router";
 import {
     Button,
@@ -12,9 +12,9 @@ import {
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
 import React, { useEffect, useState } from "react";
-import { useMetadataStore } from "../hooks/useMetadataStore";
-import { useUIConfig } from "../hooks/useUIConfig";
-import { DEFAULT_DATA_PULL_PAGE_SIZE } from "../schemas";
+import { useMetadataStore } from "@/hooks/useMetadataStore";
+import { useUIConfig } from "@/hooks/useUIConfig";
+import { DEFAULT_DATA_PULL_PAGE_SIZE } from "@/schemas";
 import { AdminRoute } from "./admin";
 
 dayjs.extend(relativeTime);

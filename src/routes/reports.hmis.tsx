@@ -1,6 +1,6 @@
 import { createRoute } from "@tanstack/react-router";
 import React from "react";
-import { Spinner } from "../components/spinner";
+import { Spinner } from "@/components/spinner";
 import { ReportsRoute } from "./reports";
 
 const HMISReportsRoute = createRoute({

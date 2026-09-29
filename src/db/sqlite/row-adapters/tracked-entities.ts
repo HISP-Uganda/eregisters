@@ -1,6 +1,6 @@
-import type { FlattenedTrackedEntity } from "../../../schemas";
-import type { SqlDriver } from "../driver-types";
-import type { RowAdapter } from "../row-adapter";
+import type { FlattenedTrackedEntity } from "@/schemas";
+import type { SqlDriver } from "@/db/sqlite/driver-types";
+import type { RowAdapter } from "@/db/sqlite/row-adapter";
 import { loadUsersByUid, upsertUser, type SqlUser } from "./users";
 
 type TrackedEntityParentRow = {

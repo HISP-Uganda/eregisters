@@ -16,28 +16,28 @@ import {
     TrackedEntity,
     TrackedEntityAttribute,
     UIConfig,
-} from "../schemas";
+} from "@/schemas";
 
 import { createActorContext } from "@xstate/react";
 import { MessageInstance } from "antd/es/message/interface";
-import type { SyncState } from "../schemas";
-import type { StorageBackend } from "../db/backend";
-import { crossTabBus } from "../db/cross-tab";
-import { subscribeConfigChanged } from "../db/reactive-config";
+import type { SyncState } from "@/schemas";
+import type { StorageBackend } from "@/db/backend";
+import { crossTabBus } from "@/db/cross-tab";
+import { subscribeConfigChanged } from "@/db/reactive-config";
 import {
     getEnrollmentsCollection,
     getEventsCollection,
     getTrackedEntitiesCollection,
-} from "../db/collections";
+} from "@/db/collections";
 import type {
     CheckMetadataInfoResult,
     QueryMetadataInfoResult,
-} from "../db/metadata-operations";
-import type { MetadataStore } from "../db/metadata-store";
-import { writePulledTrackedEntityPage } from "../db/pull-page";
-import { dexieLocalLookups } from "../db/dexie/pull-page-lookups";
-import type { SqlDriver } from "../db/sqlite/driver-types";
-import { sqlLocalLookups } from "../db/sqlite/pull-page-lookups";
+} from "@/db/metadata-operations";
+import type { MetadataStore } from "@/db/metadata-store";
+import { writePulledTrackedEntityPage } from "@/db/pull-page";
+import { dexieLocalLookups } from "@/db/dexie/pull-page-lookups";
+import type { SqlDriver } from "@/db/sqlite/driver-types";
+import { sqlLocalLookups } from "@/db/sqlite/pull-page-lookups";
 import { type ConnectivityStatus } from "./network-reachability";
 import { queryWithTimeout, SYNC_TIMEOUTS_MS } from "./network-reachability";
 import {
@@ -72,7 +72,7 @@ import {
     type PullDataSummary,
 } from "./pull-log";
 import { processBatchSync as processBatchSyncImpl } from "./sync-tracker-actors";
-import { syncsBlockedByUpdate } from "../app-update/update-controller";
+import { syncsBlockedByUpdate } from "@/app-update/update-controller";
 import {
     holdLockIfAvailable,
     SYNC_LOCK_NAMES,

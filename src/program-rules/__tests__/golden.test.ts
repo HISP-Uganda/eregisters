@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import type { ProgramRule, ProgramRuleVariable } from "../../schemas";
-import fixture from "../__fixtures__/medical-registers.json";
-import { EventForRules, executeProgramRules } from "../execute-program-rules";
+import type { ProgramRule, ProgramRuleVariable } from "@/schemas";
+import fixture from "@/program-rules/__fixtures__/medical-registers.json";
+import { EventForRules, executeProgramRules } from "@/program-rules/execute-program-rules";
 
 /**
  * Pins what `executeProgramRules` does with the real Medical Registers

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { saveToDataStore } from "../app-data-store";
+import { saveToDataStore } from "@/db/app-data-store";
 
 describe("saveToDataStore", () => {
     it("updates the key when it exists", async () => {

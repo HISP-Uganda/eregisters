@@ -11,14 +11,14 @@ import {
     Typography,
 } from "antd";
 import React, { useEffect, useState } from "react";
-import type { SaveBlock } from "../utils/save-block";
+import type { SaveBlock } from "@/utils/save-block";
 import { SyncStatusComp } from "./sync-status-comp";
 import {
     FlattenedEnrollment,
     FlattenedEvent,
     FlattenedTrackedEntity,
-} from "../schemas";
-import { useUnsavedWork } from "../app-update/unsaved-work";
+} from "@/schemas";
+import { useUnsavedWork } from "@/app-update/unsaved-work";
 
 function renderBlockTooltip(block: SaveBlock): React.ReactNode {
     const lines: string[] = [];

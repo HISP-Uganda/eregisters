@@ -11,7 +11,7 @@ vi.mock("tanstack-dexie-db-collection", () => ({
     }),
 }));
 
-const { dexieTrackerCollectionOptions } = await import("../dexie-collection-adapter");
+const { dexieTrackerCollectionOptions } = await import("@/db/dexie/dexie-collection-adapter");
 
 describe("Dexie tracker collection edits (wayfinder ticket \"Should records created on the device record their author, and how is it sent to DHIS2?\")", () => {
     it("adds the edit stamp to both the changes and the full row it persists", async () => {

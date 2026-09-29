@@ -1,7 +1,7 @@
 import { Checkbox, DatePicker, DatePickerProps, FormInstance, Input, InputNumber, Radio, Select } from "antd";
 import React, { useCallback } from "react";
-import { DataElement, OptionSet, TrackedEntityAttribute } from "../../schemas";
-import VillageSelect from "../village-select";
+import { DataElement, OptionSet, TrackedEntityAttribute } from "@/schemas";
+import VillageSelect from "@/components/village-select";
 import { FieldKind, NUMBER_INPUT_PROPS } from "./field-kind";
 
 /**

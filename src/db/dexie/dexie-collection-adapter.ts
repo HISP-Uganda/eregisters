@@ -2,8 +2,8 @@ import { dexieCollectionOptions } from "tanstack-dexie-db-collection";
 import type {
     RowWriteOptions,
     TrackerCollectionUtils,
-} from "../tracker-collection-utils";
-import { storeName } from "../store-names";
+} from "@/db/tracker-collection-utils";
+import { storeName } from "@/db/store-names";
 
 /**
  * Wraps `tanstack-dexie-db-collection`'s `dexieCollectionOptions` so the

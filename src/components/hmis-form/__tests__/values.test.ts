@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { HmisRowConfig } from "../../../form-configs/types";
+import type { HmisRowConfig } from "@/form-configs/types";
 import {
     cleanNumericValue,
     dataValueKey,
@@ -7,7 +7,7 @@ import {
     isCellEditable,
     placeCells,
     toDataValues,
-} from "../values";
+} from "@/components/hmis-form/values";
 
 const row = (...cells: Array<{ colSpan?: number; rowSpan?: number }>) =>
     ({ key: "r", cells: cells.map((c, i) => ({ key: `c${i}`, kind: "text", ...c })) }) as unknown as HmisRowConfig;

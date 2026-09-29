@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { createNodeSqliteDriver } from ".././test-support/node-sqlite-driver";
-import { createSchema } from ".././schema";
-import { saveMetadataTable } from ".././save-metadata";
-import { resetMetadataDatabase } from ".././reset-metadata-database";
+import { createNodeSqliteDriver } from "@/db/sqlite/test-support/node-sqlite-driver";
+import { createSchema } from "@/db/sqlite/schema";
+import { saveMetadataTable } from "@/db/sqlite/save-metadata";
+import { resetMetadataDatabase } from "@/db/sqlite/reset-metadata-database";
 
 describe("resetMetadataDatabase", () => {
     let close: (() => void) | undefined;

@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { checkMetadataInfoGeneric } from "../../metadata-operations";
-import { sqliteMetadataStore } from "../metadata-store";
-import { createSchema } from "../schema";
-import { createNodeSqliteDriver } from "../test-support/node-sqlite-driver";
+import { checkMetadataInfoGeneric } from "@/db/metadata-operations";
+import { sqliteMetadataStore } from "@/db/sqlite/metadata-store";
+import { createSchema } from "@/db/sqlite/schema";
+import { createNodeSqliteDriver } from "@/db/sqlite/test-support/node-sqlite-driver";
 
 async function freshStore() {
     const { driver } = createNodeSqliteDriver();

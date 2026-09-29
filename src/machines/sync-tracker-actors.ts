@@ -10,26 +10,26 @@ import {
     transformEnrollment,
     transformEvent,
     transformTrackedEntity,
-} from "../db/transformers";
-import type { StorageBackend } from "../db/backend";
+} from "@/db/transformers";
+import type { StorageBackend } from "@/db/backend";
 import {
     getEnrollmentsCollection,
     getEventsCollection,
     getTrackedEntitiesCollection,
-} from "../db/collections";
-import type { SqlDriver } from "../db/sqlite/driver-types";
+} from "@/db/collections";
+import type { SqlDriver } from "@/db/sqlite/driver-types";
 import {
     deleteEnrollmentCascade,
     deleteEventCascade,
     deleteTrackedEntityCascade,
-} from "../db/sqlite/delete-cascade";
+} from "@/db/sqlite/delete-cascade";
 import {
     applyPushResults,
     type PushResultUpdate,
-} from "../db/sqlite/push-results";
-import { findEnrollmentsBySyncStatusIn } from "../db/sqlite/row-adapters/enrollments";
-import { findEventsBySyncStatusIn } from "../db/sqlite/row-adapters/events";
-import { findTrackedEntitiesBySyncStatusIn } from "../db/sqlite/row-adapters/tracked-entities";
+} from "@/db/sqlite/push-results";
+import { findEnrollmentsBySyncStatusIn } from "@/db/sqlite/row-adapters/enrollments";
+import { findEventsBySyncStatusIn } from "@/db/sqlite/row-adapters/events";
+import { findTrackedEntitiesBySyncStatusIn } from "@/db/sqlite/row-adapters/tracked-entities";
 import {
     applyPushResultsDexie,
     deleteEnrollmentCascadeDexie,
@@ -38,12 +38,12 @@ import {
     findEnrollmentsBySyncStatusInDexie,
     findEventsBySyncStatusInDexie,
     findTrackedEntitiesBySyncStatusInDexie,
-} from "../db/dexie/push-support";
+} from "@/db/dexie/push-support";
 import {
     getEnrollmentsDexieCollection,
     getEventsDexieCollection,
     getTrackedEntitiesDexieCollection,
-} from "../db/dexie/tracker-collections-instance";
+} from "@/db/dexie/tracker-collections-instance";
 import {
     DataElement,
     Dhis2Report,
@@ -56,7 +56,7 @@ import {
     TrackedEntity,
     TrackedEntityAttribute,
     Engine,
-} from "../schemas";
+} from "@/schemas";
 
 /**
  * Backend-agnostic bodies for `src/machines/sync.ts`'s tracker

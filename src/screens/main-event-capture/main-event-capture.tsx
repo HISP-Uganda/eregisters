@@ -1,15 +1,15 @@
 import { Collapse, Flex, Form, FormInstance, Grid, Tabs } from "antd";
 import { isEmpty } from "lodash";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { useMetadata } from "../../hooks/useMetadata";
-import { useModalState } from "../../hooks/useModalState";
-import { useUIConfig } from "../../hooks/useUIConfig";
-import { EventContext } from "../../machines";
+import { useMetadata } from "@/hooks/useMetadata";
+import { useModalState } from "@/hooks/useModalState";
+import { useUIConfig } from "@/hooks/useUIConfig";
+import { EventContext } from "@/machines";
 import {
     FlattenedEnrollment,
     FlattenedEvent,
     FlattenedTrackedEntity,
-} from "../../schemas";
+} from "@/schemas";
 import { NewbornModal, startNewborn } from "./newborn-modal";
 import { VisitHeader } from "./visit-header";
 import { SERVICE_TYPE, visitTabItems } from "./visit-tabs";

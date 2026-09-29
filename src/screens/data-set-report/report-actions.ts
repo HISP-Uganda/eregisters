@@ -1,4 +1,4 @@
-import { draftId, getHmisDraft, upsertHmisDraft } from "../../db/hmis-drafts";
+import { draftId, getHmisDraft, upsertHmisDraft } from "@/db/hmis-drafts";
 import { ReportIdentity, resolveAttribution } from "./report-data";
 
 type Engine = {

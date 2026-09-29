@@ -2,8 +2,8 @@ import type {
     FlattenedEnrollment,
     FlattenedEvent,
     FlattenedTrackedEntity,
-} from "../../schemas";
-import type { LocalLookups } from "../pull-page";
+} from "@/schemas";
+import type { LocalLookups } from "@/db/pull-page";
 
 type GettableCollection<TRow> = { get: (id: string) => TRow | undefined };
 

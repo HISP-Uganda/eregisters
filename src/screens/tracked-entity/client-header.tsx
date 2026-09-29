@@ -1,8 +1,8 @@
 import { ArrowLeftOutlined, UserOutlined } from "@ant-design/icons";
 import { Button, Flex, Tag, Typography } from "antd";
 import React from "react";
-import { SyncStatusComp } from "../../components/sync-status-comp";
-import { FlattenedTrackedEntity } from "../../schemas";
+import { SyncStatusComp } from "@/components/sync-status-comp";
+import { FlattenedTrackedEntity } from "@/schemas";
 import { clientSummary } from "./client";
 
 export function ClientHeader({

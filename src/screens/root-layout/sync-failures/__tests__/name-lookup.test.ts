@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildNameLookup } from "../name-lookup";
+import { buildNameLookup } from "@/screens/root-layout/sync-failures/name-lookup";
 
 const program = {
     programTrackedEntityAttributes: [{ trackedEntityAttribute: { id: "attrOnlyInProgram" } }],

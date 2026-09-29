@@ -1,5 +1,5 @@
-import type { MetadataStore } from "../metadata-store";
-import { notifyConfigChanged } from "../reactive-config";
+import type { MetadataStore } from "@/db/metadata-store";
+import { notifyConfigChanged } from "@/db/reactive-config";
 import { getConfigRow, putConfigRow } from "./config-rows";
 import type { SqlDriver } from "./driver-types";
 import { getAllRows } from "./metadata-info";

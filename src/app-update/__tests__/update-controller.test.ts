@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { MetadataStore } from "../../db/metadata-store";
+import type { MetadataStore } from "@/db/metadata-store";
 
 /**
  * The admin-broadcast path of the forced update — wayfinder ticket "How
@@ -64,8 +64,8 @@ describe("the admin's reload broadcast", { timeout: 20_000 }, () => {
     });
 
     async function load() {
-        const controller = await import("../update-controller");
-        const { notifyConfigChanged } = await import("../../db/reactive-config");
+        const controller = await import("@/app-update/update-controller");
+        const { notifyConfigChanged } = await import("@/db/reactive-config");
         return { controller, notifyConfigChanged };
     }
 
@@ -108,7 +108,7 @@ describe("the admin's reload broadcast", { timeout: 20_000 }, () => {
 
     it("holds the reload while this tab has unsaved work, until it's released", async () => {
         const { controller, notifyConfigChanged } = await load();
-        const { holdUnsavedWork } = await import("../unsaved-work");
+        const { holdUnsavedWork } = await import("@/app-update/unsaved-work");
         const { store, setSignal } = storeWithSignal(undefined);
         controller.startBroadcastWatch(store, {} as never);
         await flush();

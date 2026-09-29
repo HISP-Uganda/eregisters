@@ -1,7 +1,7 @@
 import { and, eq, not, useLiveSuspenseQuery } from "@tanstack/react-db";
 import { useEffect, useMemo } from "react";
-import { getEventsCollection } from "../../db/collections";
-import { FlattenedEvent, ProgramStage } from "../../schemas";
+import { getEventsCollection } from "@/db/collections";
+import { FlattenedEvent, ProgramStage } from "@/schemas";
 import { moveEventsToVisitDate } from "./actions";
 import { eventDate, eventsOffVisitDate, toRuleEvents } from "./stage";
 

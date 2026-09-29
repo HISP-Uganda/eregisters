@@ -1,22 +1,22 @@
 import { Form } from "antd";
 import React, { useMemo } from "react";
-import { DataModal } from "../../components/data-modal";
-import { TrackedEntityRuleAwareForm } from "../../components/rule-aware-form";
-import { TrackerRegistration } from "../../components/tracker-registration";
+import { DataModal } from "@/components/data-modal";
+import { TrackedEntityRuleAwareForm } from "@/components/rule-aware-form";
+import { TrackerRegistration } from "@/components/tracker-registration";
 import {
     getEnrollmentsCollection,
     getEventsCollection,
     getTrackedEntitiesCollection,
-} from "../../db/collections";
-import { useMetadata } from "../../hooks/useMetadata";
-import { useTrackedEntitySaveBlock } from "../../hooks/useTrackedEntitySaveBlock";
-import { TrackedEntityContext } from "../../machines";
+} from "@/db/collections";
+import { useMetadata } from "@/hooks/useMetadata";
+import { useTrackedEntitySaveBlock } from "@/hooks/useTrackedEntitySaveBlock";
+import { TrackedEntityContext } from "@/machines";
 import {
     FlattenedEnrollment,
     FlattenedEvent,
     FlattenedTrackedEntity,
-} from "../../schemas";
-import { cancelDataModal } from "../../utils/record-cascades";
+} from "@/schemas";
+import { cancelDataModal } from "@/utils/record-cascades";
 import { newbornFirstVisit, newbornFromMother } from "./newborn";
 
 /** Stores a new child and enrollment (from `newbornFromMother`) locally. */

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bootMessage } from "../storage-boot-screen";
+import { bootMessage } from "@/components/storage-boot-screen";
 
 describe("bootMessage", () => {
     it("shows a step counter, not table names, while copying", () => {

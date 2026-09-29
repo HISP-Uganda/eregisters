@@ -3,9 +3,9 @@ import {
     createWaSqliteDriver,
     wrapWaSqliteWorker,
     type WaSqliteWorkerLike,
-} from "../wa-sqlite-driver";
-import type { WaSqliteRequest, WaSqliteResponse } from "../wa-sqlite-protocol";
-import { ALL_SCHEMA_STATEMENTS } from "../schema";
+} from "@/db/sqlite/wa-sqlite-driver";
+import type { WaSqliteRequest, WaSqliteResponse } from "@/db/sqlite/wa-sqlite-protocol";
+import { ALL_SCHEMA_STATEMENTS } from "@/db/sqlite/schema";
 
 /**
  * Tests the request/response protocol and reentrant-transaction wrapper

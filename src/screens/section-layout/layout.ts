@@ -1,4 +1,4 @@
-import { FormLayoutItem, SectionStyle, SubsectionConfig, UIConfig } from "../../schemas";
+import { FormLayoutItem, SectionStyle, SubsectionConfig, UIConfig } from "@/schemas";
 
 /**
  * A section's form layout: an ordered list of section headers and the

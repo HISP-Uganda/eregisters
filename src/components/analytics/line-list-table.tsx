@@ -2,9 +2,9 @@ import { Button, Space, Table } from "antd";
 import type { ColumnsType, ColumnType } from "antd/es/table";
 import type { FilterValue, SorterResult } from "antd/es/table/interface";
 import React from "react";
-import type { AnalyticsColumn, AnalyticsRow } from "../../analytics/types";
-import { optionTokens, type OptionSets } from "../../analytics/value-format";
-import { useTableScrollHeight } from "../../hooks/useTableScrollHeight";
+import type { AnalyticsColumn, AnalyticsRow } from "@/analytics/types";
+import { optionTokens, type OptionSets } from "@/analytics/value-format";
+import { useTableScrollHeight } from "@/hooks/useTableScrollHeight";
 
 const ACTIONS_COLUMN_KEY = "__actions";
 

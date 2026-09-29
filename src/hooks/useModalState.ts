@@ -3,7 +3,7 @@ import {
     FlattenedEnrollment,
     FlattenedEvent,
     FlattenedTrackedEntity,
-} from "../schemas";
+} from "@/schemas";
 
 export function useModalState<
     T extends FlattenedTrackedEntity | FlattenedEvent,

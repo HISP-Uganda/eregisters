@@ -2,12 +2,12 @@ import {
     FlattenedEnrollment,
     FlattenedEvent,
     FlattenedTrackedEntity,
-} from "../../schemas";
+} from "@/schemas";
 import {
     createEmptyEnrollment,
     createEmptyEvent,
     createEmptyTrackedEntity,
-} from "../../utils/record-factories";
+} from "@/utils/record-factories";
 
 /**
  * A newborn registered from the mother's visit ("Live birth" answered):

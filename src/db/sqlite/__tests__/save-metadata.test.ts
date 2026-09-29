@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it } from "vitest";
-import type { Metadata, Resource } from "../../../schemas";
-import { createNodeSqliteDriver } from ".././test-support/node-sqlite-driver";
-import { createSchema } from ".././schema";
-import { saveMetadata, saveMetadataTable } from ".././save-metadata";
+import type { Metadata, Resource } from "@/schemas";
+import { createNodeSqliteDriver } from "@/db/sqlite/test-support/node-sqlite-driver";
+import { createSchema } from "@/db/sqlite/schema";
+import { saveMetadata, saveMetadataTable } from "@/db/sqlite/save-metadata";
 
 function emptyMetadata(overrides: Partial<Metadata> = {}): Metadata {
     return {

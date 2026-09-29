@@ -2,19 +2,19 @@ import {
     getEnrollmentsCollection,
     getEventsCollection,
     getTrackedEntitiesCollection,
-} from "../../db/collections";
+} from "@/db/collections";
 import {
     FlattenedEnrollment,
     FlattenedEvent,
     FlattenedTrackedEntity,
-} from "../../schemas";
-import { collectParentSaveCascade } from "../../utils/parent-save-cascade";
+} from "@/schemas";
+import { collectParentSaveCascade } from "@/utils/parent-save-cascade";
 import {
     deleteEventWithChildren,
     deleteTrackedEntityWithChildren,
     resendEventWithChildren,
-} from "../../utils/record-cascades";
-import { createEmptyEvent } from "../../utils/record-factories";
+} from "@/utils/record-cascades";
+import { createEmptyEvent } from "@/utils/record-factories";
 import { MAIN_STAGE } from "./client";
 
 /** What the client page writes. `pushData` starts a push to DHIS2. */

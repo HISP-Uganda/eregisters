@@ -2,9 +2,9 @@ import { createRootRouteWithContext } from "@tanstack/react-router";
 import { Typography } from "antd";
 import React from "react";
 import { waitFor } from "xstate";
-import { Spinner } from "../components/spinner";
-import { SyncContext } from "../machines/sync";
-import { RootLayout } from "../screens/root-layout/root-layout";
+import { Spinner } from "@/components/spinner";
+import { SyncContext } from "@/machines/sync";
+import { RootLayout } from "@/screens/root-layout/root-layout";
 
 type DataEngine = ReturnType<typeof import("@dhis2/app-runtime").useDataEngine>;
 

@@ -1,10 +1,10 @@
 import { DownloadOutlined } from "@ant-design/icons";
 import { Button, Empty, Flex, Spin } from "antd";
 import React from "react";
-import type { AnalyticsColumn, AnalyticsRow } from "../../analytics/types";
-import { exportPivotWorkbook, writeWorkbookFile } from "../../analytics/xlsx-export";
-import { PivotBuilder } from "../../components/analytics/pivot-builder";
-import type { PivotExportInfo } from "../../components/analytics/pivot-builder";
+import type { AnalyticsColumn, AnalyticsRow } from "@/analytics/types";
+import { exportPivotWorkbook, writeWorkbookFile } from "@/analytics/xlsx-export";
+import { PivotBuilder } from "@/components/analytics/pivot-builder";
+import type { PivotExportInfo } from "@/components/analytics/pivot-builder";
 import { DatasetStatus } from "./use-analytics-dataset";
 
 /**

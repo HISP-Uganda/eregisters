@@ -4,10 +4,10 @@ import React, { useMemo } from "react";
 import {
     getEnrollmentsCollection,
     getEventsCollection,
-} from "../db/collections";
-import { useMetadata } from "../hooks/useMetadata";
-import { EventContext } from "../machines";
-import { FlattenedEvent, FlattenedTrackedEntity } from "../schemas";
+} from "@/db/collections";
+import { useMetadata } from "@/hooks/useMetadata";
+import { EventContext } from "@/machines";
+import { FlattenedEvent, FlattenedTrackedEntity } from "@/schemas";
 import BasicForm from "./basic-form";
 
 export default function Relation({

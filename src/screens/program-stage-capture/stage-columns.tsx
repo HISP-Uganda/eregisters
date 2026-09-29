@@ -3,7 +3,7 @@ import { Button, Flex, Popconfirm } from "antd";
 import type { TableProps } from "antd";
 import dayjs from "dayjs";
 import React from "react";
-import { DataElement, FlattenedEvent, ProgramStage } from "../../schemas";
+import { DataElement, FlattenedEvent, ProgramStage } from "@/schemas";
 import { saveStageEventDate, saveStageEventValue } from "./actions";
 import { EditableCell, OptionRow } from "./editable-cell";
 import { InlineEditableCell } from "./inline-row";

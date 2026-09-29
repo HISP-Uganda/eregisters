@@ -8,8 +8,8 @@ import {
     OptionSet,
     RenderType,
     TrackedEntityAttribute,
-} from "../schemas";
-import { createGetValueProps, createNormalize } from "../utils/form-fields";
+} from "@/schemas";
+import { createGetValueProps, createNormalize } from "@/utils/form-fields";
 import { FieldInput, OPTION_SELECT_WRAP_CSS } from "./data-element-field/field-inputs";
 import { fieldKind, takesFullRow, VILLAGE_CASCADED_FIELDS } from "./data-element-field/field-kind";
 import DobPicker from "./dob-picker";

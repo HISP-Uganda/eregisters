@@ -1,10 +1,10 @@
 import { useDataEngine } from "@dhis2/app-runtime";
-import { saveToDataStore } from "../../db/app-data-store";
+import { saveToDataStore } from "@/db/app-data-store";
 import { message } from "antd";
 import { useEffect, useMemo, useState } from "react";
-import { useMetadataStore } from "../../hooks/useMetadataStore";
-import { useUIConfig } from "../../hooks/useUIConfig";
-import { SectionStyle } from "../../schemas";
+import { useMetadataStore } from "@/hooks/useMetadataStore";
+import { useUIConfig } from "@/hooks/useUIConfig";
+import { SectionStyle } from "@/schemas";
 import {
     Layout,
     layoutGroups,

@@ -1,9 +1,9 @@
 import { Form, FormInstance, Typography } from "antd";
 import React, { useCallback } from "react";
-import { useMetadata } from "../hooks/useMetadata";
-import { useUIConfig } from "../hooks/useUIConfig";
-import { EventContext } from "../machines";
-import { buildCurrentDataElements } from "../utils/form-fields";
+import { useMetadata } from "@/hooks/useMetadata";
+import { useUIConfig } from "@/hooks/useUIConfig";
+import { EventContext } from "@/machines";
+import { buildCurrentDataElements } from "@/utils/form-fields";
 import { DataElementRenderer } from "./data-element-renderer";
 import { SubsectionGroups } from "./subsection-groups";
 

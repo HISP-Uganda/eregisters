@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
     normalizeDefinition,
     type ComputedColumnDefinition,
-} from "../analytics/computed-columns";
+} from "@/analytics/computed-columns";
 
 const STORAGE_KEY = "eregisters.analytics.computedColumns";
 
