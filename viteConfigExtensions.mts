@@ -51,7 +51,14 @@ const viteConfig = defineConfig(async (configEnv: ConfigEnv) => {
         optimizeDeps: {
             exclude: ["@journeyapps/wa-sqlite"],
         },
-        resolve: { alias: { "@": path.resolve(__dirname, "src") } },
+        // The platform serves (and builds) a copy of src at
+        // .d2/shell/src/D2App, and relative imports resolve inside it. "@"
+        // must point there too: aimed at src it loads every module a second
+        // time, and each React context/XState actor context exists twice
+        // ("You used a hook from ActorProvider but it's not inside…").
+        resolve: {
+            alias: { "@": path.resolve(__dirname, ".d2/shell/src/D2App") },
+        },
     };
 });
 
