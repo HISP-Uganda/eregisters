@@ -14,7 +14,9 @@ describe("loadReport", () => {
         const query = vi.fn(async (q: Record<string, any>) =>
             "values" in q
                 ? { values: { dataValues: [{ dataElement: "de1", categoryOptionCombo: "coc1", value: "7" }] } }
-                : { registrations: { completeDataSetRegistrations: [] } },
+                : "coc" in q
+                  ? { coc: { categoryCombo: { id: "cc1" }, categoryOptions: [{ id: "co1" }] } }
+                  : { entry: { completeStatus: { complete: false } } },
         );
         const report = await loadReport({ query }, { dataSet: "RtEYsASU7PG", orgUnit: "ou1", period: "202601", attribution: "aoc1" });
 
@@ -32,9 +34,37 @@ describe("loadReport", () => {
     it("opens without server values when the route fails", async () => {
         const query = vi.fn(async (q: Record<string, any>) => {
             if ("values" in q) throw new Error("404 route not found");
-            return { registrations: { completeDataSetRegistrations: [] } };
+            if ("coc" in q) return { coc: { categoryCombo: { id: "cc1" }, categoryOptions: [{ id: "co1" }] } };
+            return { entry: { completeStatus: { complete: false } } };
         });
         const report = await loadReport({ query }, { dataSet: "RtEYsASU7PG", orgUnit: "ou1", period: "202601", attribution: "aoc1" });
         expect(report.initialValues).toEqual(new Map());
+    });
+
+    it("reads the verified state from the data entry API: who last completed it, and when", async () => {
+        const query = vi.fn(async (q: Record<string, any>) => {
+            if ("values" in q) return { values: { dataValues: [] } };
+            if ("coc" in q) return { coc: { categoryCombo: { id: "cc1" }, categoryOptions: [{ id: "co1" }, { id: "co2" }] } };
+            return {
+                entry: {
+                    completeStatus: {
+                        complete: true,
+                        created: "2026-09-01T08:00:00",
+                        createdBy: "first",
+                        lastUpdated: "2026-09-20T09:30:00",
+                        lastUpdatedBy: "latest",
+                    },
+                },
+            };
+        });
+        const report = await loadReport({ query }, { dataSet: "RtEYsASU7PG", orgUnit: "ou1", period: "202601", attribution: "aoc1" });
+
+        expect(query).toHaveBeenCalledWith({
+            entry: {
+                resource: "dataEntry/dataValues",
+                params: { ds: "RtEYsASU7PG", pe: "202601", ou: "ou1", cc: "cc1", cp: "co1;co2" },
+            },
+        });
+        expect(report).toMatchObject({ isVerified: true, verifiedBy: "latest", verifiedAt: "2026-09-20T09:30:00" });
     });
 });
