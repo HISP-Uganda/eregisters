@@ -1,5 +1,5 @@
-import type { MetadataStore } from "../db/metadata-store";
-import { SyncContext } from "../machines/sync";
+import type { MetadataStore } from "@/db/metadata-store";
+import { SyncContext } from "@/machines/sync";
 
 /**
  * The active backend's `MetadataStore` (SQL or Dexie, whichever is live) —

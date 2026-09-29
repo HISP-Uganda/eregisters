@@ -1,4 +1,4 @@
-import type { FlattenedOptionSet } from "../../../schemas";
+import type { FlattenedOptionSet } from "@/schemas";
 import {
     compositeKey,
     createCompositeKeyMetadataTableRowAdapter,

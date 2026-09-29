@@ -1,7 +1,7 @@
 import { describe, expect, it, afterEach } from "vitest";
-import { createNodeSqliteDriver } from ".././test-support/node-sqlite-driver";
-import { createSchema } from ".././schema";
-import { sqliteMetadataStore } from ".././metadata-store";
+import { createNodeSqliteDriver } from "@/db/sqlite/test-support/node-sqlite-driver";
+import { createSchema } from "@/db/sqlite/schema";
+import { sqliteMetadataStore } from "@/db/sqlite/metadata-store";
 
 describe("sqliteMetadataStore", () => {
     let close: (() => void) | undefined;

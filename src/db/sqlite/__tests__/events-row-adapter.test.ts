@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
-import type { FlattenedEvent } from "../../../schemas";
-import type { SqlDriver } from "../driver-types";
-import { createNodeSqliteDriver } from "../test-support/node-sqlite-driver";
-import { createSchema } from "../schema";
-import { eventsRowAdapter, getEventById } from "../row-adapters/events";
-import { enrollmentsRowAdapter } from "../row-adapters/enrollments";
-import { trackedEntitiesRowAdapter } from "../row-adapters/tracked-entities";
+import type { FlattenedEvent } from "@/schemas";
+import type { SqlDriver } from "@/db/sqlite/driver-types";
+import { createNodeSqliteDriver } from "@/db/sqlite/test-support/node-sqlite-driver";
+import { createSchema } from "@/db/sqlite/schema";
+import { eventsRowAdapter, getEventById } from "@/db/sqlite/row-adapters/events";
+import { enrollmentsRowAdapter } from "@/db/sqlite/row-adapters/enrollments";
+import { trackedEntitiesRowAdapter } from "@/db/sqlite/row-adapters/tracked-entities";
 
 /** An event's enrollment/tracked_entity FKs must exist first. */
 async function seedParents(driver: SqlDriver): Promise<void> {

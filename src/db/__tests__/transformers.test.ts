@@ -3,7 +3,7 @@ import {
     transformEnrollment,
     transformEvent,
     transformTrackedEntity,
-} from ".././transformers";
+} from "@/db/transformers";
 import type {
     DataElement,
     FlattenedEnrollment,
@@ -11,7 +11,7 @@ import type {
     FlattenedOptionSet,
     FlattenedTrackedEntity,
     TrackedEntityAttribute,
-} from "../../schemas";
+} from "@/schemas";
 
 describe("transformEvent option-set validation", () => {
     // Matches the real shape: `dataElements` is the full metadata map (as

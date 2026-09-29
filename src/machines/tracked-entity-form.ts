@@ -6,15 +6,12 @@ import {
     ProgramRule,
     ProgramRuleResult,
     ProgramRuleVariable,
-} from "../schemas";
-import {
-    createEmptyProgramRuleResult,
-    executeProgramRules,
-    programRuleResultsEqual,
-} from "../utils/utils";
+} from "@/schemas";
+import { createEmptyProgramRuleResult, programRuleResultsEqual } from "@/program-rules/rule-results";
+import { executeProgramRules } from "@/program-rules/execute-program-rules";
 import { applyRuleResultsToForm, FormEvent } from "./common";
-import { getTrackedEntitiesCollection } from "../db/collections";
-import { whileSaving } from "../app-update/unsaved-work";
+import { getTrackedEntitiesCollection } from "@/db/collections";
+import { whileSaving } from "@/app-update/unsaved-work";
 
 const trackedEntityFormMachine = setup({
     types: {

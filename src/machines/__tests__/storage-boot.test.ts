@@ -1,15 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
 import { createActor, waitFor } from "xstate";
-import type { BackendSetting, StorageBackend } from "../../db/backend";
-import type { MetadataStore } from "../../db/metadata-store";
-import type { SqlDriver } from "../../db/sqlite/driver-types";
-import type { CopyVerdict, StoreCopySteps } from "../../db/store-copy";
+import type { StorageBackend } from "@/db/backend";
+import type { MetadataStore } from "@/db/metadata-store";
+import type { SqlDriver } from "@/db/sqlite/driver-types";
+import type { CopyVerdict, StoreCopySteps } from "@/db/store-copy";
 import {
     bootSummary,
     bootView,
     storageBootMachine,
     type StorageBootDeps,
-} from "../storage-boot";
+} from "@/machines/storage-boot";
 
 function fakeDriver(name: string): SqlDriver & { close: ReturnType<typeof vi.fn> } {
     return {
@@ -71,9 +71,7 @@ function fakeDeps(options: {
     backend?: StorageBackend;
     liveDriver?: SqlDriver;
     resolveError?: Error;
-    reverseDriver?: SqlDriver;
     forward?: StoreCopySteps;
-    reverse?: StoreCopySteps;
     failures?: number;
 }) {
     const released = vi.fn();
@@ -86,9 +84,7 @@ function fakeDeps(options: {
             };
         }),
         initCollections: vi.fn(),
-        prepareReverseCopy: vi.fn(async () => options.reverseDriver),
         forwardCopySteps: vi.fn(() => options.forward ?? fakeSteps("current")),
-        reverseCopySteps: vi.fn(() => options.reverse ?? fakeSteps("current")),
         acquireCopyLock: vi.fn(async () => released),
         commitLiveStore: vi.fn(async () => undefined),
         metadataStoreFor: vi.fn(
@@ -102,8 +98,8 @@ function fakeDeps(options: {
     return { deps, released };
 }
 
-function boot(setting: BackendSetting, deps: StorageBootDeps) {
-    const actor = createActor(storageBootMachine, { input: { setting, deps } });
+function boot(deps: StorageBootDeps) {
+    const actor = createActor(storageBootMachine, { input: { deps } });
     actor.start();
     return actor;
 }
@@ -116,7 +112,7 @@ describe("storage-boot machine — forward copy (Dexie -> SQLite)", () => {
         const forward = fakeSteps("needs-copy");
         const { deps, released } = fakeDeps({ liveDriver: live, forward });
 
-        const actor = boot("auto", deps);
+        const actor = boot(deps);
         const done = await waitFor(actor, (s) => s.status === "done", TIMEOUT);
 
         expect(forward.calls).toEqual([
@@ -144,7 +140,7 @@ describe("storage-boot machine — forward copy (Dexie -> SQLite)", () => {
         const forward = fakeSteps("current");
         const { deps } = fakeDeps({ liveDriver: fakeDriver("live"), forward });
 
-        const done = await waitFor(boot("auto", deps), (s) => s.status === "done", TIMEOUT);
+        const done = await waitFor(boot(deps), (s) => s.status === "done", TIMEOUT);
 
         expect(forward.calls).toEqual(["detect"]);
         expect(done.output?.backend).toBe("sqlite");
@@ -154,7 +150,7 @@ describe("storage-boot machine — forward copy (Dexie -> SQLite)", () => {
         const forward = fakeSteps("cleanup-owed");
         const { deps, released } = fakeDeps({ liveDriver: fakeDriver("live"), forward });
 
-        const done = await waitFor(boot("auto", deps), (s) => s.status === "done", TIMEOUT);
+        const done = await waitFor(boot(deps), (s) => s.status === "done", TIMEOUT);
 
         expect(forward.calls).toEqual(["detect", "cleanup"]);
         expect(released).toHaveBeenCalledTimes(1);
@@ -165,7 +161,7 @@ describe("storage-boot machine — forward copy (Dexie -> SQLite)", () => {
         const forward = fakeSteps("fresh");
         const { deps } = fakeDeps({ liveDriver: fakeDriver("live"), forward });
 
-        await waitFor(boot("auto", deps), (s) => s.status === "done", TIMEOUT);
+        await waitFor(boot(deps), (s) => s.status === "done", TIMEOUT);
 
         expect(forward.calls).toEqual(["detect", "markComplete"]);
     });
@@ -179,7 +175,7 @@ describe("storage-boot machine — forward copy (Dexie -> SQLite)", () => {
         const { deps } = fakeDeps({ liveDriver: fakeDriver("live"), forward });
         const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
 
-        const done = await waitFor(boot("auto", deps), (s) => s.status === "done", TIMEOUT);
+        const done = await waitFor(boot(deps), (s) => s.status === "done", TIMEOUT);
 
         expect(forward.calls).not.toContain("rollback");
         expect(done.output?.backend).toBe("sqlite");
@@ -187,7 +183,7 @@ describe("storage-boot machine — forward copy (Dexie -> SQLite)", () => {
         error.mockRestore();
     });
 
-    it("on auto, rolls back and falls back to Dexie for the session without marking it live", async () => {
+    it("rolls back and falls back to Dexie for the session without marking it live", async () => {
         const live = fakeDriver("live");
         const rollback = vi.fn(async () => undefined);
         const forward = fakeSteps("needs-copy", {
@@ -198,7 +194,7 @@ describe("storage-boot machine — forward copy (Dexie -> SQLite)", () => {
         });
         const { deps, released } = fakeDeps({ liveDriver: live, forward });
 
-        const done = await waitFor(boot("auto", deps), (s) => s.status === "done", TIMEOUT);
+        const done = await waitFor(boot(deps), (s) => s.status === "done", TIMEOUT);
 
         expect(rollback).toHaveBeenCalledWith({
             trackedEntities: ["te-1"],
@@ -213,7 +209,6 @@ describe("storage-boot machine — forward copy (Dexie -> SQLite)", () => {
         expect(deps.initCollections).toHaveBeenLastCalledWith("dexie", undefined);
         expect(live.close).toHaveBeenCalled();
         expect(deps.commitLiveStore).not.toHaveBeenCalled();
-        expect(deps.prepareReverseCopy).not.toHaveBeenCalled();
         expect(released).toHaveBeenCalledTimes(1);
     });
 
@@ -229,101 +224,23 @@ describe("storage-boot machine — forward copy (Dexie -> SQLite)", () => {
         const { deps } = fakeDeps({ liveDriver: fakeDriver("live"), forward });
         const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
 
-        const done = await waitFor(boot("auto", deps), (s) => s.status === "done", TIMEOUT);
+        const done = await waitFor(boot(deps), (s) => s.status === "done", TIMEOUT);
 
         expect(done.output?.backend).toBe("dexie");
         error.mockRestore();
-    });
-
-    it("on forced sqlite, stops in failed and retries on RETRY", async () => {
-        let attempt = 0;
-        const forward = fakeSteps("needs-copy", {
-            copyConfig: async () => {
-                attempt += 1;
-                if (attempt === 1) throw new Error("transient");
-                return {};
-            },
-        });
-        const { deps } = fakeDeps({ liveDriver: fakeDriver("live"), forward });
-
-        const actor = boot("sqlite", deps);
-        const failed = await waitFor(actor, (s) => s.matches("failed"), TIMEOUT);
-        expect(failed.context.progress).toEqual({ phase: "failed", error: "transient" });
-        expect(deps.commitLiveStore).not.toHaveBeenCalled();
-
-        actor.send({ type: "RETRY" });
-        const done = await waitFor(actor, (s) => s.status === "done", TIMEOUT);
-        expect(done.output?.backend).toBe("sqlite");
-        expect(deps.resolveBackend).toHaveBeenCalledTimes(2);
     });
 
     it("is unavailable when the live store can't be opened", async () => {
         const { deps } = fakeDeps({ resolveError: new Error("no OPFS") });
 
         const snapshot = await waitFor(
-            boot("sqlite", deps),
+            boot(deps),
             (s) => s.matches("unavailable"),
             TIMEOUT,
         );
 
         expect(snapshot.context.error).toBe("no OPFS");
         expect(snapshot.status).toBe("active");
-    });
-});
-
-describe("storage-boot machine — reverse copy (SQLite -> Dexie)", () => {
-    it("boots on Dexie without copying when there is nothing to copy", async () => {
-        const { deps } = fakeDeps({ backend: "dexie" });
-
-        const done = await waitFor(boot("auto", deps), (s) => s.status === "done", TIMEOUT);
-
-        expect(deps.acquireCopyLock).not.toHaveBeenCalled();
-        expect(deps.commitLiveStore).toHaveBeenCalledWith("dexie");
-        expect(done.output?.backend).toBe("dexie");
-    });
-
-    it("copies, then closes its read-only SQLite driver", async () => {
-        const copyDriver = fakeDriver("copy");
-        const reverse = fakeSteps("needs-copy");
-        const { deps } = fakeDeps({ backend: "dexie", reverseDriver: copyDriver, reverse });
-
-        const done = await waitFor(boot("dexie", deps), (s) => s.status === "done", TIMEOUT);
-
-        expect(deps.reverseCopySteps).toHaveBeenCalledWith(copyDriver);
-        expect(reverse.calls).toContain("cleanup");
-        expect(copyDriver.close).toHaveBeenCalled();
-        expect(done.output).toMatchObject({ backend: "dexie", sqlDriver: undefined });
-    });
-
-    it("on auto, falls back to SQLite for the session using the copy's driver", async () => {
-        const copyDriver = fakeDriver("copy");
-        const reverse = fakeSteps("needs-copy", {
-            copyTracker: async () => {
-                throw new Error("quota");
-            },
-        });
-        const { deps } = fakeDeps({ backend: "dexie", reverseDriver: copyDriver, reverse });
-
-        const done = await waitFor(boot("auto", deps), (s) => s.status === "done", TIMEOUT);
-
-        expect(done.output).toMatchObject({ backend: "sqlite", sqlDriver: copyDriver });
-        expect(copyDriver.close).not.toHaveBeenCalled();
-        expect(deps.initCollections).toHaveBeenLastCalledWith("sqlite", copyDriver);
-        expect(deps.commitLiveStore).not.toHaveBeenCalled();
-    });
-
-    it("on forced dexie, stops in failed and keeps the copy driver for CONTINUE", async () => {
-        const copyDriver = fakeDriver("copy");
-        const reverse = fakeSteps("needs-copy", {
-            verify: async () => {
-                throw new Error("mismatch");
-            },
-        });
-        const { deps } = fakeDeps({ backend: "dexie", reverseDriver: copyDriver, reverse });
-
-        await waitFor(boot("dexie", deps), (s) => s.matches("failed"), TIMEOUT);
-
-        expect(copyDriver.close).not.toHaveBeenCalled();
     });
 });
 
@@ -340,7 +257,7 @@ describe("bootView", () => {
         const { deps } = fakeDeps({});
         deps.resolveBackend.mockImplementation(() => new Promise(() => undefined));
 
-        expect(bootView(boot("auto", deps).getSnapshot())).toEqual({ kind: "preparing" });
+        expect(bootView(boot(deps).getSnapshot())).toEqual({ kind: "preparing" });
     });
 
     it("reports the table step while copying, then finishing", async () => {
@@ -357,7 +274,7 @@ describe("bootView", () => {
             },
         });
         const { deps } = fakeDeps({ liveDriver: fakeDriver("live"), forward });
-        const actor = boot("auto", deps);
+        const actor = boot(deps);
 
         await waitFor(actor, (s) => s.context.progress.phase === "copying", TIMEOUT);
         expect(bootView(actor.getSnapshot())).toEqual({
@@ -377,7 +294,7 @@ describe("bootView", () => {
         expect(bootView(actor.getSnapshot())).toEqual({ kind: "ready", fellBack: false, copyPaused: false });
     });
 
-    it("is ready with fellBack after a failed copy on auto", async () => {
+    it("is ready with fellBack after a failed copy", async () => {
         const forward = fakeSteps("needs-copy", {
             copyConfig: async (): Promise<never> => {
                 throw new Error("boom");
@@ -385,28 +302,15 @@ describe("bootView", () => {
         });
         const { deps } = fakeDeps({ liveDriver: fakeDriver("live"), forward });
 
-        const done = await waitFor(boot("auto", deps), (s) => s.status === "done", TIMEOUT);
+        const done = await waitFor(boot(deps), (s) => s.status === "done", TIMEOUT);
 
         expect(bootView(done)).toEqual({ kind: "ready", fellBack: true, copyPaused: false });
     });
 
-    it("is failed on a forced setting and unavailable when storage won't open", async () => {
-        const forward = fakeSteps("needs-copy", {
-            verify: async () => {
-                throw new Error("mismatch");
-            },
-        });
-        const failing = fakeDeps({ liveDriver: fakeDriver("live"), forward });
-        const failed = await waitFor(
-            boot("sqlite", failing.deps),
-            (s) => s.matches("failed"),
-            TIMEOUT,
-        );
-        expect(bootView(failed)).toEqual({ kind: "failed", error: "mismatch" });
-
+    it("is unavailable when storage won't open", async () => {
         const closed = fakeDeps({ resolveError: new Error("no OPFS") });
         const unavailable = await waitFor(
-            boot("sqlite", closed.deps),
+            boot(closed.deps),
             (s) => s.matches("unavailable"),
             TIMEOUT,
         );
@@ -423,13 +327,13 @@ describe("storage-boot machine — escape hatch (R11)", () => {
         });
     }
 
-    it("counts a failed copy on auto and clears the count after a successful one", async () => {
+    it("counts a failed copy and clears the count after a successful one", async () => {
         const failing = fakeDeps({ liveDriver: fakeDriver("live"), forward: failingForward() });
-        await waitFor(boot("auto", failing.deps), (s) => s.status === "done", TIMEOUT);
-        expect(failing.deps.recordCopyFailure).toHaveBeenCalledWith("forward");
+        await waitFor(boot(failing.deps), (s) => s.status === "done", TIMEOUT);
+        expect(failing.deps.recordCopyFailure).toHaveBeenCalled();
 
         const ok = fakeDeps({ liveDriver: fakeDriver("live"), forward: fakeSteps("needs-copy") });
-        await waitFor(boot("auto", ok.deps), (s) => s.status === "done", TIMEOUT);
+        await waitFor(boot(ok.deps), (s) => s.status === "done", TIMEOUT);
         expect(ok.deps.clearCopyFailures).toHaveBeenCalled();
     });
 
@@ -437,7 +341,7 @@ describe("storage-boot machine — escape hatch (R11)", () => {
         const forward = fakeSteps("needs-copy");
         const { deps } = fakeDeps({ liveDriver: fakeDriver("live"), forward, failures: 3 });
 
-        const done = await waitFor(boot("auto", deps), (s) => s.status === "done", TIMEOUT);
+        const done = await waitFor(boot(deps), (s) => s.status === "done", TIMEOUT);
 
         expect(forward.calls).toEqual(["detect"]);
         expect(deps.recordCopyFailure).not.toHaveBeenCalled();
@@ -449,71 +353,9 @@ describe("storage-boot machine — escape hatch (R11)", () => {
         const forward = fakeSteps("cleanup-owed");
         const { deps } = fakeDeps({ liveDriver: fakeDriver("live"), forward, failures: 3 });
 
-        await waitFor(boot("auto", deps), (s) => s.status === "done", TIMEOUT);
+        await waitFor(boot(deps), (s) => s.status === "done", TIMEOUT);
 
         expect(forward.calls).toEqual(["detect", "cleanup"]);
-    });
-
-    it("never counts or gives up on a forced setting", async () => {
-        const { deps } = fakeDeps({
-            liveDriver: fakeDriver("live"),
-            forward: failingForward(),
-            failures: 3,
-        });
-
-        await waitFor(boot("sqlite", deps), (s) => s.matches("failed"), TIMEOUT);
-
-        expect(deps.recordCopyFailure).not.toHaveBeenCalled();
-    });
-
-    it("CONTINUE from failed runs on Dexie for the session (forward)", async () => {
-        const live = fakeDriver("live");
-        const { deps } = fakeDeps({ liveDriver: live, forward: failingForward() });
-        const actor = boot("sqlite", deps);
-        await waitFor(actor, (s) => s.matches("failed"), TIMEOUT);
-
-        actor.send({ type: "CONTINUE" });
-        const done = await waitFor(actor, (s) => s.status === "done", TIMEOUT);
-
-        expect(done.output).toMatchObject({ backend: "dexie", sqlDriver: undefined });
-        expect(bootView(done)).toMatchObject({ kind: "ready", fellBack: true });
-        expect(live.close).toHaveBeenCalled();
-        expect(deps.commitLiveStore).not.toHaveBeenCalled();
-    });
-
-    it("CONTINUE from failed runs on the copy's SQLite driver (reverse)", async () => {
-        const copyDriver = fakeDriver("copy");
-        const reverse = fakeSteps("needs-copy", {
-            verify: async () => {
-                throw new Error("mismatch");
-            },
-        });
-        const { deps } = fakeDeps({ backend: "dexie", reverseDriver: copyDriver, reverse });
-        const actor = boot("dexie", deps);
-        await waitFor(actor, (s) => s.matches("failed"), TIMEOUT);
-        expect(copyDriver.close).not.toHaveBeenCalled();
-
-        actor.send({ type: "CONTINUE" });
-        const done = await waitFor(actor, (s) => s.status === "done", TIMEOUT);
-
-        expect(done.output).toMatchObject({ backend: "sqlite", sqlDriver: copyDriver });
-        expect(deps.initCollections).toHaveBeenLastCalledWith("sqlite", copyDriver);
-    });
-
-    it("RETRY from failed closes the copy's driver", async () => {
-        const copyDriver = fakeDriver("copy");
-        const reverse = fakeSteps("needs-copy", {
-            verify: async () => {
-                throw new Error("mismatch");
-            },
-        });
-        const { deps } = fakeDeps({ backend: "dexie", reverseDriver: copyDriver, reverse });
-        const actor = boot("dexie", deps);
-        await waitFor(actor, (s) => s.matches("failed"), TIMEOUT);
-
-        actor.send({ type: "RETRY" });
-
-        expect(copyDriver.close).toHaveBeenCalled();
     });
 });
 
@@ -522,18 +364,16 @@ describe("storage.boot log line", () => {
         const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
         const { deps } = fakeDeps({ liveDriver: fakeDriver("live"), forward: fakeSteps("needs-copy") });
 
-        await waitFor(boot("auto", deps), (s) => s.status === "done", TIMEOUT);
+        await waitFor(boot(deps), (s) => s.status === "done", TIMEOUT);
 
         const lines = info.mock.calls.filter(([tag]) => tag === "storage.boot");
         expect(lines).toHaveLength(1);
         const summary = lines[0][1];
         expect(summary).toMatchObject({
-            setting: "auto",
             backend: "sqlite",
             outcome: "ready",
             fellBack: false,
             copy: {
-                direction: "forward",
                 verdict: "needs-copy",
                 result: "copied",
                 rows: { trackedEntities: 1, events: 2 },
@@ -558,7 +398,7 @@ describe("storage.boot log line", () => {
         });
         const { deps } = fakeDeps({ liveDriver: fakeDriver("live"), forward });
 
-        await waitFor(boot("auto", deps), (s) => s.status === "done", TIMEOUT);
+        await waitFor(boot(deps), (s) => s.status === "done", TIMEOUT);
 
         const [, summary] = info.mock.calls.find(([tag]) => tag === "storage.boot")!;
         expect(summary).toMatchObject({
@@ -573,7 +413,6 @@ describe("storage.boot log line", () => {
 
     it("says 'current' when nothing was copied, and omits copy when none was attempted", () => {
         const base = {
-            setting: "auto" as const,
             deps: {} as StorageBootDeps,
             written: {},
             copyFailed: false,
@@ -587,16 +426,16 @@ describe("storage.boot log line", () => {
             metadataRepull: false,
         };
         expect(
-            bootSummary({ ...base, backend: "sqlite", direction: "forward", verdict: "current" }, "ready", 1250),
+            bootSummary({ ...base, backend: "sqlite", steps: {} as StoreCopySteps, verdict: "current" }, "ready", 1250),
         ).toMatchObject({ durationMs: 250, copy: { result: "current", rows: {} } });
         expect(bootSummary({ ...base, backend: "dexie" }, "ready", 1000).copy).toBeUndefined();
     });
 
-    it("logs failed and unavailable outcomes too", async () => {
+    it("logs the unavailable outcome too", async () => {
         const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
         const { deps } = fakeDeps({ resolveError: new Error("no OPFS") });
 
-        await waitFor(boot("sqlite", deps), (s) => s.matches("unavailable"), TIMEOUT);
+        await waitFor(boot(deps), (s) => s.matches("unavailable"), TIMEOUT);
 
         expect(info).toHaveBeenCalledWith(
             "storage.boot",

@@ -1,19 +1,19 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createNodeSqliteDriver } from "../../db/sqlite/test-support/node-sqlite-driver";
-import { createSchema } from "../../db/sqlite/schema";
-import { sqliteMetadataStore } from "../../db/sqlite/metadata-store";
+import { createNodeSqliteDriver } from "@/db/sqlite/test-support/node-sqlite-driver";
+import { createSchema } from "@/db/sqlite/schema";
+import { sqliteMetadataStore } from "@/db/sqlite/metadata-store";
 import {
     emptyStageHierarchyConfig,
     emptyUIConfig,
     type Engine,
-} from "../../schemas";
+} from "@/schemas";
 import {
     getConfiguredPageSize,
     getMetadataVersionRecord,
     patchSyncState,
     pullStageHierarchyConfig,
     pullUiConfig,
-} from ".././sync-metadata-actors";
+} from "@/machines/sync-metadata-actors";
 
 function fakeEngine(query: Engine["query"]): Engine {
     return { query } as unknown as Engine;

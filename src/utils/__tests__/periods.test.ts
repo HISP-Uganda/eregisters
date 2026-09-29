@@ -1,6 +1,6 @@
 import dayjs from "dayjs";
 import { describe, expect, it } from "vitest";
-import { currentPeriodId, periodBounds } from ".././periods";
+import { currentPeriodId, periodBounds } from "@/utils/periods";
 
 describe("periodBounds", () => {
     it("resolves a yearly period id", () => {

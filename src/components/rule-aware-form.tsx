@@ -1,6 +1,6 @@
 import React, { useEffect } from "react";
-import { EventContext, TrackedEntityContext } from "../machines";
-import type { ProgramRuleResult } from "../schemas";
+import { EventContext, TrackedEntityContext } from "@/machines";
+import type { ProgramRuleResult } from "@/schemas";
 
 export function EventRuleAwareForm({
     children,

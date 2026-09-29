@@ -1,5 +1,5 @@
 import type { SqlDriver } from "./driver-types";
-import type { RowWriteOptions } from "../tracker-collection-utils";
+import type { RowWriteOptions } from "@/db/tracker-collection-utils";
 
 export type { RowWriteOptions };
 

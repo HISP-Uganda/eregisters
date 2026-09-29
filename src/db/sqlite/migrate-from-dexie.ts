@@ -3,12 +3,12 @@ import type {
     FlattenedEvent,
     FlattenedTrackedEntity,
     MetadataVersion,
-} from "../../schemas";
-import type { SyncState } from "../index";
+} from "@/schemas";
+import type { SyncState } from "@/schemas";
 import {
     distinctMetadataKeys,
     replaceMetadataTables,
-} from "../metadata-operations";
+} from "@/db/metadata-operations";
 import { getConfigRow, putConfigRow } from "./config-rows";
 import {
     deleteEnrollmentCascade,
@@ -36,7 +36,7 @@ import {
     metadataShortfalls,
     type CopiedCheckpoint,
     type StoreCopySteps,
-} from "../store-copy";
+} from "@/db/store-copy";
 import {
     getSqliteEnrollmentsCollection,
     getSqliteEventsCollection,
@@ -64,7 +64,7 @@ export interface DexieMigrationSource {
     /**
      * When Dexie was last booted as the live store (ISO timestamp), or
      * undefined if never. Dexie writes this on every boot as the live
-     * store (`markDexieLive` in `../dexie/real-dexie-migration-target.ts`).
+     * store (`markDexieLive` in `../dexie/dexie-live.ts`).
      */
     readDexieLastLiveAt(): Promise<string | undefined>;
     /**
@@ -269,8 +269,7 @@ export function forwardCopySteps(
                     ? "cleanup-owed"
                     : "current";
             }
-            // Metadata counts too (a metadata sync ran on Dexie), mirroring
-            // the reverse direction's hasAnySqliteDataToMigrate — otherwise
+            // Metadata counts too (a metadata sync ran on Dexie) — otherwise
             // a Dexie store holding metadata but no tracker database would
             // take the fresh-install shortcut and never copy it.
             const hasDexieData =

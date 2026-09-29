@@ -1,5 +1,5 @@
 import { FormInstance } from "antd";
-import { ProgramRuleResult } from "../schemas";
+import { ProgramRuleResult } from "@/schemas";
 
 export type FormEvent =
     | { type: "FIELD_CHANGED"; formData: Record<string, any> }

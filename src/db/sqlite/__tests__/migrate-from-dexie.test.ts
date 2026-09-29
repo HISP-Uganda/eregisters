@@ -4,25 +4,25 @@ import type {
     FlattenedEvent,
     FlattenedTrackedEntity,
     MetadataVersion,
-} from "../../../schemas";
-import type { SyncState } from "../../index";
-import { createNodeSqliteDriver } from ".././test-support/node-sqlite-driver";
-import { createSchema } from ".././schema";
-import { getConfigRow, putConfigRow } from ".././config-rows";
-import { sqliteMetadataStore } from ".././metadata-store";
+} from "@/schemas";
+import type { SyncState } from "@/schemas";
+import { createNodeSqliteDriver } from "@/db/sqlite/test-support/node-sqlite-driver";
+import { createSchema } from "@/db/sqlite/schema";
+import { getConfigRow, putConfigRow } from "@/db/sqlite/config-rows";
+import { sqliteMetadataStore } from "@/db/sqlite/metadata-store";
 import {
     getSqliteTrackedEntitiesCollection,
     initTrackerCollections,
     resetTrackerCollectionsForTests,
-} from ".././tracker-collections-instance";
-import { trackedEntitiesRowAdapter } from ".././row-adapters/tracked-entities";
-import { enrollmentsRowAdapter } from ".././row-adapters/enrollments";
-import { eventsRowAdapter } from ".././row-adapters/events";
+} from "@/db/sqlite/tracker-collections-instance";
+import { trackedEntitiesRowAdapter } from "@/db/sqlite/row-adapters/tracked-entities";
+import { enrollmentsRowAdapter } from "@/db/sqlite/row-adapters/enrollments";
+import { eventsRowAdapter } from "@/db/sqlite/row-adapters/events";
 import {
     forwardCopySteps,
     type DexieMigrationSource,
-} from ".././migrate-from-dexie";
-import { runStoreCopy, type MigrationProgress } from "../../store-copy";
+} from "@/db/sqlite/migrate-from-dexie";
+import { runStoreCopy, type MigrationProgress } from "@/db/store-copy";
 
 let lastProgress: MigrationProgress = { phase: "idle" };
 

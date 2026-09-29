@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { requestPersistentStorage } from "../persistent-storage";
+import { requestPersistentStorage } from "@/db/persistent-storage";
 
 function stubStorage(storage: Partial<StorageManager> | undefined) {
     vi.stubGlobal("navigator", storage ? { storage } : {});

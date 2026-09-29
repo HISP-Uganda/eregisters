@@ -1,7 +1,7 @@
 import type { ReactElement } from "react";
 import { describe, expect, it, vi } from "vitest";
-import type { AnalyticsColumn, AnalyticsRow } from "../../../analytics/types";
-import { toTableColumns, withActionsColumn } from ".././line-list-table";
+import type { AnalyticsColumn, AnalyticsRow } from "@/analytics/types";
+import { toTableColumns, withActionsColumn } from "@/components/analytics/line-list-table";
 
 describe("toTableColumns", () => {
     it("renders flat columns without grouped header children", () => {

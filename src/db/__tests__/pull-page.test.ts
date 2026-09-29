@@ -1,14 +1,14 @@
 import { afterEach, describe, expect, it } from "vitest";
-import type { TrackedEntity } from "../../schemas";
-import { createNodeSqliteDriver } from "../sqlite/test-support/node-sqlite-driver";
-import { createSchema } from "../sqlite/schema";
+import type { TrackedEntity } from "@/schemas";
+import { createNodeSqliteDriver } from "@/db/sqlite/test-support/node-sqlite-driver";
+import { createSchema } from "@/db/sqlite/schema";
 import {
     createEnrollmentsSqliteCollection,
     createEventsSqliteCollection,
     createTrackedEntitiesSqliteCollection,
-} from "../sqlite/collections";
-import { sqlLocalLookups } from "../sqlite/pull-page-lookups";
-import { writePulledTrackedEntityPage } from "../pull-page";
+} from "@/db/sqlite/collections";
+import { sqlLocalLookups } from "@/db/sqlite/pull-page-lookups";
+import { writePulledTrackedEntityPage } from "@/db/pull-page";
 
 // A real DHIS2 tracker-API wire-shape TrackedEntity, exercising the exact
 // nested attributes/enrollments/events array shape flattenTrackedEntity

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { subscribeConfigChanged } from "../db/reactive-config";
+import { subscribeConfigChanged } from "@/db/reactive-config";
 import { useMetadataStore } from "./useMetadataStore";
 
 /**

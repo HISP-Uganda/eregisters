@@ -7,7 +7,7 @@ import {
     normalizePeriodType,
     parsePeriodId,
     type Period,
-} from "../utils/periods";
+} from "@/utils/periods";
 
 interface PeriodPickerProps {
     periodType: string | undefined;

@@ -1,4 +1,4 @@
-import type { RowAdapter } from "../row-adapter";
+import type { RowAdapter } from "@/db/sqlite/row-adapter";
 
 const KEY_SEPARATOR = "::";
 

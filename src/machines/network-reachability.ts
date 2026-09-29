@@ -1,5 +1,5 @@
 import { FetchError } from "@dhis2/app-runtime";
-import { Engine } from "../schemas";
+import { Engine } from "@/schemas";
 
 export const PING_TIMEOUT_MS = 5000;
 

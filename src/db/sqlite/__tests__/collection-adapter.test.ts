@@ -1,9 +1,9 @@
 import { createCollection } from "@tanstack/db";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createCrossTabBus } from "../../cross-tab";
-import { createNodeSqliteDriver } from ".././test-support/node-sqlite-driver";
-import { sqliteCollectionOptions } from ".././collection-adapter";
-import type { RowAdapter } from ".././row-adapter";
+import { createCrossTabBus } from "@/db/cross-tab";
+import { createNodeSqliteDriver } from "@/db/sqlite/test-support/node-sqlite-driver";
+import { sqliteCollectionOptions } from "@/db/sqlite/collection-adapter";
+import type { RowAdapter } from "@/db/sqlite/row-adapter";
 
 type SimpleRow = { id: string; label: string; version: number };
 

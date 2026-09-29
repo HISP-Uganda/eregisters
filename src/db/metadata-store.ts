@@ -70,6 +70,8 @@ export interface MetadataStore {
         keyOf?: (row: T) => string,
     ) => Promise<void>;
     listRows: <T extends object>(table: string) => Promise<T[]>;
+    /** Whether `table` has any row — without reading the rows. */
+    hasRows: (table: string) => Promise<boolean>;
     deleteRow: (table: string, key: string) => Promise<void>;
     /** Deletes every row of `table` in one operation. */
     clearTable: (table: string) => Promise<void>;

@@ -1,10 +1,10 @@
 import { useSyncExternalStore } from "react";
-import { crossTabBus } from "../db/cross-tab";
-import type { MetadataStore } from "../db/metadata-store";
-import { subscribeConfigChanged } from "../db/reactive-config";
-import { SYNC_LOCK_NAMES } from "../machines/sync-locks";
-import { pullUiConfig } from "../machines/sync-metadata-actors";
-import type { Engine, UIConfig } from "../schemas";
+import { crossTabBus } from "@/db/cross-tab";
+import type { MetadataStore } from "@/db/metadata-store";
+import { subscribeConfigChanged } from "@/db/reactive-config";
+import { SYNC_LOCK_NAMES } from "@/machines/sync-locks";
+import { pullUiConfig } from "@/machines/sync-metadata-actors";
+import type { Engine, UIConfig } from "@/schemas";
 import {
     anyTabHasUnsavedWork,
     flushUnsavedWork,

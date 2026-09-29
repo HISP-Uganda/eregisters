@@ -1,9 +1,6 @@
 import { assign, fromCallback, fromPromise, not, setup } from "xstate";
 import {
-    AggregateData,
-    CategoryOptionCombo,
     DataElement,
-    DataSet,
     DEFAULT_DATA_PULL_PAGE_SIZE,
     emptyStageHierarchyConfig,
     emptyUIConfig,
@@ -13,47 +10,42 @@ import {
     FlattenedTrackedEntity,
     Metadata,
     MeUser,
-    OU,
     Program,
-    ProgramIndicator,
-    ProgramRule,
-    ProgramRuleVariable,
     Resource,
     StageHierarchyConfig,
     TrackedEntity,
     TrackedEntityAttribute,
     UIConfig,
-} from "../schemas";
+} from "@/schemas";
 
 import { createActorContext } from "@xstate/react";
 import { MessageInstance } from "antd/es/message/interface";
-import { isEmpty } from "lodash";
-import type { SyncState } from "../db";
-import type { StorageBackend } from "../db/backend";
-import { crossTabBus } from "../db/cross-tab";
-import { subscribeConfigChanged } from "../db/reactive-config";
+import type { SyncState } from "@/schemas";
+import type { StorageBackend } from "@/db/backend";
+import { crossTabBus } from "@/db/cross-tab";
+import { subscribeConfigChanged } from "@/db/reactive-config";
 import {
     getEnrollmentsCollection,
     getEventsCollection,
     getTrackedEntitiesCollection,
-} from "../db/collections";
+} from "@/db/collections";
 import type {
     CheckMetadataInfoResult,
     QueryMetadataInfoResult,
-} from "../db/metadata-operations";
-import type { MetadataStore } from "../db/metadata-store";
-import { writePulledTrackedEntityPage } from "../db/pull-page";
-import { dexieLocalLookups } from "../db/dexie/pull-page-lookups";
-import type { SqlDriver } from "../db/sqlite/driver-types";
-import { sqlLocalLookups } from "../db/sqlite/pull-page-lookups";
+} from "@/db/metadata-operations";
+import type { MetadataStore } from "@/db/metadata-store";
+import { writePulledTrackedEntityPage } from "@/db/pull-page";
+import { dexieLocalLookups } from "@/db/dexie/pull-page-lookups";
+import type { SqlDriver } from "@/db/sqlite/driver-types";
+import { sqlLocalLookups } from "@/db/sqlite/pull-page-lookups";
 import { type ConnectivityStatus } from "./network-reachability";
 import { queryWithTimeout, SYNC_TIMEOUTS_MS } from "./network-reachability";
 import {
     checkMetadataSyncStatus,
     replaceMetadataForResync,
     getConfiguredPageSize,
-    getMetadataVersionRecord,
     patchSyncState,
+    pullMetadataResources,
     pullStageHierarchyConfig,
     pullUiConfig,
     queryMetadata,
@@ -72,7 +64,6 @@ import {
     pullScopeKey,
     shouldUseLastDataPull,
     withPullOverlap,
-    shouldUseLastUpdatedFilter,
 } from "./sync-metadata-mode";
 import {
     countFetched,
@@ -81,7 +72,7 @@ import {
     type PullDataSummary,
 } from "./pull-log";
 import { processBatchSync as processBatchSyncImpl } from "./sync-tracker-actors";
-import { syncsBlockedByUpdate } from "../app-update/update-controller";
+import { syncsBlockedByUpdate } from "@/app-update/update-controller";
 import {
     holdLockIfAvailable,
     SYNC_LOCK_NAMES,
@@ -182,11 +173,6 @@ export interface SyncContext {
     rawMetadata: Metadata;
     uiConfig: UIConfig;
     stageHierarchyConfig: StageHierarchyConfig;
-    period?: string;
-    dataSet?: string;
-    orgUnit?: string;
-    aggregateData?: Map<string, string>;
-    periodType?: string;
     connectivityStatus: ConnectivityStatus;
 }
 
@@ -220,16 +206,6 @@ type SyncEvent =
     | { type: "METADATA_CHANGED_ELSEWHERE" }
     | { type: "SET_CONNECTIVITY_STATUS"; status: ConnectivityStatus }
     | { type: "PARENT_READY" }
-    | { type: "SET_PERIOD"; period?: string }
-    | { type: "SET_DATASET"; dataSet?: string; periodType?: string }
-    | { type: "SET_ORG_UNIT"; orgUnit?: string }
-    | {
-          type: "FETCH_AGGREGATE_DATA";
-          orgUnit: string;
-          period: string;
-          dataSet?: string;
-          periodType?: string;
-      }
     | { type: "PARENT_NOT_READY" };
 /** The one tracker program this deployment pulls (see IMPLEMENTATION_PLAN R9 for multi-program). */
 const PULL_PROGRAM = "ueBhWkWll5v";
@@ -339,37 +315,6 @@ export const syncMachine = setup({
                 };
             },
         ),
-        pullAggregateData: fromPromise<
-            AggregateData,
-            { dataSet?: string; period?: string; orgUnit?: string }
-        >(async ({ input: { period, dataSet, orgUnit } }) => {
-            if (
-                orgUnit === undefined ||
-                period === undefined ||
-                dataSet === undefined
-            ) {
-                throw new Error("OrgUnit,Data set or period not specified");
-            }
-            const params = new URLSearchParams({
-                source: "hmis_dvs",
-                period,
-                dataset: dataSet,
-                orgunit: orgUnit,
-            });
-            const response = await fetch(
-                `https://eregisters.health.go.ug/ereports/query?${params.toString()}`,
-                {
-                    headers: {
-                        "x-api-key": "LnwYPc0EnRKIqjKaQabQWGIN31ranjYt",
-                    },
-                },
-            );
-            if (!response.ok) {
-                throw new Error("Something went wrong");
-            }
-            const data = await response.json();
-            return data as AggregateData;
-        }),
         checkIndexDB: fromPromise<
             CheckMetadataInfoResult,
             { metadataStore: MetadataStore }
@@ -586,410 +531,8 @@ export const syncMachine = setup({
         }),
         pullResource: fromPromise<
             Metadata,
-            {
-                resources: Resource[];
-                engine: Engine;
-                metadataStore: MetadataStore;
-                lastMetadataPull: string | undefined;
-                metadataSyncMode: MetadataSyncMode;
-                userOrgUnit: string;
-            }
-        >(async ({ input }) => {
-            const {
-                resources,
-                engine,
-                metadataStore,
-                lastMetadataPull,
-                metadataSyncMode,
-                userOrgUnit,
-            } = input;
-
-            // Mirror pullData's lastDataPull boundary: capture the SERVER's
-            // clock once, before any resource is pulled, rather than the
-            // device clock per-resource — avoids client/server clock skew
-            // and guarantees a resource updated on the server *during* this
-            // (possibly long-running) sync is re-fetched next time instead
-            // of being skipped.
-            const serverDate = extractServerDate(
-                (await queryWithTimeout(engine, {
-                    info: { resource: "system/info" },
-                }, SYNC_TIMEOUTS_MS.probe)) as { info?: { serverDate?: string } },
-            );
-
-            const results: Metadata = {
-                dataElements: [],
-                optionGroups: [],
-                optionSets: [],
-                organisationUnits: [],
-                programs: [],
-                programIndicators: [],
-                programRules: [],
-                programRuleVariables: [],
-                trackedEntityAttributes: [],
-                metadataVersion: [],
-                dataSets: [],
-                categoryOptionCombos: [],
-                succeededResources: new Set<Resource>(),
-            };
-            // Every resource is fetched in parallel (they're independent
-            // requests); results are merged into `results` by field, and
-            // the metadata-version bookkeeping runs once afterwards, over
-            // every resource that succeeded.
-            const fetchResource = async (resource: Resource): Promise<void> => {
-                switch (resource) {
-                    case "categoryOptionCombos":
-                        const {
-                            categoryOptionCombos: { categoryOptionCombos },
-                        } = (await queryWithTimeout(engine, {
-                            categoryOptionCombos: {
-                                resource: `categoryCombos/UjXPudXlraY/categoryOptionCombos.json`,
-                                params: {
-                                    fields: "id,name,access,categoryOptions[id,name,access]",
-                                },
-                            },
-                        }, SYNC_TIMEOUTS_MS.probe)) as {
-                            categoryOptionCombos: {
-                                categoryOptionCombos: CategoryOptionCombo[];
-                            };
-                        };
-                        results.categoryOptionCombos = categoryOptionCombos;
-                        break;
-                    case "organisationUnits":
-                        const {
-                            organisationUnits: { organisationUnits },
-                        } = (await queryWithTimeout(engine, {
-                            organisationUnits: {
-                                resource: `organisationUnits/${userOrgUnit}.json`,
-                                params: {
-                                    fields: "id,name,code,path,parent",
-                                    paging: false,
-                                    includeDescendants: true,
-                                },
-                            },
-                        }, SYNC_TIMEOUTS_MS.probe)) as {
-                            organisationUnits: {
-                                organisationUnits: OU[];
-                            };
-                        };
-                        results.organisationUnits = organisationUnits;
-                        break;
-                    case "dataSets":
-                        const {
-                            dataSets: { dataSets },
-                        } = (await queryWithTimeout(engine, {
-                            dataSets: {
-                                resource: "dataSets.json",
-                                params: {
-                                    fields: "id,name,code,periodType",
-                                },
-                            },
-                        }, SYNC_TIMEOUTS_MS.probe)) as {
-                            dataSets: {
-                                dataSets: DataSet[];
-                            };
-                        };
-                        results.dataSets = dataSets;
-                        break;
-
-                    case "programs":
-                        const { program } = (await queryWithTimeout(engine, {
-                            program: {
-                                resource: "programs",
-                                id: "ueBhWkWll5v",
-                                params: {
-                                    fields: "id,name,programSections[id,name,sortOrder,trackedEntityAttributes[id]],trackedEntityType[id,trackedEntityTypeAttributes[id]],programType,selectEnrollmentDatesInFuture,selectIncidentDatesInFuture,programStages[id,repeatable,name,code,executionDateLabel,programStageDataElements[id,sortOrder,compulsory,renderOptionsAsRadio,dataElement[id],renderType,allowFutureDate],programStageSections[id,name,sortOrder,dataElements[id]]],programTrackedEntityAttributes[id,mandatory,searchable,renderOptionsAsRadio,renderType,sortOrder,allowFutureDate,displayInList,trackedEntityAttribute[id]]",
-                                },
-                            },
-                        }, SYNC_TIMEOUTS_MS.bulkMetadata)) as { program: Program };
-                        results.programs = [program];
-                        break;
-
-                    case "dataElements":
-                        const dataElementsParams: any = {
-                            fields: "id,name,code,valueType,formName,optionSetValue,optionSet[id]",
-                            paging: false,
-                        };
-
-                        if (
-                            shouldUseLastUpdatedFilter(
-                                metadataSyncMode,
-                                lastMetadataPull,
-                            )
-                        ) {
-                            dataElementsParams.filter = `lastUpdated:gt:${lastMetadataPull}`;
-                        }
-                        const {
-                            dataElements: { dataElements },
-                        } = (await queryWithTimeout(engine, {
-                            dataElements: {
-                                resource: "dataElements",
-                                params: dataElementsParams,
-                            },
-                        }, SYNC_TIMEOUTS_MS.bulkMetadata)) as {
-                            dataElements: {
-                                dataElements: DataElement[];
-                            };
-                        };
-
-                        results.dataElements = dataElements;
-                        break;
-                    case "programIndicators":
-                        const programIndicatorsParams: any = {
-                            fields: "id,name,filter,program,aggregationType,expression",
-                            paging: false,
-                        };
-                        if (
-                            shouldUseLastUpdatedFilter(
-                                metadataSyncMode,
-                                lastMetadataPull,
-                            )
-                        ) {
-                            programIndicatorsParams.filter = `lastUpdated:gt:${lastMetadataPull}`;
-                        }
-                        const {
-                            programIndicators: { programIndicators },
-                        } = (await queryWithTimeout(engine, {
-                            programIndicators: {
-                                resource: "programIndicators",
-                                params: programIndicatorsParams,
-                            },
-                        }, SYNC_TIMEOUTS_MS.bulkMetadata)) as {
-                            programIndicators: {
-                                programIndicators: ProgramIndicator[];
-                            };
-                        };
-
-                        results.programIndicators = programIndicators;
-
-                        break;
-
-                    case "attributes":
-                        const attributesParams: any = {
-                            fields: "id,name,code,unique,generated,pattern,confidential,valueType,optionSetValue,displayFormName,formName,optionSet[id]",
-                            paging: false,
-                        };
-                        if (
-                            shouldUseLastUpdatedFilter(
-                                metadataSyncMode,
-                                lastMetadataPull,
-                            )
-                        ) {
-                            attributesParams.filter = `lastUpdated:gt:${lastMetadataPull}`;
-                        }
-                        const {
-                            trackedEntityAttributes: {
-                                trackedEntityAttributes,
-                            },
-                        } = (await queryWithTimeout(engine, {
-                            trackedEntityAttributes: {
-                                resource: "trackedEntityAttributes",
-                                params: attributesParams,
-                            },
-                        }, SYNC_TIMEOUTS_MS.bulkMetadata)) as {
-                            trackedEntityAttributes: {
-                                trackedEntityAttributes: TrackedEntityAttribute[];
-                            };
-                        };
-
-                        results.trackedEntityAttributes =
-                            trackedEntityAttributes;
-                        break;
-
-                    case "programRules":
-                        const programRulesFilters = [
-                            "program.id:eq:ueBhWkWll5v",
-                        ];
-                        if (
-                            shouldUseLastUpdatedFilter(
-                                metadataSyncMode,
-                                lastMetadataPull,
-                            )
-                        ) {
-                            programRulesFilters.push(
-                                `lastUpdated:gt:${lastMetadataPull}`,
-                            );
-                        }
-                        const {
-                            programRules: { programRules },
-                        } = (await queryWithTimeout(engine, {
-                            programRules: {
-                                resource: `programRules.json`,
-                                params: {
-                                    filter: programRulesFilters,
-                                    fields: "*,programRuleActions[*]",
-                                    paging: false,
-                                },
-                            },
-                        }, SYNC_TIMEOUTS_MS.bulkMetadata)) as {
-                            programRules: {
-                                programRules: ProgramRule[];
-                            };
-                        };
-
-                        results.programRules = programRules;
-
-                        break;
-
-                    case "programRuleVariables":
-                        const programRuleVariablesFilters = [
-                            "program.id:eq:ueBhWkWll5v",
-                        ];
-                        if (
-                            shouldUseLastUpdatedFilter(
-                                metadataSyncMode,
-                                lastMetadataPull,
-                            )
-                        ) {
-                            programRuleVariablesFilters.push(
-                                `lastUpdated:gt:${lastMetadataPull}`,
-                            );
-                        }
-                        const {
-                            programRuleVariables: { programRuleVariables },
-                        } = (await queryWithTimeout(engine, {
-                            programRuleVariables: {
-                                resource: `programRuleVariables.json`,
-                                params: {
-                                    filter: programRuleVariablesFilters,
-                                    fields: "*",
-                                    paging: false,
-                                },
-                            },
-                        }, SYNC_TIMEOUTS_MS.bulkMetadata)) as {
-                            programRuleVariables: {
-                                programRuleVariables: ProgramRuleVariable[];
-                            };
-                        };
-
-                        results.programRuleVariables = programRuleVariables;
-                        break;
-
-                    case "optionSets":
-                        const optionSetsParams: any = {
-                            fields: "id,name,options[id,name,code,sortOrder]",
-                            paging: false,
-                        };
-                        if (
-                            shouldUseLastUpdatedFilter(
-                                metadataSyncMode,
-                                lastMetadataPull,
-                            )
-                        ) {
-                            optionSetsParams.filter = `lastUpdated:gt:${lastMetadataPull}`;
-                        }
-                        const { optionSets } = (await queryWithTimeout(engine, {
-                            optionSets: {
-                                resource: "optionSets",
-                                params: optionSetsParams,
-                            },
-                        }, SYNC_TIMEOUTS_MS.bulkMetadata)) as {
-                            optionSets: {
-                                optionSets: {
-                                    id: string;
-                                    name: string;
-                                    options: {
-                                        id: string;
-                                        name: string;
-                                        code: string;
-                                        sortOrder: number;
-                                    }[];
-                                }[];
-                            };
-                        };
-
-                        const flattenedOptionSets =
-                            optionSets.optionSets.flatMap((os) =>
-                                os.options.map((o) => ({
-                                    ...o,
-                                    optionSet: os.id,
-                                    optionSetName: os.name,
-                                })),
-                            );
-                        results.optionSets = flattenedOptionSets;
-                        break;
-
-                    case "optionGroups":
-                        const optionGroupsParams: any = {
-                            fields: "id,options[id,name,code,sortOrder]",
-                            paging: false,
-                        };
-                        if (
-                            shouldUseLastUpdatedFilter(
-                                metadataSyncMode,
-                                lastMetadataPull,
-                            )
-                        ) {
-                            optionGroupsParams.filter = `lastUpdated:gt:${lastMetadataPull}`;
-                        }
-                        const { optionGroups } = (await queryWithTimeout(engine, {
-                            optionGroups: {
-                                resource: "optionGroups",
-                                params: optionGroupsParams,
-                            },
-                        }, SYNC_TIMEOUTS_MS.bulkMetadata)) as {
-                            optionGroups: {
-                                optionGroups: Array<{
-                                    id: string;
-                                    options: {
-                                        id: string;
-                                        name: string;
-                                        code: string;
-                                        sortOrder: number;
-                                    }[];
-                                }>;
-                            };
-                        };
-
-                        const flattenedOptionGroups =
-                            optionGroups.optionGroups.flatMap((og) =>
-                                og.options.map((o) => ({
-                                    ...o,
-                                    optionGroup: og.id,
-                                })),
-                            );
-                        results.optionGroups = flattenedOptionGroups;
-                        break;
-                }
-            };
-
-            const outcomes = await Promise.allSettled(
-                resources.map((resource) => fetchResource(resource)),
-            );
-            outcomes.forEach((outcome, index) => {
-                const resource = resources[index];
-                if (outcome.status === "fulfilled") {
-                    results.succeededResources!.add(resource);
-                } else {
-                    console.warn(
-                        `[metadata-sync] Skipping ${resource}:`,
-                        outcome.reason,
-                    );
-                }
-            });
-
-            if (results.succeededResources!.size > 0) {
-                // Prefer the server clock captured above; fall back to
-                // the previous boundary (don't advance with an
-                // untrusted timestamp — same rule as resolveNextDataPull)
-                // and only to the device clock as a last resort, since
-                // MetadataVersion.lastSync requires a string.
-                const currentTimestamp =
-                    serverDate ?? lastMetadataPull ?? new Date().toISOString();
-                const version = (await getMetadataVersionRecord(
-                    metadataStore,
-                )) ?? {
-                    id: "metadata-version",
-                    lastSync: currentTimestamp,
-                    versions: {},
-                };
-                for (const resource of results.succeededResources!) {
-                    version.versions[resource] = currentTimestamp;
-                }
-                version.lastSync = currentTimestamp;
-                results.metadataVersion = [version];
-            }
-            return results;
-        }),
+            Parameters<typeof pullMetadataResources>[0]
+        >(async ({ input }) => pullMetadataResources(input)),
         replaceAllMetadata: fromPromise<
             void,
             { metadataStore: MetadataStore; metadata: Metadata }
@@ -1024,8 +567,6 @@ export const syncMachine = setup({
     },
     delays: {},
     guards: {
-        hasValidParams: ({ context: { dataSet, period, orgUnit } }) =>
-            !isEmpty(dataSet) && !isEmpty(period) && !isEmpty(orgUnit),
     },
 }).createMachine({
     /** @xstate-layout N4IgpgJg5mDOIC5SwJ4DsDGA6AtmALgIYSFEDK62AlhADZgDEEA9mmFlWgG7MDW7qTLgLFShCkJr0EnHhlJVWAbQAMAXVVrEoAA7NYVfIrTaQAD0QBmAEwBGLCoAsANgAcrlbduXbAVl+WjgA0ICiItiq+jg6WAJwqAOy2Cc6+7gC+6SGC2HhEJOSUHHSMLGwc3HwCRXmihZIlMpXyRsrqSrZaSCB6Bq0m3RYI1q6WWAmxqd7x1nYJrsGh4bau1uNuNrbxo76Z2TUiBeJFUoxgAE7nzOdYOrSkAGbXOFg5wvliEtSNsswtxppNKZeoZjKYhpsHC53J5vH4AoswghRq4sL55t44o50a5bHsQG9akcvsV6AwyAAVACCACUKQB9ACyAFFqQARKnU+lkACaADkAMJA7og-rgxAJMZRXxeFQqWKWZzWRzykJI2wq6LeVKOWIRWzOTz4wmHT4nEoMABiAFUADK2pmsqkcrm8wXC3T6UGscUISwJLDWVIqDwTZwJXWqpYIPwTcZ2Gx6lRK2LWY0HD71bCwQhcThQRmmohMVjsX78V4ZurHIQ5vNoAtFwhNOQKNoadTAr1iwbhVzOLUq5ypGWWVyxSZq8KOLZYVPjw16xz99NCIlmoQARwArhcUPmAJJoCBgMxsgBCJfK5eqa6bJJ3e8Px9PF5bfzbaEBnZF3bBvZjftB2TEdvHHSdo2SawxiSVwEgSaxYQWFZV1ye8ikfc59wbI8TzPS8LiuG47keZ5KzvTMa2wTDsKgXDX3Pd9-nbD0ej-H0ANmBJfDnZNrAnBUokcCMpxjGcA0cEZJnlDUVyyAkq2JIoT3oIwG0LSirzLSoKxNSiSRUgh8w06smM-b8uk9Pp-1AIYNRGLANWTfwXFiXFHERadLB4zxZliFx7N8FRLFQ95qwMsBVOMpsGEI65bnufAnnOF49PC5TIqM9SmzM-oLK7ayONs6cHKckdXPczzAPHKE3DcqZhLxeS0qU2tKHzLSKh4XTFI3bN2obXKAXaH8rO9AZioQeJYkDXFuPReZfGVBJRLhVFEI8nxJjmSZQvXLNyIwDqym07rbzQ-SihyfMhpYzoCvG313HsJx3GxJUuOE1aZRmraEIWBJImTELmt6g7robWLLnikikrIlq+sOm7fmYr8RsstjCom8xEFWX7HH9cNdQQiMVsgxCeIjYT0RnKIvDTUGKPSoQAHdCFBSHKVpBkWXZTkqW5fkhVGzHHoAgcVHGXFlSW5dlwHVaB2iRqQw8ILrHRXZGYu5nsDZjmoCtO0HV551+cF90RdFGycb9Pw5zSHxcU8Anh0VjysEajaB0CRw9vQ1n2bUw2zFgIh8HYQgHgj84AApDTlFQAEoGARg79eD1jraK23IScNwPC8Hx-ECVaCeiby-A8SwVGg8dQta74yTdAV6WZPkKQPTvmTILP2OxoZEMloLE4NHwh6W0SNcBrA4KCmvnECGW-e1rBG9JRgAAVrTIAAJekXSpPusd9Ie0UTzxF9sCfrCnhesH9dX4lp+CV-2IR19OBhQ-DyPo4uWONdE4pzeJ-Eox8xaTTPiPOUY9r5ykntGWYaRZ7cVrtLSYLgG6IwgFQc4YAMD4C+AwCBPZJrDmcLPfOAkAjcVcL4Ke6I1iP2CsmEm8Etbv2wOvbcdxmDEHzGyPBBD8CdRvIdNeiNeG0H4bghsQj8GENumjDsGNs4D2WIkRyctDQRH8kGMmSJlR2HPkGSwlcogTmwQdaRsjBHCMIVDIiCVSIpQkTwvhAj5EOPwMo-Kv4T7i38p7R+cJF6+FiOiKeKoeJpAicOZc1gOEgy4ZIg6AAjUgGAAAWxCTpdSqO4xGmT8A5K+H49GD0yG2woVQ1yE5aFxKnkGewLCRjX0wc4axVEsAlLKZQJxMNErJVSspYpWTcmUAqaoqpNtB5ynPqPK+N8p4Gh4vxZw8QIiBEiE1VJHiChgFtIQMObIxCb23LAbJJCrb919PAmadg4LcWgvZWIU9861XiJEeYIZfBdNXkcC5tBaAb3JNSOkB9zYt1IXM8IqY5yphWLEQG44FhBm+i9C+iF+KKhed04FoKv42ntFC10QtYU5zsgiicTyUUhjcpJZw0SxgfTiBMOw6sIwEu3CCsFP9SB-xjvHC+ICxlEEJRvSlGiYw0qReOVFjKMVIOCdfaCbkky6lGDyvlDxeW0BpGAB4+CrliJ0udNJhBJV6pBYa41cBsnTOlb6JU0RgrxAjIqccQUGHRi2oGGBgRvJhhSQpD+5z9VYBtQao1JrrlxWIsM+G4qrWRujXauNTrbmBPIcqGIHrXbesiFPJI4wYEazrqkUNoCI18ohobfJ4ia0SsjfWrNai7kAQiEGB+Mo0hJPgp4fsoklqomHBqReE4fCpABfs2toL62DMTa40Z4aW11oGlAdtsyqXhFrpQixqx4KAxWMy6My57AGgnTXaWgRZ1hu4fOrAvDDnHNOfOm5Hac22z0WsGcKoFjCU1L6pEw4eI2FxMXRCY43A6tBRnDqXNIWHwtsLL9kCf1yrpYq9FZ6kRRDGIkSD8o4LeVg4Cp9CHIYkodChmF2aMPUrWLS5FOGmWiUCPYNlE5VjGIVHBrAVGQ5h0FVgKOwqE5yjFWu1NfKhPOq7Vh1jDLcOiV1LEjEQDuKSU1pkeSaBmAnngN0HIO6ZUAFoUGSl1FsaDGsZKiXM3mi+tmBJjn7NWsGVEzO+nMxEcYgQ9SpmCvZvUoluIvU01iHEeyH1hTAfQHzAEEKrRrr9a+Mplz0OSf7S6tZczRUoklyaBphKOXs95bE-FoJVWmDxSSC5a4IRHLl3WWAaLPjwheYrtsKaogCEmSUOpatxGY1JQ0SSgwl1a+vQywcTJHB63ZU9jk57LTcHXQxJVogpD8gTMc3aZuI3rUtxAM4xiKm8v6DVF6FaQUkjtpUyRX42f8kd9OQd8ynYQIvAMgN1PevcGkPD4QUhSjxv8lE813s9IeOzWg258HfeWjNaEHgmX+A1GXa+Dh5jSWPQ1t+cXG7I9q5E-r9S0gzkmMkbpJJTjfZS0gyIqICYorSMFf50E6fKR8V8b7BMeL0KiHQyMkpXCMLK3PVhrD0SeZkySWxXioAKJEd99wqJxzJh02slU7ykGSUlk4A0kTJgymnjzoQfTJmYAFyYtBcphwISCqmKqsxFSoK5cuKmsXm09JfYKt9+Azktqud97wtcQkvM2Sid6zSe1tKSAify96-eEtJ6JRensBKhkTs4LwRO0+RoZwExjiBgm6ieaGeCowRIG61O7lFSKvcCfTbGh1AuvAOCI1sGcIWaYceCmiOIzkfqKh9gJk7pfqlDEA45TwOJFwRGHeemqeoJ38QWPEOIAmA8RyDyH2TtBw8rB4ovEYipZgDiVJnrRMWgHDg877lNkqhOM9vtGKIax-oR419iJIre8OiOYAJ+9CWA5+owH01+H+SIwkzGBeSozy-YkwCQem6QQAA */
@@ -1109,86 +650,6 @@ export const syncMachine = setup({
         };
     },
     states: {
-        aggregateData: {
-            initial: "idle",
-            states: {
-                idle: {
-                    on: {
-                        SET_PERIOD: {
-                            actions: assign(({ event }) => {
-                                return {
-                                    period: event.period,
-                                };
-                            }),
-                            target: "canPullAggregateData",
-                        },
-                        SET_DATASET: {
-                            actions: assign(({ event }) => {
-                                return {
-                                    dataSet: event.dataSet,
-                                    periodType: event.periodType,
-                                };
-                            }),
-                            target: "canPullAggregateData",
-                        },
-                        SET_ORG_UNIT: {
-                            actions: assign({
-                                orgUnit: ({ event }) => event.orgUnit,
-                            }),
-                            target: "canPullAggregateData",
-                        },
-                    },
-                },
-                canPullAggregateData: {
-                    always: [
-                        {
-                            target: "pullAggregateData",
-                            guard: "hasValidParams",
-                        },
-                        {
-                            target: "idle",
-                            guard: not("hasValidParams"),
-                        },
-                    ],
-                },
-                pullAggregateData: {
-                    invoke: {
-                        src: "pullAggregateData",
-                        input: ({ context: { dataSet, period, orgUnit } }) => {
-                            return {
-                                dataSet,
-                                period,
-                                orgUnit,
-                            };
-                        },
-                        onDone: {
-                            actions: assign(({ event }) => {
-                                return {
-                                    aggregateData: new Map(
-                                        event.output.dataValues.map(
-                                            ({
-                                                dataElement,
-                                                attributeOptionCombo,
-                                                categoryOptionCombo,
-                                                value,
-                                            }) => [
-                                                `${dataElement}_${categoryOptionCombo}_${attributeOptionCombo}`,
-                                                value,
-                                            ],
-                                        ),
-                                    ),
-                                };
-                            }),
-                            target: "idle",
-                        },
-                        onError: {
-                            actions: ({ event }) => {},
-                            target: "idle",
-                        },
-                    },
-                },
-            },
-        },
         metadataSync: {
             initial: "idle",
             id: "metadataSync",

@@ -3,9 +3,9 @@ import type {
     FlattenedEnrollment,
     FlattenedEvent,
     FlattenedTrackedEntity,
-} from "../../schemas";
+} from "@/schemas";
 import { dexieTrackerCollectionOptions } from "./dexie-collection-adapter";
-import { localEditStamp } from "../local-author";
+import { localEditStamp } from "@/db/local-author";
 
 /**
  * Revived Dexie/IndexedDB tracker collections — the parallel implementation

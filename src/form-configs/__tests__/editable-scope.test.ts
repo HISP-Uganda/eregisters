@@ -1,15 +1,15 @@
 import { describe, expect, it } from "vitest";
-import * as Hmis033b from ".././Hmis033b.config";
-import * as Hmis10501 from ".././Hmis10501.config";
-import * as Hmis1050203 from ".././Hmis1050203.config";
-import * as Hmis1050405 from ".././Hmis1050405.config";
-import * as Hmis1050609 from ".././Hmis1050609.config";
-import * as Hmis10510 from ".././Hmis10510.config";
-import * as Hmis106A0102 from ".././Hmis106A0102.config";
-import * as Hmis106A03 from ".././Hmis106A03.config";
-import * as Hmis106A04 from ".././Hmis106A04.config";
-import * as Hmis108 from ".././Hmis108.config";
-import type { HmisFormConfig } from ".././types";
+import * as Hmis033b from "@/form-configs/Hmis033b.config";
+import * as Hmis10501 from "@/form-configs/Hmis10501.config";
+import * as Hmis1050203 from "@/form-configs/Hmis1050203.config";
+import * as Hmis1050405 from "@/form-configs/Hmis1050405.config";
+import * as Hmis1050609 from "@/form-configs/Hmis1050609.config";
+import * as Hmis10510 from "@/form-configs/Hmis10510.config";
+import * as Hmis106A0102 from "@/form-configs/Hmis106A0102.config";
+import * as Hmis106A03 from "@/form-configs/Hmis106A03.config";
+import * as Hmis106A04 from "@/form-configs/Hmis106A04.config";
+import * as Hmis108 from "@/form-configs/Hmis108.config";
+import type { HmisFormConfig } from "@/form-configs/types";
 
 const modules = {
     Hmis033b,

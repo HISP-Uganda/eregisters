@@ -1,16 +1,16 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createActor, fromCallback, fromPromise, waitFor, type AnyActorLogic } from "xstate";
-import { CROSS_TAB_CHANNEL } from "../../db/cross-tab";
-import { SYNC_TIMEOUTS_MS } from "../network-reachability";
-import type { CheckMetadataInfoResult } from "../../db/metadata-operations";
-import type { MetadataStore } from "../../db/metadata-store";
-import { sqliteMetadataStore } from "../../db/sqlite/metadata-store";
-import { createSchema } from "../../db/sqlite/schema";
-import { createNodeSqliteDriver } from "../../db/sqlite/test-support/node-sqlite-driver";
+import { CROSS_TAB_CHANNEL } from "@/db/cross-tab";
+import { SYNC_TIMEOUTS_MS } from "@/machines/network-reachability";
+import type { CheckMetadataInfoResult } from "@/db/metadata-operations";
+import type { MetadataStore } from "@/db/metadata-store";
+import { sqliteMetadataStore } from "@/db/sqlite/metadata-store";
+import { createSchema } from "@/db/sqlite/schema";
+import { createNodeSqliteDriver } from "@/db/sqlite/test-support/node-sqlite-driver";
 import { FetchError } from "@dhis2/app-runtime";
-import { initCollections } from "../../db/collections";
-import { resetTrackerCollectionsForTests } from "../../db/sqlite/tracker-collections-instance";
-import { syncMachine } from "../sync";
+import { initCollections } from "@/db/collections";
+import { resetTrackerCollectionsForTests } from "@/db/sqlite/tracker-collections-instance";
+import { syncMachine } from "@/machines/sync";
 
 /**
  * First whole-machine tests for sync.ts — wayfinder ticket "Load and

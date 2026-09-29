@@ -1,6 +1,6 @@
 import type { SyncConfig } from "@tanstack/db";
-import type { TrackerCollectionUtils } from "../tracker-collection-utils";
-import { crossTabBus, type CrossTabBus } from "../cross-tab";
+import type { TrackerCollectionUtils } from "@/db/tracker-collection-utils";
+import { crossTabBus, type CrossTabBus } from "@/db/cross-tab";
 import type { SqlDriver } from "./driver-types";
 import type { RowAdapter, RowWriteOptions } from "./row-adapter";
 import {

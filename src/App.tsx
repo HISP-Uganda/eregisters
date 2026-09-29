@@ -13,6 +13,7 @@ import {
     watchFacilityAcrossTabs,
 } from "./facility-store";
 import { setLocalAuthor } from "./db/local-author";
+import { requestPersistentStorage } from "./db/persistent-storage";
 import {
     startAppUpdateWatch,
     startBroadcastWatch,
@@ -85,8 +86,6 @@ const FullApp: FC<{
         return (
             <StorageBootScreen
                 view={view}
-                onRetry={() => bootActor.send({ type: "RETRY" })}
-                onContinue={() => bootActor.send({ type: "CONTINUE" })}
             />
         );
     }
@@ -132,6 +131,11 @@ const MyApp: FC = () => {
     // down, waits for unsaved work and syncs, then applies it — wayfinder
     // map "Force devices onto the latest app version".
     useEffect(() => startAppUpdateWatch(), []);
+    // Ask the browser not to evict this device's storage (unsynced offline
+    // data lives there). Quietly — the old warning banner was switched off.
+    useEffect(() => {
+        void requestPersistentStorage();
+    }, []);
 
     if (error) {
         return (
@@ -176,11 +180,6 @@ const MyApp: FC = () => {
         );
     }
 
-    // const {
-    //     id: user,
-    //     organisationUnits: [{ id: orgUnit, programs }],
-    //     authorities,
-    // } = data.me;
 
     return (
         <ConfigProvider

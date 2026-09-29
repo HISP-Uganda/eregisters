@@ -7,7 +7,7 @@ import type {
     ProgramStage,
     TrackedEntityAttribute,
     UIConfig,
-} from "../schemas";
+} from "@/schemas";
 
 export type AnalyticsSource =
     | "trackedEntity"

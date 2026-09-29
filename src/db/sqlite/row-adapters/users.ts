@@ -1,4 +1,4 @@
-import type { SqlDriver } from "../driver-types";
+import type { SqlDriver } from "@/db/sqlite/driver-types";
 
 export type SqlUser = {
     uid: string;

@@ -1,6 +1,6 @@
 import { FetchError } from "@dhis2/app-runtime";
 import { describe, expect, it } from "vitest";
-import { countFetched, pullFailureOutcome } from "../pull-log";
+import { countFetched, pullFailureOutcome } from "@/machines/pull-log";
 
 describe("countFetched", () => {
     it("counts tracked entities and the enrollments/events nested in them", () => {

@@ -1,4 +1,4 @@
-import type { Metadata, Resource } from "../../schemas";
+import type { Metadata, Resource } from "@/schemas";
 import type { SqlDriver } from "./driver-types";
 
 /**

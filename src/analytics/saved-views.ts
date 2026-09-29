@@ -1,5 +1,5 @@
-import type { AnalyticsFilters } from "../components/analytics/analytics-filter-bar";
-import type { LineListTableState } from "../components/analytics/line-list-table";
+import type { AnalyticsFilters } from "@/components/analytics/analytics-filter-bar";
+import type { LineListTableState } from "@/components/analytics/line-list-table";
 
 /**
  * A user-named snapshot of the Line List's filters/columns/table state,

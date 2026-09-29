@@ -283,6 +283,8 @@ const ProgramRuleVariableSchema = z.object({
     id: UID,
     attributeValues: z.array(z.unknown()),
     trackedEntityAttribute: z.object({ id: UID }).optional(),
+    /** The stage a `DATAELEMENT_NEWEST_EVENT_PROGRAM_STAGE` variable reads. */
+    programStage: z.object({ id: UID }).optional(),
     programRuleVariableSourceType: z.string(),
     valueType: z.enum(["TEXT", "NUMBER", "BOOLEAN", "DATE"]),
 });
@@ -754,20 +756,6 @@ export type UIConfig = {
         metadata: { timestamp: string } | null;
     };
     dataPullPageSize?: number;
-    /**
-     * Admin-controlled device storage backend policy — wayfinder map
-     * "Centrally admin-controlled device storage configuration"
-     * (docs/wayfinder/admin-storage-backend-policy/map.md). Set by an
-     * admin in admin.app-settings.tsx, applied via the same
-     * reloadSignal/"Reload now" banner pattern as app/metadata updates.
-     * The literal union mirrors db/backend.ts's BackendSetting, kept
-     * inline here rather than imported to avoid a schemas.ts -> db/
-     * dependency.
-     */
-    storageBackendPolicy?: {
-        value: "auto" | "sqlite" | "dexie";
-        timestamp: string;
-    } | null;
 };
 
 export const DEFAULT_DATA_PULL_PAGE_SIZE = 50;
@@ -776,7 +764,6 @@ export const emptyUIConfig: UIConfig = {
     subsections: {},
     formLayouts: {},
     reloadSignal: { app: null, metadata: null },
-    storageBackendPolicy: null,
 };
 
 export interface StagePair {
@@ -820,31 +807,6 @@ export type FlattenedOptionGroup = {
     sortOrder: number;
 };
 
-export interface AggregateData {
-    count: number;
-    rows_fetched: number;
-    rows_invalid: number;
-    rows_duplicate: number;
-    pager: Pager;
-    dataValues: AggregateDataValue[];
-}
-
-export interface Pager {
-    page: number;
-    pageSize: number;
-    pageCount: number;
-    total: number;
-}
-
-export interface AggregateDataValue {
-    dataElement: string;
-    period: string;
-    orgUnit: string;
-    categoryOptionCombo: string;
-    attributeOptionCombo: string;
-    value: string;
-}
-
 export interface CategoryOptionCombo {
   name: string
   categoryOptions: CategoryOption[]
@@ -882,3 +844,22 @@ export interface Access2 {
 }
 
 export type Engine = ReturnType<typeof useDataEngine>;
+
+/** The `sync_state` row: sync checkpoints and status (see `patchSyncState`). */
+export interface SyncState {
+    id: string;
+    status: "idle" | "syncing" | "online" | "offline";
+    isOnline: boolean;
+    isSyncing: boolean;
+    lastSyncAt?: string;
+    lastPullAt?: string;
+    lastPushAt?: string;
+    /** Program + org unit `lastPullAt` was taken for (see `pullScopeKey`). */
+    pullScope?: string;
+    lastSyncDuration?: number;
+    lastSyncCount?: number;
+    lastError?: string;
+    pendingCount: number;
+    updatedAt: string;
+    pullVersions?: Record<string, string>;
+}

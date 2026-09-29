@@ -1,14 +1,14 @@
 import { DatePicker, Flex, Form, Select } from "antd";
 import dayjs, { Dayjs } from "dayjs";
 import React from "react";
-import PeriodPicker from "../period-picker";
-import type { Program, StagePair } from "../../schemas";
-import { useIsMobile } from "../../hooks/useIsMobile";
+import PeriodPicker from "@/components/period-picker";
+import type { Program, StagePair } from "@/schemas";
+import { useIsMobile } from "@/hooks/useIsMobile";
 import {
     currentPeriodId,
     periodBounds,
     type DhisPeriodType,
-} from "../../utils/periods";
+} from "@/utils/periods";
 
 const { RangePicker } = DatePicker;
 

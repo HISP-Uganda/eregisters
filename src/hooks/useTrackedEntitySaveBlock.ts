@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
-import type { ProgramRuleResult } from "../schemas";
-import { computeSaveBlock, type SaveBlock } from "../utils/save-block";
+import type { ProgramRuleResult } from "@/schemas";
+import { computeSaveBlock, type SaveBlock } from "@/utils/save-block";
 import { useMetadata } from "./useMetadata";
 
 export function useTrackedEntitySaveBlock(

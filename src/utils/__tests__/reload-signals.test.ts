@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
     shouldShowMetadataReload,
-} from "../reload-signals";
+} from "@/utils/reload-signals";
 
 const BROADCAST = "2026-09-20T10:00:00.000Z";
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { buildParentEventDataset } from ".././parent-event-dataset";
-import type { AnalyticsMetadata } from ".././types";
+import { buildParentEventDataset } from "@/analytics/parent-event-dataset";
+import type { AnalyticsMetadata } from "@/analytics/types";
 
 const metadata = makeMetadata();
 

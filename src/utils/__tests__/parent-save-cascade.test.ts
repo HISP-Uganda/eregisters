@@ -3,8 +3,8 @@ import type {
     FlattenedEnrollment,
     FlattenedEvent,
     FlattenedTrackedEntity,
-} from "../../schemas";
-import { collectParentSaveCascade } from ".././parent-save-cascade";
+} from "@/schemas";
+import { collectParentSaveCascade } from "@/utils/parent-save-cascade";
 
 function event(
     id: string,

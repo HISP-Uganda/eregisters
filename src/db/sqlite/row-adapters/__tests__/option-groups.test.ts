@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it } from "vitest";
-import type { FlattenedOptionGroup } from "../../../../schemas";
-import { createNodeSqliteDriver } from "../../test-support/node-sqlite-driver";
-import { createSchema } from "../../schema";
-import { optionGroupKey, optionGroupsRowAdapter } from ".././option-groups";
+import type { FlattenedOptionGroup } from "@/schemas";
+import { createNodeSqliteDriver } from "@/db/sqlite/test-support/node-sqlite-driver";
+import { createSchema } from "@/db/sqlite/schema";
+import { optionGroupKey, optionGroupsRowAdapter } from "@/db/sqlite/row-adapters/option-groups";
 
 describe("optionGroupsRowAdapter", () => {
     let close: (() => void) | undefined;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildOrgUnitSearchIndex, matchOrgUnit } from ".././org-unit-search";
+import { buildOrgUnitSearchIndex, matchOrgUnit } from "@/routes/org-unit-search";
 
 const fixture = [
     { id: "root", name: "Uganda", path: "/root" },

@@ -1,11 +1,11 @@
 import { describe, expect, it, afterEach } from "vitest";
-import { createNodeSqliteDriver } from ".././test-support/node-sqlite-driver";
-import { createSchema } from ".././schema";
-import { putConfigRow } from ".././config-rows";
-import { trackedEntitiesRowAdapter } from ".././row-adapters/tracked-entities";
-import { enrollmentsRowAdapter } from ".././row-adapters/enrollments";
-import { eventsRowAdapter } from ".././row-adapters/events";
-import { dropAllSqliteData } from ".././drop-all-data";
+import { createNodeSqliteDriver } from "@/db/sqlite/test-support/node-sqlite-driver";
+import { createSchema } from "@/db/sqlite/schema";
+import { putConfigRow } from "@/db/sqlite/config-rows";
+import { trackedEntitiesRowAdapter } from "@/db/sqlite/row-adapters/tracked-entities";
+import { enrollmentsRowAdapter } from "@/db/sqlite/row-adapters/enrollments";
+import { eventsRowAdapter } from "@/db/sqlite/row-adapters/events";
+import { dropAllSqliteData } from "@/db/sqlite/drop-all-data";
 
 describe("dropAllSqliteData", () => {
     let close: (() => void) | undefined;

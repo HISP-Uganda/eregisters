@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it } from "vitest";
-import type { RuleResult } from "../../../../schemas";
-import { createNodeSqliteDriver } from "../../test-support/node-sqlite-driver";
-import { createSchema } from "../../schema";
-import { ruleResultsRowAdapter } from ".././rule-results";
+import type { RuleResult } from "@/schemas";
+import { createNodeSqliteDriver } from "@/db/sqlite/test-support/node-sqlite-driver";
+import { createSchema } from "@/db/sqlite/schema";
+import { ruleResultsRowAdapter } from "@/db/sqlite/row-adapters/rule-results";
 
 function makeRuleResult(overrides: Partial<RuleResult> = {}): RuleResult {
     return {

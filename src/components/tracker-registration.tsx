@@ -1,11 +1,11 @@
 import { Card, Flex, Form, FormInstance, Row } from "antd";
 import dayjs from "dayjs";
 import React, { useEffect } from "react";
-import { useMetadata } from "../hooks/useMetadata";
-import { useUIConfig } from "../hooks/useUIConfig";
-import { TrackedEntityContext } from "../machines";
-import { FlattenedTrackedEntity } from "../schemas";
-import { buildCurrentAttributes, FORM_ROW_GUTTER, spans } from "../utils/utils";
+import { useMetadata } from "@/hooks/useMetadata";
+import { useUIConfig } from "@/hooks/useUIConfig";
+import { TrackedEntityContext } from "@/machines";
+import { FlattenedTrackedEntity } from "@/schemas";
+import { buildCurrentAttributes, FORM_ROW_GUTTER, spans } from "@/utils/form-fields";
 import { DataElementField } from "./data-element-field";
 import { DataElementRenderer } from "./data-element-renderer";
 import { SubsectionGroups } from "./subsection-groups";

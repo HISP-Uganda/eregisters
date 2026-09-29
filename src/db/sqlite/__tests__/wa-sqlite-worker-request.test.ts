@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { handleWaSqliteRequest } from "../wa-sqlite-worker-request";
-import type { WaSqliteAdapter, WaSqliteStatementResult } from "../wa-sqlite-adapter";
+import { handleWaSqliteRequest } from "@/db/sqlite/wa-sqlite-worker-request";
+import type { WaSqliteAdapter, WaSqliteStatementResult } from "@/db/sqlite/wa-sqlite-adapter";
 
 /**
  * Tests `handleWaSqliteRequest`'s transaction-state transitions against a

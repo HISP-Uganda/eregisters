@@ -5,7 +5,7 @@ import {
     pullScopeKey,
     resolveNextDataPull,
     withPullOverlap,
-} from ".././sync-metadata-mode";
+} from "@/machines/sync-metadata-mode";
 
 /**
  * These two helpers make the incremental data pull use the `updatedAfter`

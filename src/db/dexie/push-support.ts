@@ -2,8 +2,8 @@ import type {
     FlattenedEnrollment,
     FlattenedEvent,
     FlattenedTrackedEntity,
-} from "../../schemas";
-import type { PushResultUpdate } from "../sqlite/push-results";
+} from "@/schemas";
+import type { PushResultUpdate } from "@/db/sqlite/push-results";
 
 /**
  * Dexie-backend equivalents of the SQL-only push-side helpers

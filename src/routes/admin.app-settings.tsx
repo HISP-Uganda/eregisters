@@ -1,4 +1,5 @@
 import { useDataEngine } from "@dhis2/app-runtime";
+import { saveToDataStore } from "@/db/app-data-store";
 import { createRoute } from "@tanstack/react-router";
 import {
     Button,
@@ -6,17 +7,14 @@ import {
     Flex,
     InputNumber,
     message,
-    Radio,
-    Tag,
     Typography,
 } from "antd";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
 import React, { useEffect, useState } from "react";
-import { hasOpfsCapability, type BackendSetting } from "../db/backend";
-import { useMetadataStore } from "../hooks/useMetadataStore";
-import { useUIConfig } from "../hooks/useUIConfig";
-import { DEFAULT_DATA_PULL_PAGE_SIZE } from "../schemas";
+import { useMetadataStore } from "@/hooks/useMetadataStore";
+import { useUIConfig } from "@/hooks/useUIConfig";
+import { DEFAULT_DATA_PULL_PAGE_SIZE } from "@/schemas";
 import { AdminRoute } from "./admin";
 
 dayjs.extend(relativeTime);
@@ -27,30 +25,6 @@ export const AdminAppSettingsRoute = createRoute({
     component: AppSettings,
 });
 
-const STORAGE_BACKEND_OPTIONS: Array<{
-    value: BackendSetting;
-    title: string;
-    description: string;
-}> = [
-    {
-        value: "auto",
-        title: "Auto",
-        description:
-            "Let each device decide. Uses SQLite unless a device can't support it, then falls back to IndexedDB automatically.",
-    },
-    {
-        value: "dexie",
-        title: "Force IndexedDB",
-        description:
-            "Every device uses the IndexedDB storage path, even where SQLite would work. Use if SQLite/OPFS has caused problems across the fleet.",
-    },
-    {
-        value: "sqlite",
-        title: "Force SQLite",
-        description: "Every device uses the SQLite storage path.",
-    },
-];
-
 function AppSettings() {
     const engine = useDataEngine();
     const metadataStore = useMetadataStore();
@@ -58,61 +32,22 @@ function AppSettings() {
     const [broadcastingApp, setBroadcastingApp] = useState(false);
     const [broadcastingMetadata, setBroadcastingMetadata] = useState(false);
     const [savingPageSize, setSavingPageSize] = useState(false);
-    const [savingStorageBackend, setSavingStorageBackend] = useState(false);
     const [pageSize, setPageSize] = useState<number>(
         uiConfig.dataPullPageSize ?? DEFAULT_DATA_PULL_PAGE_SIZE,
-    );
-    const [storageBackend, setStorageBackend] = useState<BackendSetting>(
-        uiConfig.storageBackendPolicy?.value ?? "auto",
     );
 
     useEffect(() => {
         setPageSize(uiConfig.dataPullPageSize ?? DEFAULT_DATA_PULL_PAGE_SIZE);
     }, [uiConfig.dataPullPageSize]);
 
-    useEffect(() => {
-        setStorageBackend(uiConfig.storageBackendPolicy?.value ?? "auto");
-    }, [uiConfig.storageBackendPolicy?.value]);
 
     async function saveConfig(patch: Partial<typeof uiConfig>) {
         const updated = { ...uiConfig, ...patch };
-        try {
-            await engine.mutate({
-                type: "update",
-                resource: "dataStore/eregisters",
-                id: "ui-config",
-                data: updated,
-            });
-        } catch {
-            await engine.mutate({
-                type: "create",
-                resource: "dataStore/eregisters",
-                data: { key: "ui-config", value: updated },
-            });
-        }
+        await saveToDataStore(engine, "ui-config", updated);
         await metadataStore.putRow("ui_config", {
             id: "main",
             config: updated,
         });
-    }
-
-    async function saveStorageBackend() {
-        setSavingStorageBackend(true);
-        try {
-            await saveConfig({
-                storageBackendPolicy: {
-                    value: storageBackend,
-                    timestamp: new Date().toISOString(),
-                },
-            });
-            message.success(
-                "Storage backend policy saved — devices will apply it next reload.",
-            );
-        } catch {
-            message.error("Failed to save storage backend policy");
-        } finally {
-            setSavingStorageBackend(false);
-        }
     }
 
     async function savePageSize() {
@@ -140,20 +75,7 @@ function AppSettings() {
                     [type]: { timestamp },
                 },
             };
-            try {
-                await engine.mutate({
-                    type: "update",
-                    resource: "dataStore/eregisters",
-                    id: "ui-config",
-                    data: updated,
-                });
-            } catch {
-                await engine.mutate({
-                    type: "create",
-                    resource: "dataStore/eregisters",
-                    data: { key: "ui-config", value: updated },
-                });
-            }
+            await saveToDataStore(engine, "ui-config", updated);
             // The sending device already runs what it announces: mark the
             // app signal as seen here so the forced update
             // (src/app-update/update-controller.ts) doesn't reload the
@@ -219,65 +141,11 @@ function AppSettings() {
                 <Divider style={{ margin: 0 }} />
 
                 <Flex vertical gap={8}>
-                    <Typography.Text strong>
-                        Device Storage Backend
-                    </Typography.Text>
-                    <Typography.Text type="secondary">
-                        Controls which local storage backend every device uses.
-                        Applies fleet-wide — a device already open shows a
-                        reload banner once it next checks in; a device on
-                        "Auto" still falls back to IndexedDB on its own if
-                        SQLite/OPFS genuinely doesn't work there.{" "}
-                        <Tag color={hasOpfsCapability() ? "green" : "orange"}>
-                            this browser: {hasOpfsCapability() ? "SQLite-capable" : "no OPFS"}
-                        </Tag>
-                    </Typography.Text>
-                    <Radio.Group
-                        value={storageBackend}
-                        onChange={(e) => setStorageBackend(e.target.value)}
-                    >
-                        <Flex vertical gap={4}>
-                            {STORAGE_BACKEND_OPTIONS.map((option) => (
-                                <Radio key={option.value} value={option.value}>
-                                    <Typography.Text strong>
-                                        {option.title}
-                                    </Typography.Text>{" "}
-                                    <Typography.Text
-                                        type="secondary"
-                                        style={{ fontSize: 12 }}
-                                    >
-                                        {option.description}
-                                    </Typography.Text>
-                                </Radio>
-                            ))}
-                        </Flex>
-                    </Radio.Group>
-                    <Flex gap={12} align="center">
-                        <Button
-                            type="primary"
-                            loading={savingStorageBackend}
-                            onClick={saveStorageBackend}
-                        >
-                            Save
-                        </Button>
-                        {uiConfig.storageBackendPolicy?.timestamp && (
-                            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                                Last updated:{" "}
-                                {dayjs(
-                                    uiConfig.storageBackendPolicy.timestamp,
-                                ).fromNow()}
-                            </Typography.Text>
-                        )}
-                    </Flex>
-                </Flex>
-
-                <Divider style={{ margin: 0 }} />
-
-                <Flex vertical gap={8}>
                     <Typography.Text strong>Force App Reload</Typography.Text>
                     <Typography.Text type="secondary">
-                        Sends a banner to all currently-online users asking them to
-                        reload the page. Use after deploying a new app version.
+                        Makes every open copy of the app reload within minutes —
+                        after a short countdown, and once open forms are saved or
+                        closed. Use after deploying a new app version.
                     </Typography.Text>
                     <Flex gap={12} align="center">
                         <Button

@@ -1,5 +1,5 @@
 import { DatabaseSync } from "node:sqlite";
-import type { SqlDriver, SqlExecuteResult } from "../driver-types";
+import type { SqlDriver, SqlExecuteResult } from "@/db/sqlite/driver-types";
 
 /**
  * Test-only SqlDriver backed by Node's built-in node:sqlite (real, in-process

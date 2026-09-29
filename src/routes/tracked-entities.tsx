@@ -14,13 +14,13 @@ import {
     Typography,
 } from "antd";
 import React from "react";
-import { DataElementField } from "../components/data-element-field";
-import { ClientSchema } from "../schemas";
+import { DataElementField } from "@/components/data-element-field";
+import { ClientSchema } from "@/schemas";
 import { RootRoute } from "./__root";
 
 import dayjs from "dayjs";
-import { getTrackedEntitiesCollection } from "../db/collections";
-import { useMetadata } from "../hooks/useMetadata";
+import { getTrackedEntitiesCollection } from "@/db/collections";
+import { useMetadata } from "@/hooks/useMetadata";
 
 const { Content } = Layout;
 const { Title } = Typography;

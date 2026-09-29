@@ -1,13 +1,13 @@
 import Dexie from "dexie";
-import type { SyncState } from "../index";
+import type { SyncState } from "@/schemas";
 import type {
     FlattenedEnrollment,
     FlattenedEvent,
     FlattenedTrackedEntity,
     MetadataVersion,
-} from "../../schemas";
+} from "@/schemas";
 import type { DexieMigrationSource } from "./migrate-from-dexie";
-import { storeName } from "../store-names";
+import { storeName } from "@/db/store-names";
 
 /**
  * `dexieMetadataStore()`'s own database (`src/db/dexie/metadata-store.ts`)
@@ -101,7 +101,7 @@ export const realDexieMigrationSource: DexieMigrationSource = {
     },
 
     async readDexieLastLiveAt(): Promise<string | undefined> {
-        // Written by `markDexieLive` (`../dexie/real-dexie-migration-target.ts`).
+        // Written by `markDexieLive` (`../dexie/dexie-live.ts`).
         const row = await readMetadataRow<{ liveAt: string }>(
             "migration_status",
             "dexie-live",

@@ -8,8 +8,8 @@ import {
     SYNC_TIMEOUTS_MS,
     toConnectivityStatus,
     withAbortTimeout,
-} from ".././network-reachability";
-import type { Engine } from "../../schemas";
+} from "@/machines/network-reachability";
+import type { Engine } from "@/schemas";
 
 describe("classifyFetchError", () => {
     it("maps FetchError type 'access' to 'access'", () => {

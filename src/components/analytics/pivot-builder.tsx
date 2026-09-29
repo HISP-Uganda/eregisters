@@ -2,7 +2,7 @@ import { BarChartOutlined } from "@ant-design/icons";
 import { Button, Flex, Select, Table } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import React, { useEffect, useMemo, useState } from "react";
-import { buildPivot } from "../../analytics/pivot-engine";
+import { buildPivot } from "@/analytics/pivot-engine";
 import type {
     AnalyticsColumn,
     AnalyticsRow,
@@ -10,9 +10,9 @@ import type {
     PivotConfig,
     PivotMeasure,
     PivotResult,
-} from "../../analytics/types";
-import { useIsMobile } from "../../hooks/useIsMobile";
-import { useTableScrollHeight } from "../../hooks/useTableScrollHeight";
+} from "@/analytics/types";
+import { useIsMobile } from "@/hooks/useIsMobile";
+import { useTableScrollHeight } from "@/hooks/useTableScrollHeight";
 
 const dateBuckets: DateBucket[] = ["exact", "week", "month", "quarter", "year"];
 

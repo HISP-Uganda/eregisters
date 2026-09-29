@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, it } from "vitest";
-import type { Metadata } from "../../schemas";
-import { createNodeSqliteDriver } from "../sqlite/test-support/node-sqlite-driver";
-import { createSchema } from "../sqlite/schema";
-import { sqliteMetadataStore } from "../sqlite/metadata-store";
-import { optionGroupKey } from "../sqlite/row-adapters/option-groups";
-import { optionSetKey } from "../sqlite/row-adapters/option-sets";
-import type { MetadataStore } from "../metadata-store";
+import type { Metadata } from "@/schemas";
+import { createNodeSqliteDriver } from "@/db/sqlite/test-support/node-sqlite-driver";
+import { createSchema } from "@/db/sqlite/schema";
+import { sqliteMetadataStore } from "@/db/sqlite/metadata-store";
+import { optionGroupKey } from "@/db/sqlite/row-adapters/option-groups";
+import { optionSetKey } from "@/db/sqlite/row-adapters/option-sets";
+import type { MetadataStore } from "@/db/metadata-store";
 import {
     checkMetadataInfoGeneric,
     deleteMetadataForResyncGeneric,
@@ -13,7 +13,7 @@ import {
     replaceMetadataTables,
     resetMetadataDatabaseGeneric,
     saveMetadataGeneric,
-} from "../metadata-operations";
+} from "@/db/metadata-operations";
 
 /**
  * A minimal in-memory `MetadataStore`, independent of both real backends —
@@ -61,6 +61,9 @@ function inMemoryMetadataStore(): MetadataStore {
         },
         async listRows<T extends object>(table: string) {
             return Array.from(tableFor(table).values()) as T[];
+        },
+        async hasRows(table: string) {
+            return tableFor(table).size > 0;
         },
         async putRows<T extends { id: string }>(
             table: string,

@@ -1,14 +1,14 @@
 import { afterEach, describe, expect, it } from "vitest";
-import type { FlattenedEnrollment } from "../../../../schemas";
-import { createNodeSqliteDriver } from "../../test-support/node-sqlite-driver";
-import { createSchema } from "../../schema";
+import type { FlattenedEnrollment } from "@/schemas";
+import { createNodeSqliteDriver } from "@/db/sqlite/test-support/node-sqlite-driver";
+import { createSchema } from "@/db/sqlite/schema";
 import {
     enrollmentsRowAdapter,
     findEnrollmentsByTrackedEntity,
     findEnrollmentsByTrackedEntityIn,
     findEnrollmentsBySyncStatusIn,
     getEnrollmentById,
-} from ".././enrollments";
+} from "@/db/sqlite/row-adapters/enrollments";
 
 function makeEnrollment(
     overrides: Partial<FlattenedEnrollment> = {},

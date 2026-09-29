@@ -9,7 +9,12 @@
 		"module": "esnext",
 		"moduleResolution": "bundler",
 		"strictNullChecks": true,
-		"resolveJsonModule": true
+		"resolveJsonModule": true,
+		"paths": {
+			"@/*": [
+				"./src/*"
+			]
+		}
 	},
 	"include": [
 		"src",

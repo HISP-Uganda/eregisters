@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseServerTime } from "../server-time";
+import { parseServerTime } from "@/utils/server-time";
 
 describe("parseServerTime", () => {
     it("interprets a naive server timestamp in the server's own time zone", () => {

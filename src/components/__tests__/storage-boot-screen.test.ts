@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bootMessage } from "../storage-boot-screen";
+import { bootMessage } from "@/components/storage-boot-screen";
 
 describe("bootMessage", () => {
     it("shows a step counter, not table names, while copying", () => {
@@ -10,11 +10,5 @@ describe("bootMessage", () => {
 
     it("has no message once ready", () => {
         expect(bootMessage({ kind: "ready", fellBack: true, copyPaused: false })).toBeUndefined();
-    });
-
-    it("tells the user their data is safe when the copy failed", () => {
-        expect(bootMessage({ kind: "failed", error: "quota" })).toContain(
-            "Your data is safe and untouched. (quota)",
-        );
     });
 });

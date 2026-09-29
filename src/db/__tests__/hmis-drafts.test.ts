@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { HmisDraft } from ".././hmis-drafts";
-import { draftId, mergeDraftAndServer } from ".././hmis-drafts";
+import type { HmisDraft } from "@/db/hmis-drafts";
+import { draftId, mergeDraftAndServer } from "@/db/hmis-drafts";
 
 const emptyDraft = (over: Partial<HmisDraft> = {}): HmisDraft => ({
     id: "ds_p_ou_aoc",

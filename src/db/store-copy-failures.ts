@@ -1,6 +1,6 @@
 import { storeFlagKey } from "./store-names";
 /**
- * Consecutive failed store copies on the "auto" setting, per direction —
+ * Consecutive failed Dexie → SQLite store copies —
  * wayfinder ticket "Escape hatch after repeated migration failures (R11)".
  * After `MAX_COPY_FAILURES` (`machines/storage-boot.ts`) the machine stops
  * re-running a copy that keeps failing (each attempt costs the user a full
@@ -15,8 +15,8 @@ export const STORE_COPY_RETRY_VERSION = "1";
 /** Per facility store — see store-names.ts. */
 const KEY = "eregisters.storeCopyFailures";
 
-type Direction = "forward" | "reverse";
-type Record = { version: string; direction: Direction; count: number };
+/** `direction` is only on records from before the SQLite → Dexie copy was removed. */
+type Record = { version: string; direction?: "forward" | "reverse"; count: number };
 
 function read(): Record | undefined {
     try {
@@ -27,23 +27,22 @@ function read(): Record | undefined {
     }
 }
 
-export function readStoreCopyFailures(direction: Direction): number {
+export function readStoreCopyFailures(): number {
     const record = read();
     if (
         !record ||
         record.version !== STORE_COPY_RETRY_VERSION ||
-        record.direction !== direction
+        record.direction === "reverse"
     ) {
         return 0;
     }
     return record.count;
 }
 
-export function recordStoreCopyFailure(direction: Direction): void {
+export function recordStoreCopyFailure(): void {
     const record: Record = {
         version: STORE_COPY_RETRY_VERSION,
-        direction,
-        count: readStoreCopyFailures(direction) + 1,
+        count: readStoreCopyFailures() + 1,
     };
     try {
         localStorage.setItem(storeFlagKey(KEY), JSON.stringify(record));

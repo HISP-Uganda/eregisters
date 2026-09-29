@@ -1,10 +1,10 @@
 import React, { useEffect } from "react";
 
 import { Card, Form, FormInstance } from "antd";
-import { useUIConfig } from "../hooks/useUIConfig";
-import { EventContext } from "../machines";
-import { ProgramStage } from "../schemas";
-import { buildCurrentDataElements } from "../utils/utils";
+import { useUIConfig } from "@/hooks/useUIConfig";
+import { EventContext } from "@/machines";
+import { ProgramStage } from "@/schemas";
+import { buildCurrentDataElements } from "@/utils/form-fields";
 import { DataElementRenderer } from "./data-element-renderer";
 import { SubsectionGroups } from "./subsection-groups";
 

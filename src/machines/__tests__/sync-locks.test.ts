@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { holdLockIfAvailable, withLock } from "../sync-locks";
+import { holdLockIfAvailable, withLock } from "@/machines/sync-locks";
 
 /**
  * Just enough of the Web Locks API (exclusive mode, `ifAvailable`, waiting

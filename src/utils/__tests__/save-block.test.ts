@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeSaveBlock } from ".././save-block";
+import { computeSaveBlock } from "@/utils/save-block";
 
 const labels = new Map([
     ["a", "First name"],

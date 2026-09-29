@@ -1,19 +1,15 @@
 import { createCollection } from "@tanstack/db";
 import { afterEach, describe, expect, it } from "vitest";
-import {
-    createEmptyEnrollment,
-    createEmptyEvent,
-    createEmptyTrackedEntity,
-} from "../../utils/utils";
-import { localEditStamp, setLocalAuthor, type LocalAuthor } from "../local-author";
-import { sqliteCollectionOptions } from "../sqlite/collection-adapter";
-import type { RowAdapter } from "../sqlite/row-adapter";
-import { createNodeSqliteDriver } from "../sqlite/test-support/node-sqlite-driver";
+import { createEmptyEnrollment, createEmptyEvent, createEmptyTrackedEntity } from "@/utils/record-factories";
+import { localEditStamp, setLocalAuthor, type LocalAuthor } from "@/db/local-author";
+import { sqliteCollectionOptions } from "@/db/sqlite/collection-adapter";
+import type { RowAdapter } from "@/db/sqlite/row-adapter";
+import { createNodeSqliteDriver } from "@/db/sqlite/test-support/node-sqlite-driver";
 import {
     transformEnrollment,
     transformEvent,
     transformTrackedEntity,
-} from "../transformers";
+} from "@/db/transformers";
 
 /**
  * Wayfinder ticket "Should records created on the device record their

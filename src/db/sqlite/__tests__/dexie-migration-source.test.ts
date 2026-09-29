@@ -15,7 +15,7 @@ vi.mock("dexie", () => {
     return { default: Dexie };
 });
 
-import { realDexieMigrationSource } from "../dexie-migration-source";
+import { realDexieMigrationSource } from "@/db/sqlite/dexie-migration-source";
 
 describe("realDexieMigrationSource", () => {
     beforeEach(() => {

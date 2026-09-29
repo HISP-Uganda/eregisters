@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { createNodeSqliteDriver } from "../../test-support/node-sqlite-driver";
-import { createSchema } from "../../schema";
+import { createNodeSqliteDriver } from "@/db/sqlite/test-support/node-sqlite-driver";
+import { createSchema } from "@/db/sqlite/schema";
 import {
     findOrgUnitsByPathPrefix,
     organisationUnitsRowAdapter,
-} from ".././organisation-units";
+} from "@/db/sqlite/row-adapters/organisation-units";
 
 describe("organisationUnitsRowAdapter", () => {
     let close: (() => void) | undefined;

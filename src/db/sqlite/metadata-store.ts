@@ -1,5 +1,5 @@
-import type { MetadataStore } from "../metadata-store";
-import { notifyConfigChanged } from "../reactive-config";
+import type { MetadataStore } from "@/db/metadata-store";
+import { notifyConfigChanged } from "@/db/reactive-config";
 import { getConfigRow, putConfigRow } from "./config-rows";
 import type { SqlDriver } from "./driver-types";
 import { getAllRows } from "./metadata-info";
@@ -171,6 +171,10 @@ export function sqliteMetadataStore(db: SqlDriver): MetadataStore {
                 return result.rows.map((row) => toOrganisationUnit<T>(row));
             }
             return getAllRows<T>(db, table);
+        },
+        async hasRows(table: string) {
+            const result = await db.execute(`SELECT 1 FROM ${table} LIMIT 1`);
+            return result.rows.length > 0;
         },
         async deleteRow(table: string, key: string): Promise<void> {
             const composite = COMPOSITE_TABLES[table];

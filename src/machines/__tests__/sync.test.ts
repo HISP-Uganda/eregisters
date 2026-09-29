@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { deriveValidIds } from ".././sync";
-import type { Program } from "../../schemas";
+import { deriveValidIds } from "@/machines/sync";
+import type { Program } from "@/schemas";
 
 /**
  * `programStageDataElements[].dataElement` / `programTrackedEntityAttributes[].trackedEntityAttribute`
