@@ -39,3 +39,22 @@ the switch-over.
 rotation is deferred; the current key goes into the DHIS2 route, so it
 leaves the app's code and bundle now. Rotating it (and revoking the old
 one, still in git history and old bundles) stays on this ticket.
+
+**Update (2026-09-29):** the route `ereports-query` is live on both
+servers (ticket "Switch the report page to the DHIS2 route"), still with
+the old key. Step 4 is done: the six clean research worktrees under
+`.claude/worktrees/` were removed (their branches are kept; the key is
+still in those branches' history, like in `main`'s). What remains, all
+the user's:
+
+1. Get a new key from whoever runs the ereports service.
+2. Put it into the route on **both** servers, and nowhere else. In the
+   browser console of the app, signed in to each server in turn:
+   `PATCH /api/routes/<uid>` with
+   `[{"op":"replace","path":"/auth","value":{"type":"api-headers","headers":{"X-API-KEY":"<new key>"}}}]`
+   (Content-Type `application/json-patch+json`). The uids are
+   `aarGHEoF7B4` on the test server and `tuincdXhDh6` on production.
+3. Open one report on each server to confirm it still loads its values.
+4. Revoke the old key (`LnwYP…`).
+
+This ticket closes when the old key is revoked.
