@@ -86,6 +86,9 @@ export function dexieMetadataStore(): MetadataStore {
             const rows = await db.rows.where("table").equals(table).toArray();
             return rows.map((row) => row.data as T);
         },
+        async hasRows(table: string) {
+            return (await db.rows.where("table").equals(table).first()) !== undefined;
+        },
         async deleteRow(table: string, key: string) {
             await db.rows.delete([table, key]);
         },

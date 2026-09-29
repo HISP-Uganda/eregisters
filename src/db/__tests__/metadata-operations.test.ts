@@ -62,6 +62,9 @@ function inMemoryMetadataStore(): MetadataStore {
         async listRows<T extends object>(table: string) {
             return Array.from(tableFor(table).values()) as T[];
         },
+        async hasRows(table: string) {
+            return tableFor(table).size > 0;
+        },
         async putRows<T extends { id: string }>(
             table: string,
             rowsToPut: T[],

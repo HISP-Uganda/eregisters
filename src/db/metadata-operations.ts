@@ -48,14 +48,6 @@ function keyForRow(table: string, row: { id: string }): string {
     return row.id;
 }
 
-async function tableHasRowsGeneric(
-    store: MetadataStore,
-    table: string,
-): Promise<boolean> {
-    const rows = await store.listRows(table);
-    return rows.length > 0;
-}
-
 async function clearTable(store: MetadataStore, table: string): Promise<void> {
     await store.clearTable(table);
 }
@@ -131,20 +123,16 @@ export async function checkMetadataInfoGeneric(
     store: MetadataStore,
 ): Promise<CheckMetadataInfoResult> {
     try {
-        let hasEmptyTables = false;
-        for (const table of CHECKED_TABLES) {
-            if (!(await tableHasRowsGeneric(store, table))) {
-                hasEmptyTables = true;
-                break;
-            }
-        }
-        const metadataVersion = await store.getRow<MetadataVersion>(
-            "metadata_versions",
-            "metadata-version",
-        );
-        const syncState = await store.getRow("sync_state", "current");
+        // Only whether each table has a row — the full metadata is read
+        // once, afterwards, by `queryMetadataGeneric`.
+        const [tablesHaveRows, metadataVersion, syncState, programs] = await Promise.all([
+            Promise.all(CHECKED_TABLES.map((table) => store.hasRows(table))),
+            store.getRow<MetadataVersion>("metadata_versions", "metadata-version"),
+            store.getRow("sync_state", "current"),
+            store.listRows<Program>("programs"),
+        ]);
+        const hasEmptyTables = tablesHaveRows.some((has) => !has);
         const wasDatabaseDeleted = !metadataVersion?.lastSync;
-        const programs = await store.listRows<Program>("programs");
 
         return {
             needsSyncing: hasEmptyTables || wasDatabaseDeleted,

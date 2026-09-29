@@ -172,6 +172,10 @@ export function sqliteMetadataStore(db: SqlDriver): MetadataStore {
             }
             return getAllRows<T>(db, table);
         },
+        async hasRows(table: string) {
+            const result = await db.execute(`SELECT 1 FROM ${table} LIMIT 1`);
+            return result.rows.length > 0;
+        },
         async deleteRow(table: string, key: string): Promise<void> {
             const composite = COMPOSITE_TABLES[table];
             if (composite) {
