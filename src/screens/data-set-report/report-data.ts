@@ -88,7 +88,27 @@ async function fetchServerValues(
     }
 }
 
-/** Whether DHIS2 has the report marked complete ("verified"), by whom and when. */
+/** An attribute option combo as DHIS2's data entry API names it: its category combo and options. */
+export type AttributeCategories = { combo: string; options: string[] };
+
+/** Looks up the attribute option combo's category combo and options on DHIS2. */
+export async function attributeCategories(engine: DataEngineLike, attributeOptionCombo: string): Promise<AttributeCategories> {
+    const result = await engine.query({
+        coc: {
+            resource: `categoryOptionCombos/${attributeOptionCombo}`,
+            params: { fields: "categoryCombo[id],categoryOptions[id]" },
+        },
+    });
+    return {
+        combo: result.coc.categoryCombo.id,
+        options: result.coc.categoryOptions.map((o: { id: string }) => o.id),
+    };
+}
+
+/**
+ * Whether DHIS2 has the report marked complete ("verified"), and who last
+ * did it and when — from the data entry API's `completeStatus`.
+ */
 async function fetchServerVerified(
     engine: DataEngineLike,
     dataSet: string,
@@ -97,21 +117,32 @@ async function fetchServerVerified(
     attribution: string,
 ): Promise<{ verified: boolean; verifiedAt?: string; verifiedBy?: string }> {
     try {
+        const attribute = await attributeCategories(engine, attribution);
         const result = await engine.query({
-            registrations: {
-                resource: "completeDataSetRegistrations",
-                params: { dataSet, period, orgUnit, children: false },
+            entry: {
+                resource: "dataEntry/dataValues",
+                params: { ds: dataSet, pe: period, ou: orgUnit, cc: attribute.combo, cp: attribute.options.join(";") },
             },
         });
-        const list: Array<{ attributeOptionCombo?: string; completed?: boolean; storedBy?: string; date?: string }> =
-            result?.registrations?.completeDataSetRegistrations ?? [];
-        const match = list.find((r) => r.attributeOptionCombo === attribution && r.completed === true);
-        return { verified: !!match, verifiedAt: match?.date, verifiedBy: match?.storedBy };
+        const status: CompleteStatus | undefined = result?.entry?.completeStatus;
+        return {
+            verified: status?.complete === true,
+            verifiedAt: status?.lastUpdated ?? status?.created,
+            verifiedBy: status?.lastUpdatedBy ?? status?.createdBy,
+        };
     } catch (err) {
-        console.warn("completeDataSetRegistrations read failed — treating verified state as unknown:", err);
+        console.warn("dataEntry/dataValues read failed — treating verified state as unknown:", err);
         return { verified: false };
     }
 }
+
+type CompleteStatus = {
+    complete?: boolean;
+    created?: string;
+    createdBy?: string;
+    lastUpdated?: string;
+    lastUpdatedBy?: string;
+};
 
 export type LoadedReport = {
     initialValues: Map<string, string>;
