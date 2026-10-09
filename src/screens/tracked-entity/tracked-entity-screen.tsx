@@ -1,5 +1,5 @@
 import { Flex, Grid, Splitter, Typography } from "antd";
-import React, { useCallback } from "react";
+import React, { useCallback, useMemo, useRef } from "react";
 import { useModalState } from "@/hooks/useModalState";
 import { SyncContext } from "@/machines/sync";
 import {
@@ -16,7 +16,7 @@ import { useClientRecords } from "./use-client-records";
 import { useFormMetadata } from "./use-form-metadata";
 import { ClientSearch, useModalsFromSearch } from "./use-modals-from-search";
 import { VisitModal } from "./visit-modal";
-import { VisitsCard } from "./visits-card";
+import { VisitsCard, visitsTableKey } from "./visits-card";
 
 type ScreenProps = {
     tei: string;
@@ -79,23 +79,33 @@ function ClientView({
     });
 
     const { openModal: openVisitModal } = visitModal;
+    // The table re-renders only when what it shows changes (an open visit
+    // autosaves on every change), so its rows can be older than the stored
+    // visits: open the latest one.
+    const latestVisits = useRef(visits);
+    latestVisits.current = visits;
+    const tableKey = visitsTableKey(visits);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const tableVisits = useMemo(() => visits, [tableKey]);
     const openVisit = useCallback(
-        (visit: FlattenedEvent) => openVisitModal(visit, enrollment),
+        (visit: FlattenedEvent) =>
+            openVisitModal(latestVisits.current.find((v) => v.event === visit.event) ?? visit, enrollment),
         [openVisitModal, enrollment],
     );
+    const addVisit = useCallback(async () => {
+        const visit = await createVisit(trackedEntity, enrollment);
+        openVisitModal(visit, enrollment, true);
+    }, [trackedEntity, enrollment, openVisitModal]);
     const resend = useCallback((visit: FlattenedEvent) => resendVisit(visit.event, pushData), [pushData]);
     const remove = useCallback((visit: FlattenedEvent) => deleteVisit(visit.event, pushData), [pushData]);
 
     const visitsCard = (
         <VisitsCard
-            visits={visits}
+            visits={tableVisits}
             onOpen={openVisit}
             onResend={resend}
             onDelete={remove}
-            onAdd={async () => {
-                const visit = await createVisit(trackedEntity, enrollment);
-                visitModal.openModal(visit, enrollment, true);
-            }}
+            onAdd={addVisit}
         />
     );
     const profilePanel = (

@@ -10,7 +10,15 @@ import {
     Tooltip,
     Typography,
 } from "antd";
-import React, { useEffect, useMemo, useState } from "react";
+import React, {
+    useCallback,
+    useEffect,
+    useLayoutEffect,
+    useMemo,
+    useRef,
+    useState,
+    useSyncExternalStore,
+} from "react";
 import type { SaveBlock } from "@/utils/save-block";
 import { SyncStatusComp } from "./sync-status-comp";
 import {
@@ -59,13 +67,47 @@ interface ModalContentProps<T extends FlattenedTrackedEntity | FlattenedEvent> {
     isMobile: boolean;
     submitButtonText: string;
     hasAddAnother: boolean;
-    status: string;
-    saveBlockFor?: (values: Record<string, unknown>) => SaveBlock;
+    footer: FooterStore;
     title: React.ReactNode;
     open: boolean;
     onCancel: () => void;
     loading: boolean;
     setLoading: (v: boolean) => void;
+}
+
+type FooterState = {
+    status: string;
+    saveBlockFor?: (values: Record<string, unknown>) => SaveBlock;
+};
+
+/**
+ * What only the footer shows (sync status, the save block check), handed
+ * to it through a subscription instead of props: these change with every
+ * rule result and autosave, and re-rendering the modal around a large
+ * form for them is what made each change slow (React re-checks the whole
+ * form's context consumers whenever the antd Modal re-renders).
+ */
+type FooterStore = {
+    get: () => FooterState;
+    set: (next: FooterState) => void;
+    subscribe: (listener: () => void) => () => void;
+};
+
+function createFooterStore(initial: FooterState): FooterStore {
+    let state = initial;
+    const listeners = new Set<() => void>();
+    return {
+        get: () => state,
+        set: (next) => {
+            if (next.status === state.status && next.saveBlockFor === state.saveBlockFor) return;
+            state = next;
+            for (const listener of listeners) listener();
+        },
+        subscribe: (listener) => {
+            listeners.add(listener);
+            return () => listeners.delete(listener);
+        },
+    };
 }
 
 const SAVE_BUTTON_STYLE: React.CSSProperties = {
@@ -82,9 +124,8 @@ const SAVE_BUTTON_STYLE: React.CSSProperties = {
  */
 function ModalFooter({
     form,
-    saveBlockFor,
+    footer,
     isMobile,
-    status,
     loading,
     onCancel,
     onSave,
@@ -92,15 +133,15 @@ function ModalFooter({
     hasAddAnother,
 }: {
     form: FormInstance;
-    saveBlockFor?: (values: Record<string, unknown>) => SaveBlock;
+    footer: FooterStore;
     isMobile: boolean;
-    status: string;
     loading: boolean;
     onCancel: () => void;
     onSave: (addAnother?: boolean) => void;
     submitButtonText: string;
     hasAddAnother: boolean;
 }) {
+    const { status, saveBlockFor } = useSyncExternalStore(footer.subscribe, footer.get);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const watchedValues: Record<string, any> = Form.useWatch((values) => values, form) ?? {};
     const block = saveBlockFor?.(watchedValues);
@@ -187,8 +228,7 @@ function ModalContent<T extends FlattenedTrackedEntity | FlattenedEvent>({
     isMobile,
     submitButtonText,
     hasAddAnother,
-    status,
-    saveBlockFor,
+    footer,
     title,
     open,
     onCancel,
@@ -245,9 +285,8 @@ function ModalContent<T extends FlattenedTrackedEntity | FlattenedEvent>({
                 footer={
                     <ModalFooter
                         form={form}
-                        saveBlockFor={saveBlockFor}
+                        footer={footer}
                         isMobile={isMobile}
-                        status={status}
                         loading={loading}
                         onCancel={onCancel}
                         onSave={handleOk}
@@ -282,6 +321,12 @@ function ModalContent<T extends FlattenedTrackedEntity | FlattenedEvent>({
     );
 }
 
+/**
+ * Re-renders only when its own props change: open/close, loading, layout.
+ * DataModal keeps every callback and the title stable for it.
+ */
+const MemoModalContent = React.memo(ModalContent) as typeof ModalContent;
+
 export function DataModal<T extends FlattenedTrackedEntity | FlattenedEvent>({
     open,
     onClose,
@@ -308,12 +353,26 @@ export function DataModal<T extends FlattenedTrackedEntity | FlattenedEvent>({
         }
     }, [open]);
 
-    const handleCancel = () => {
-        onClose();
-        onCancel?.();
-    };
+    // Stable callbacks over the latest props, so the memoised modal doesn't
+    // re-render when the parent passes new inline functions.
+    const latest = useRef({ onClose, onCancel, onSave });
+    latest.current = { onClose, onCancel, onSave };
+    const handleClose = useCallback(() => latest.current.onClose(), []);
+    const handleCancel = useCallback(() => {
+        latest.current.onClose();
+        latest.current.onCancel?.();
+    }, []);
+    const handleSave = useCallback<DataModalProps<T>["onSave"]>(
+        (info) => latest.current.onSave(info),
+        [],
+    );
 
-    const titleNode = (
+    const [footer] = useState(() => createFooterStore({ status, saveBlockFor }));
+    useLayoutEffect(() => {
+        footer.set({ status, saveBlockFor });
+    });
+
+    const titleNode = useMemo(() => (
         <Flex align="center" gap="middle">
             <div
                 style={{
@@ -334,25 +393,24 @@ export function DataModal<T extends FlattenedTrackedEntity | FlattenedEvent>({
                 {title}
             </Text>
         </Flex>
-    );
+    ), [title]);
 
     return (
-        <ModalContent<T>
+        <MemoModalContent<T>
             key={openCount}
             open={open}
-            onClose={onClose}
+            onClose={handleClose}
             onCancel={handleCancel}
-            onSave={onSave}
+            onSave={handleSave}
             isMobile={isMobile}
             submitButtonText={submitButtonText}
             hasAddAnother={hasAddAnother}
-            status={status}
-            saveBlockFor={saveBlockFor}
+            footer={footer}
             title={titleNode}
             loading={loading}
             setLoading={setLoading}
         >
             {children}
-        </ModalContent>
+        </MemoModalContent>
     );
 }

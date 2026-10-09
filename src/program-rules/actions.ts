@@ -1,7 +1,19 @@
 import { ProgramRuleAction, ProgramRuleResult } from "@/schemas";
 
+// A Set per result list, so adding stays constant-time however many
+// fields the rules hide or require (`includes` made it quadratic).
+const listMembers = new WeakMap<string[], Set<string>>();
+
 function addOnce(list: string[], id: string) {
-    if (!list.includes(id)) list.push(id);
+    let members = listMembers.get(list);
+    if (!members) {
+        members = new Set(list);
+        listMembers.set(list, members);
+    }
+    if (!members.has(id)) {
+        members.add(id);
+        list.push(id);
+    }
 }
 
 function addOnceUnder(map: Record<string, string[]>, key: string, id: string) {

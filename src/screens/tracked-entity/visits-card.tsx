@@ -111,8 +111,29 @@ function visitColumns(handlers: VisitHandlers): TableProps<FlattenedEvent>["colu
     ];
 }
 
+/** What the table shows: each column's `dataIndex`, as a path into the visit. */
+const SHOWN_FIELDS: (string | number)[][] = (visitColumns(undefined as never) ?? []).flatMap((column) =>
+    "dataIndex" in column && column.dataIndex !== undefined
+        ? [Array.isArray(column.dataIndex) ? [...column.dataIndex] : [column.dataIndex]]
+        : [],
+);
+
+/**
+ * Changes only when something the table shows changes, so an autosave of
+ * another field in an open visit doesn't re-render the table behind it.
+ * Built from the columns, so a new column is covered without changes here.
+ */
+export function visitsTableKey(visits: FlattenedEvent[]): string {
+    return JSON.stringify(
+        visits.map((v) => [
+            v.event,
+            ...SHOWN_FIELDS.map((path) => path.reduce<any>((value, step) => value?.[step], v) ?? null),
+        ]),
+    );
+}
+
 /** The client's visits: a table with open, resend and delete, and "Add new visit". */
-export function VisitsCard({
+export const VisitsCard = React.memo(function VisitsCard({
     visits,
     onAdd,
     ...handlers
@@ -160,4 +181,4 @@ export function VisitsCard({
             />
         </Card>
     );
-}
+});
