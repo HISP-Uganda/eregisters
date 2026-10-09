@@ -11,6 +11,8 @@
         "start": "d2-app-scripts start --proxy https://eregisters.health.go.ug",
         "test": "d2-app-scripts test",
         "test:vitest": "vitest run",
+        "e2e:setup": "node e2e/setup/setup.mjs",
+        "e2e": "playwright test -c e2e/playwright.config.ts",
         "deploy": "d2-app-scripts deploy"
     },
     "dependencies": {
@@ -34,6 +36,7 @@
     },
     "devDependencies": {
         "@dhis2/cli-app-scripts": "12.11.4",
+        "@playwright/test": "1.63.0",
         "@types/jest": "^30.0.0",
         "@types/lodash": "^4.17.25",
         "@types/node": "^26.4.1",
