@@ -1,6 +1,6 @@
 import { and, eq, not, useLiveSuspenseQuery } from "@tanstack/react-db";
-import { Form } from "antd";
-import React, { useState } from "react";
+import { Form, type FormInstance } from "antd";
+import React, { useCallback, useRef, useState } from "react";
 import { DataModal } from "@/components/data-modal";
 import { MainEventCapture } from "@/screens/main-event-capture/main-event-capture";
 import { EventRuleAwareForm } from "@/components/rule-aware-form";
@@ -58,6 +58,61 @@ export function VisitModal({
         [visit?.event],
     );
 
+    // The form machine reads its input once, when the form mounts, so the
+    // latest events are read from a ref rather than re-rendering the form
+    // each time an autosave changes them.
+    const allEnrollmentEventsRef = useRef(allEnrollmentEvents);
+    allEnrollmentEventsRef.current = allEnrollmentEvents;
+
+    /**
+     * The form body. Kept stable (DataModal memoises what it returns), so a
+     * rule result, the parent's live queries or the footer re-rendering
+     * don't re-render the whole visit form.
+     */
+    const renderForm = useCallback(
+        (form: FormInstance) =>
+            visit ? (
+                <EventContext.Provider
+                    options={{
+                        input: {
+                            programRules,
+                            programRuleVariables,
+                            enrollment,
+                            event: visit,
+                            program: PROGRAM,
+                            programStage: MAIN_STAGE,
+                            trackedEntity,
+                            validDataElements: mainStageDataElements,
+                            form,
+                            allEnrollmentEvents: allEnrollmentEventsRef.current.map((e) => ({
+                                event: e.event,
+                                programStage: e.programStage,
+                                occurredAt: e.occurredAt,
+                                dataValues: e.dataValues,
+                            })),
+                        },
+                    }}
+                >
+                    <EventRuleAwareForm onRuleResult={setRuleResult}>
+                        <Form
+                            form={form}
+                            layout="vertical"
+                            preserve={false}
+                            initialValues={visit.dataValues}
+                        >
+                            <MainEventCapture
+                                form={form}
+                                enrollment={enrollment}
+                                trackedEntity={trackedEntity}
+                                mainEvent={visit}
+                            />
+                        </Form>
+                    </EventRuleAwareForm>
+                </EventContext.Provider>
+            ) : null,
+        [visit, enrollment, trackedEntity, programRules, programRuleVariables, mainStageDataElements],
+    );
+
     return (
         <DataModal<FlattenedEvent>
             open={isOpen}
@@ -84,47 +139,7 @@ export function VisitModal({
                 })
             }
         >
-            {(form) =>
-                visit ? (
-                    <EventContext.Provider
-                        options={{
-                            input: {
-                                programRules,
-                                programRuleVariables,
-                                enrollment,
-                                event: visit,
-                                program: PROGRAM,
-                                programStage: MAIN_STAGE,
-                                trackedEntity,
-                                validDataElements: mainStageDataElements,
-                                form,
-                                allEnrollmentEvents: allEnrollmentEvents.map((e) => ({
-                                    event: e.event,
-                                    programStage: e.programStage,
-                                    occurredAt: e.occurredAt,
-                                    dataValues: e.dataValues,
-                                })),
-                            },
-                        }}
-                    >
-                        <EventRuleAwareForm onRuleResult={setRuleResult}>
-                            <Form
-                                form={form}
-                                layout="vertical"
-                                preserve={false}
-                                initialValues={visit.dataValues}
-                            >
-                                <MainEventCapture
-                                    form={form}
-                                    enrollment={enrollment}
-                                    trackedEntity={trackedEntity}
-                                    mainEvent={visit}
-                                />
-                            </Form>
-                        </EventRuleAwareForm>
-                    </EventContext.Provider>
-                ) : null
-            }
+            {renderForm}
         </DataModal>
     );
 }

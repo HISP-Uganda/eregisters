@@ -10,7 +10,7 @@ import {
     Tooltip,
     Typography,
 } from "antd";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import type { SaveBlock } from "@/utils/save-block";
 import { SyncStatusComp } from "./sync-status-comp";
 import {
@@ -68,6 +68,118 @@ interface ModalContentProps<T extends FlattenedTrackedEntity | FlattenedEvent> {
     setLoading: (v: boolean) => void;
 }
 
+const SAVE_BUTTON_STYLE: React.CSSProperties = {
+    background: "linear-gradient(135deg, #7c3aed 0%, #a78bfa 100%)",
+    borderColor: "#7c3aed",
+    borderRadius: 8,
+    fontWeight: 500,
+};
+
+/**
+ * The modal's buttons. The save block needs every form value, so this is
+ * the one place that watches them all: a change re-renders the footer, not
+ * the (large) form above it.
+ */
+function ModalFooter({
+    form,
+    saveBlockFor,
+    isMobile,
+    status,
+    loading,
+    onCancel,
+    onSave,
+    submitButtonText,
+    hasAddAnother,
+}: {
+    form: FormInstance;
+    saveBlockFor?: (values: Record<string, unknown>) => SaveBlock;
+    isMobile: boolean;
+    status: string;
+    loading: boolean;
+    onCancel: () => void;
+    onSave: (addAnother?: boolean) => void;
+    submitButtonText: string;
+    hasAddAnother: boolean;
+}) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const watchedValues: Record<string, any> = Form.useWatch((values) => values, form) ?? {};
+    const block = saveBlockFor?.(watchedValues);
+    const blocked = Boolean(
+        block && (block.missing.length > 0 || block.errors.length > 0),
+    );
+    const tooltipTitle = blocked && block ? renderBlockTooltip(block) : "";
+    const buttonStyle: React.CSSProperties = {
+        ...SAVE_BUTTON_STYLE,
+        ...(isMobile
+            ? {
+                  width: "100%",
+                  whiteSpace: "normal" as const,
+                  wordBreak: "break-word" as const,
+                  height: "auto",
+                  padding: "8px 16px",
+              }
+            : {
+                  paddingLeft: 32,
+                  paddingRight: 32,
+              }),
+    };
+    return (
+        <Flex
+            justify={isMobile ? "center" : "space-between"}
+            align={isMobile ? "stretch" : "center"}
+            vertical={isMobile}
+            gap={isMobile ? 8 : 0}
+            style={{ padding: "8px 0" }}
+        >
+            <SyncStatusComp syncStatus={status} />
+            <Flex
+                gap="middle"
+                vertical={isMobile}
+                style={isMobile ? { width: "100%" } : undefined}
+            >
+                <Button
+                    onClick={onCancel}
+                    disabled={loading}
+                    style={{
+                        borderRadius: 8,
+                        ...(isMobile && { width: "100%" }),
+                    }}
+                >
+                    Cancel
+                </Button>
+                <Tooltip title={tooltipTitle}>
+                    <span>
+                        <Button
+                            type="primary"
+                            onClick={() => onSave()}
+                            loading={loading}
+                            disabled={blocked || loading}
+                            style={buttonStyle}
+                        >
+                            {submitButtonText}
+                        </Button>
+                    </span>
+                </Tooltip>
+                {hasAddAnother && (
+                    <Tooltip title={tooltipTitle}>
+                        <span>
+                            <Button
+                                type="primary"
+                                style={buttonStyle}
+                                onClick={() => onSave(true)}
+                                loading={loading}
+                                disabled={blocked || loading}
+                            >
+                                {submitButtonText} & add another
+                            </Button>
+                        </span>
+                    </Tooltip>
+                )}
+            </Flex>
+        </Flex>
+    );
+}
+
 function ModalContent<T extends FlattenedTrackedEntity | FlattenedEvent>({
     children,
     onSave,
@@ -84,13 +196,6 @@ function ModalContent<T extends FlattenedTrackedEntity | FlattenedEvent>({
     setLoading,
 }: ModalContentProps<T>) {
     const [form] = Form.useForm<T>();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const watchedValues: Record<string, any> = Form.useWatch((values) => values, form) ?? {};
-    const block = saveBlockFor?.(watchedValues);
-    const blocked = Boolean(
-        block && (block.missing.length > 0 || block.errors.length > 0),
-    );
-    const tooltipTitle = blocked && block ? renderBlockTooltip(block) : "";
 
     const [contentReady, setContentReady] = useState(false);
 
@@ -103,6 +208,13 @@ function ModalContent<T extends FlattenedTrackedEntity | FlattenedEvent>({
             setContentReady(false);
         }
     }, [open]);
+
+    // Built once per `children`: a re-render of this modal (its footer,
+    // loading state, the parent's live queries) doesn't re-render the form.
+    const body = useMemo(
+        () => (contentReady ? children(form) : null),
+        [children, form, contentReady],
+    );
 
     const handleOk = async (addAnother = false) => {
         try {
@@ -131,99 +243,17 @@ function ModalContent<T extends FlattenedTrackedEntity | FlattenedEvent>({
                 title={title}
                 width="97vw"
                 footer={
-                    <Flex
-                        justify={isMobile ? "center" : "space-between"}
-                        align={isMobile ? "stretch" : "center"}
-                        vertical={isMobile}
-                        gap={isMobile ? 8 : 0}
-                        style={{ padding: "8px 0" }}
-                    >
-                        <SyncStatusComp syncStatus={status} />
-                        <Flex
-                            gap="middle"
-                            vertical={isMobile}
-                            style={isMobile ? { width: "100%" } : undefined}
-                        >
-                            <Button
-                                onClick={onCancel}
-                                disabled={loading}
-                                style={{
-                                    borderRadius: 8,
-                                    ...(isMobile && { width: "100%" }),
-                                }}
-                            >
-                                Cancel
-                            </Button>
-                            <Tooltip title={tooltipTitle}>
-                                <span>
-                                    <Button
-                                        type="primary"
-                                        onClick={() => handleOk()}
-                                        loading={loading}
-                                        disabled={blocked || loading}
-                                        style={{
-                                            background:
-                                                "linear-gradient(135deg, #7c3aed 0%, #a78bfa 100%)",
-                                            borderColor: "#7c3aed",
-                                            borderRadius: 8,
-                                            fontWeight: 500,
-                                            ...(isMobile
-                                                ? {
-                                                      width: "100%",
-                                                      whiteSpace:
-                                                          "normal" as const,
-                                                      wordBreak:
-                                                          "break-word" as const,
-                                                      height: "auto",
-                                                      padding: "8px 16px",
-                                                  }
-                                                : {
-                                                      paddingLeft: 32,
-                                                      paddingRight: 32,
-                                                  }),
-                                        }}
-                                    >
-                                        {submitButtonText}
-                                    </Button>
-                                </span>
-                            </Tooltip>
-                            {hasAddAnother && (
-                                <Tooltip title={tooltipTitle}>
-                                    <span>
-                                        <Button
-                                            type="primary"
-                                            style={{
-                                                background:
-                                                    "linear-gradient(135deg, #7c3aed 0%, #a78bfa 100%)",
-                                                borderColor: "#7c3aed",
-                                                borderRadius: 8,
-                                                fontWeight: 500,
-                                                ...(isMobile
-                                                    ? {
-                                                          width: "100%",
-                                                          whiteSpace:
-                                                              "normal" as const,
-                                                          wordBreak:
-                                                              "break-word" as const,
-                                                          height: "auto",
-                                                          padding: "8px 16px",
-                                                      }
-                                                    : {
-                                                          paddingLeft: 32,
-                                                          paddingRight: 32,
-                                                      }),
-                                            }}
-                                            onClick={() => handleOk(true)}
-                                            loading={loading}
-                                            disabled={blocked || loading}
-                                        >
-                                            {submitButtonText} & add another
-                                        </Button>
-                                    </span>
-                                </Tooltip>
-                            )}
-                        </Flex>
-                    </Flex>
+                    <ModalFooter
+                        form={form}
+                        saveBlockFor={saveBlockFor}
+                        isMobile={isMobile}
+                        status={status}
+                        loading={loading}
+                        onCancel={onCancel}
+                        onSave={handleOk}
+                        submitButtonText={submitButtonText}
+                        hasAddAnother={hasAddAnother}
+                    />
                 }
                 styles={{
                     body: {
@@ -237,7 +267,7 @@ function ModalContent<T extends FlattenedTrackedEntity | FlattenedEvent>({
                 }}
             >
                 {contentReady ? (
-                    children(form)
+                    body
                 ) : (
                     <Flex
                         justify="center"

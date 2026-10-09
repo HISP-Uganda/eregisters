@@ -78,7 +78,27 @@ export const spans = new Map<string, number>([
     ["oTI0DLitzFY", 9],
 ]);
 
+/**
+ * Cached per stage's data element list (stable metadata), so the map keeps
+ * its identity across renders: DataElementRenderer's memo compares it by
+ * reference, and a new map each render re-rendered every field.
+ */
+const currentDataElementsCache = new WeakMap<
+    ProgramStage["programStageDataElements"],
+    ReturnType<typeof buildCurrentDataElementsUncached>
+>();
+
 export function buildCurrentDataElements(programStage: ProgramStage) {
+    const key = programStage.programStageDataElements;
+    let cached = currentDataElementsCache.get(key);
+    if (!cached) {
+        cached = buildCurrentDataElementsUncached(programStage);
+        currentDataElementsCache.set(key, cached);
+    }
+    return cached;
+}
+
+function buildCurrentDataElementsUncached(programStage: ProgramStage) {
     return new Map(
         programStage.programStageDataElements.map((psde) => [
             psde.dataElement.id,
