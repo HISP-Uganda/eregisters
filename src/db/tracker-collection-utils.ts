@@ -49,4 +49,10 @@ export interface TrackerCollectionUtils<
     updateLocally: (rows: TRow[], options?: RowWriteOptions) => Promise<void>;
     deleteLocally: (keys: TKey[]) => Promise<void>;
     refresh: () => Promise<void>;
+    /**
+     * SQLite only: calls `listener` after any write to the table, including
+     * a pull's rows that aren't in memory (an on-demand collection holds
+     * only what queries loaded). Returns the unsubscribe function.
+     */
+    subscribeWrites?: (listener: () => void) => () => void;
 }

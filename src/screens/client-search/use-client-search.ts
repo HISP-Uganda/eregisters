@@ -1,4 +1,4 @@
-import { and, eq, ilike, not, useLiveSuspenseQuery } from "@tanstack/react-db";
+import { and, eq, ilike, inArray, not, useLiveSuspenseQuery } from "@tanstack/react-db";
 import { useMemo } from "react";
 import { getTrackedEntitiesCollection } from "@/db/collections";
 import { useMetadata } from "@/hooks/useMetadata";
@@ -22,7 +22,11 @@ export function useClientSearch(search: ClientSearchTerms) {
     const { data: clients = [] } = useLiveSuspenseQuery(
         (q) => {
             if (!search || Object.keys(search).length === 0) {
-                return q.from({ trackedEntity: trackedEntities }).where(() => eq(1, 0));
+                // No client matches. A constant filter like eq(1, 0) would
+                // reach the on-demand loader as "no filter" and load them all.
+                return q
+                    .from({ trackedEntity: trackedEntities })
+                    .where(({ trackedEntity }) => inArray(trackedEntity.trackedEntity, []));
             }
             let query = q.from({ trackedEntity: trackedEntities });
             for (const [attribute, term] of Object.entries(search)) {

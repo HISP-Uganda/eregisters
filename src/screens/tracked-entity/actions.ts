@@ -1,3 +1,4 @@
+import { eq, inArray, or, queryOnce } from "@tanstack/react-db";
 import {
     getEnrollmentsCollection,
     getEventsCollection,
@@ -48,33 +49,32 @@ export async function saveVisit(
     const enrollmentsCollection = getEnrollmentsCollection();
     const eventsCollection = getEventsCollection();
 
-    // Backend-agnostic local lookups — both backends' collections already
-    // hold this device's full local dataset in memory for their live
-    // queries, so filtering `.toArray` here needs no SQL-only row-adapter
-    // (same pattern as record-cascades.ts).
-    const candidateTrackedEntities = trackedEntitiesCollection.toArray.filter(
-        (te) => te.parentEntity === trackedEntity.trackedEntity,
+    // One-off queries, which also load what they find into the collections
+    // (the SQLite ones load on demand) so the updates below can find them.
+    const candidateTrackedEntities = await queryOnce((q) =>
+        q
+            .from({ te: trackedEntitiesCollection })
+            .where(({ te }) => eq(te.parentEntity, trackedEntity.trackedEntity)),
     );
     const candidateChildTrackedEntityIds = candidateTrackedEntities.map(
         (te) => te.trackedEntity,
     );
-    const eventsByParent = eventsCollection.toArray.filter(
-        (event) => event.parentEvent === visit.event,
+    const candidateEvents = await queryOnce((q) =>
+        q
+            .from({ event: eventsCollection })
+            .where(({ event }) =>
+                or(
+                    eq(event.parentEvent, visit.event),
+                    inArray(event.trackedEntity, candidateChildTrackedEntityIds),
+                ),
+            ),
     );
-    const eventsByChildTE = eventsCollection.toArray.filter((event) =>
-        candidateChildTrackedEntityIds.includes(event.trackedEntity),
-    );
-    const candidateEvents = [
-        ...new Map(
-            [...eventsByParent, ...eventsByChildTE].map((event) => [
-                event.event,
-                event,
-            ]),
-        ).values(),
-    ];
-    const candidateEnrollments = enrollmentsCollection.toArray.filter(
-        (enrollmentRow) =>
-            candidateChildTrackedEntityIds.includes(enrollmentRow.trackedEntity),
+    const candidateEnrollments = await queryOnce((q) =>
+        q
+            .from({ enrollment: enrollmentsCollection })
+            .where(({ enrollment }) =>
+                inArray(enrollment.trackedEntity, candidateChildTrackedEntityIds),
+            ),
     );
 
     const {

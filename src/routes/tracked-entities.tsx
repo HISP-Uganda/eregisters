@@ -1,5 +1,4 @@
 import { CalendarOutlined, UserOutlined } from "@ant-design/icons";
-import { and, eq, not, useLiveSuspenseQuery } from "@tanstack/react-db";
 import { createRoute, Outlet, redirect } from "@tanstack/react-router";
 import {
     Button,
@@ -13,16 +12,46 @@ import {
     Statistic,
     Typography,
 } from "antd";
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { DataElementField } from "@/components/data-element-field";
 import { ClientSchema } from "@/schemas";
 import { RootRoute } from "./__root";
 
 import dayjs from "dayjs";
-import { getTrackedEntitiesCollection } from "@/db/collections";
+import { countClients, subscribeClientWrites, type ClientCounts } from "@/db/collections";
 import { useMetadata } from "@/hooks/useMetadata";
 
 const { Content } = Layout;
+
+/**
+ * The org unit's client count and how many were registered today, kept
+ * current as clients are written (including by a pull).
+ */
+function useClientCounts(orgUnit: string) {
+    const [counts, setCounts] = useState<ClientCounts>({ total: 0, recentCreatedAt: [] });
+    useEffect(() => {
+        let current = true;
+        const refresh = () => {
+            const since = dayjs().subtract(2, "day").format("YYYY-MM-DD");
+            countClients(orgUnit, since)
+                .then((next) => {
+                    if (current) setCounts(next);
+                })
+                .catch((error) => console.warn("Counting clients failed", error));
+        };
+        refresh();
+        const unsubscribe = subscribeClientWrites(refresh);
+        return () => {
+            current = false;
+            unsubscribe();
+        };
+    }, [orgUnit]);
+    const today = dayjs().format("YYYY-MM-DD");
+    return {
+        total: counts.total,
+        registeredToday: counts.recentCreatedAt.filter((at) => dayjs(at).format("YYYY-MM-DD") === today).length,
+    };
+}
 const { Title } = Typography;
 export const TrackedEntitiesRoute = createRoute({
     getParentRoute: () => RootRoute,
@@ -42,23 +71,9 @@ export const TrackedEntitiesRoute = createRoute({
 function TrackedEntities() {
     const { program, trackedEntityAttributes, optionSets, orgUnit } =
         useMetadata();
-    const trackedEntitiesCollection = getTrackedEntitiesCollection();
-
     const [form] = Form.useForm();
 
-    const { data: total } = useLiveSuspenseQuery(
-        (q) =>
-            q
-                .from({ trackedEntities: trackedEntitiesCollection })
-                .where(({ trackedEntities }) =>
-                    and(
-                        not(eq(trackedEntities.syncStatus, "draft")),
-                        not(eq(trackedEntities.syncStatus, "deleted")),
-                        eq(trackedEntities.orgUnit, orgUnit),
-                    ),
-                ),
-        [orgUnit],
-    );
+    const { total, registeredToday } = useClientCounts(orgUnit);
     const navigate = TrackedEntitiesRoute.useNavigate();
     const { search } = TrackedEntitiesRoute.useSearch();
 
@@ -90,7 +105,7 @@ function TrackedEntities() {
             <Card variant="borderless" style={{ flex: 1 }}>
                 <Statistic
                     title="Total Clients"
-                    value={total.length}
+                    value={total}
                     prefix={<UserOutlined />}
                     styles={{
                         content: { color: "#1f4788" },
@@ -100,13 +115,7 @@ function TrackedEntities() {
             <Card variant="borderless" style={{ flex: 1 }}>
                 <Statistic
                     title="Registered Today"
-                    value={
-                        total.filter(
-                            (te) =>
-                                dayjs(te.createdAt).format("YYYY-MM-DD") ===
-                                dayjs().format("YYYY-MM-DD"),
-                        ).length
-                    }
+                    value={registeredToday}
                     prefix={<CalendarOutlined />}
                     styles={{
                         content: { color: "#52c41a" },

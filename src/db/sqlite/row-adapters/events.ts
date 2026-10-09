@@ -1,6 +1,7 @@
 import type { FlattenedEvent } from "@/schemas";
 import type { SqlDriver } from "@/db/sqlite/driver-types";
 import type { RowAdapter } from "@/db/sqlite/row-adapter";
+import type { TableSpec } from "@/db/sqlite/where-to-sql";
 import { loadUsersByUid, upsertUser, type SqlUser } from "./users";
 
 type EventParentRow = {
@@ -143,8 +144,11 @@ async function loadMany(
             `SELECT ${PARENT_COLUMNS} FROM events WHERE ${whereClause}`,
             params,
         ),
+        // Only the matching events' values, not the whole table.
         db.execute<DataValueRow>(
-            `SELECT ${DATA_VALUE_COLUMNS} FROM event_data_values`,
+            `SELECT ${DATA_VALUE_COLUMNS} FROM event_data_values
+             WHERE event IN (SELECT event FROM events WHERE ${whereClause})`,
+            params,
         ),
         loadUsersByUid(db),
     ]);
@@ -162,6 +166,30 @@ async function loadMany(
         ),
     );
 }
+
+/** How a live query's filter on events maps to SQL (see where-to-sql.ts). */
+export const EVENTS_TABLE_SPEC: TableSpec = {
+    table: "events",
+    key: "event",
+    columns: {
+        event: "event",
+        status: "status",
+        program: "program",
+        programStage: "program_stage",
+        enrollment: "enrollment",
+        trackedEntity: "tracked_entity",
+        orgUnit: "org_unit",
+        parentEvent: "parent_event",
+        occurredAt: "occurred_at",
+        syncStatus: "sync_status",
+    },
+    child: {
+        field: "dataValues",
+        table: "event_data_values",
+        foreignKey: "event",
+        nameColumn: "data_element",
+    },
+};
 
 /** Backs the recursive delete walk's "events under this enrollment" lookup. */
 export function findEventsByEnrollment(
@@ -211,8 +239,7 @@ export function findEventsBySyncStatusIn(
 }
 
 /**
- * Backs `collection-adapter.ts`'s scoped reloadAndDiff — unlike `loadMany`
- * (whose data-value-table read is always unfiltered), this filters BOTH
+ * Backs `collection-adapter.ts`'s scoped reloadAndDiff: filters both
  * tables by the given keys, so a single-row write reloads O(1) rows
  * instead of the whole collection.
  */
@@ -252,6 +279,9 @@ export const eventsRowAdapter: RowAdapter<FlattenedEvent, string> = {
     rowVersion: (row) => row.updatedAt,
 
     loadByKeys,
+
+    loadWhere: (db, filter) => loadMany(db, filter.sql, filter.params),
+    tableSpec: EVENTS_TABLE_SPEC,
 
     loadAll: async (db) => {
         const [parents, dataValueRows, usersByUid] = await Promise.all([

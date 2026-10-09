@@ -94,9 +94,9 @@ describe("writePulledTrackedEntityPage", () => {
         close = c;
         await createSchema(driver);
 
-        const trackedEntities = createTrackedEntitiesSqliteCollection(driver);
-        const enrollments = createEnrollmentsSqliteCollection(driver);
-        const events = createEventsSqliteCollection(driver);
+        const trackedEntities = createTrackedEntitiesSqliteCollection(driver, "eager");
+        const enrollments = createEnrollmentsSqliteCollection(driver, "eager");
+        const events = createEventsSqliteCollection(driver, "eager");
         await Promise.all([
             trackedEntities.toArrayWhenReady(),
             enrollments.toArrayWhenReady(),
@@ -140,9 +140,9 @@ describe("writePulledTrackedEntityPage", () => {
         close = c;
         await createSchema(driver);
 
-        const trackedEntities = createTrackedEntitiesSqliteCollection(driver);
-        const enrollments = createEnrollmentsSqliteCollection(driver);
-        const events = createEventsSqliteCollection(driver);
+        const trackedEntities = createTrackedEntitiesSqliteCollection(driver, "eager");
+        const enrollments = createEnrollmentsSqliteCollection(driver, "eager");
+        const events = createEventsSqliteCollection(driver, "eager");
         await Promise.all([
             trackedEntities.toArrayWhenReady(),
             enrollments.toArrayWhenReady(),

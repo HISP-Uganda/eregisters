@@ -22,9 +22,17 @@ import { localEditStamp } from "@/db/local-author";
  * (deliberately out of scope for this standalone work); these factories
  * just need a `SqlDriver` handed to them, satisfied identically by the
  * production driver or the `node:sqlite` test driver.
+ *
+ * The tracker collections are on-demand by default: each live query loads
+ * only its rows (see collection-adapter.ts), so a start doesn't read the
+ * whole facility into memory. "eager" loads everything, as before.
  */
+type TrackerSyncMode = "eager" | "on-demand";
 
-export function createTrackedEntitiesSqliteCollection(db: SqlDriver) {
+export function createTrackedEntitiesSqliteCollection(
+    db: SqlDriver,
+    syncMode: TrackerSyncMode = "on-demand",
+) {
     return createCollection(
         sqliteCollectionOptions<FlattenedTrackedEntity, string>({
             id: "trackedEntities",
@@ -32,11 +40,15 @@ export function createTrackedEntitiesSqliteCollection(db: SqlDriver) {
             getKey: (row) => row.trackedEntity,
             row: trackedEntitiesRowAdapter,
             stampEdit: localEditStamp,
+            syncMode,
         }),
     );
 }
 
-export function createEnrollmentsSqliteCollection(db: SqlDriver) {
+export function createEnrollmentsSqliteCollection(
+    db: SqlDriver,
+    syncMode: TrackerSyncMode = "on-demand",
+) {
     return createCollection(
         sqliteCollectionOptions<FlattenedEnrollment, string>({
             id: "enrollments",
@@ -44,11 +56,15 @@ export function createEnrollmentsSqliteCollection(db: SqlDriver) {
             getKey: (row) => row.enrollment,
             row: enrollmentsRowAdapter,
             stampEdit: localEditStamp,
+            syncMode,
         }),
     );
 }
 
-export function createEventsSqliteCollection(db: SqlDriver) {
+export function createEventsSqliteCollection(
+    db: SqlDriver,
+    syncMode: TrackerSyncMode = "on-demand",
+) {
     return createCollection(
         sqliteCollectionOptions<FlattenedEvent, string>({
             id: "events",
@@ -56,6 +72,7 @@ export function createEventsSqliteCollection(db: SqlDriver) {
             getKey: (row) => row.event,
             row: eventsRowAdapter,
             stampEdit: localEditStamp,
+            syncMode,
         }),
     );
 }

@@ -26,6 +26,7 @@ import type { StorageBackend } from "./backend";
  */
 
 let activeBackend: StorageBackend | null = null;
+let activeSqlDriver: SqlDriver | null = null;
 
 export function initCollections(
     backend: StorageBackend,
@@ -38,6 +39,7 @@ export function initCollections(
             );
         }
         initTrackerCollections(sqlDriver);
+        activeSqlDriver = sqlDriver;
     } else {
         initDexieTrackerCollections();
     }
@@ -69,6 +71,54 @@ export function getEventsCollection() {
     return requireBackend() === "sqlite"
         ? getSqliteEventsCollection()
         : getEventsDexieCollection();
+}
+
+export type ClientCounts = {
+    /** Registered clients at the org unit (not drafts, not deleted). */
+    total: number;
+    /** Their `createdAt` values from about the last two days, for "today" checks. */
+    recentCreatedAt: string[];
+};
+
+/**
+ * Counts the org unit's registered clients. On SQLite it's a count query,
+ * so the home screen doesn't load every client into memory to show a
+ * number; the Dexie collection holds them all anyway.
+ */
+export async function countClients(orgUnit: string, recentSince: string): Promise<ClientCounts> {
+    if (requireBackend() === "sqlite") {
+        const where = `org_unit = ? AND sync_status NOT IN ('draft', 'deleted')`;
+        const [total, recent] = await Promise.all([
+            activeSqlDriver!.execute<{ n: number }>(
+                `SELECT COUNT(*) AS n FROM tracked_entities WHERE ${where}`,
+                [orgUnit],
+            ),
+            activeSqlDriver!.execute<{ created_at: string }>(
+                `SELECT created_at FROM tracked_entities WHERE ${where} AND created_at >= ?`,
+                [orgUnit, recentSince],
+            ),
+        ]);
+        return {
+            total: Number(total.rows[0]?.n ?? 0),
+            recentCreatedAt: recent.rows.map((r) => r.created_at),
+        };
+    }
+    const clients = getTrackedEntitiesDexieCollection().toArray.filter(
+        (te) => te.orgUnit === orgUnit && te.syncStatus !== "draft" && te.syncStatus !== "deleted",
+    );
+    return {
+        total: clients.length,
+        recentCreatedAt: clients.map((te) => te.createdAt).filter((at) => at >= recentSince),
+    };
+}
+
+/** Calls `listener` after any change to the clients table; returns the unsubscribe. */
+export function subscribeClientWrites(listener: () => void): () => void {
+    if (requireBackend() === "sqlite") {
+        return getSqliteTrackedEntitiesCollection().utils.subscribeWrites(listener);
+    }
+    const subscription = getTrackedEntitiesDexieCollection().subscribeChanges(() => listener());
+    return () => subscription.unsubscribe();
 }
 
 /** Test-only escape hatch, mirroring both underlying instance modules'. */

@@ -1,5 +1,6 @@
 import type { SqlDriver } from "./driver-types";
 import type { RowWriteOptions } from "@/db/tracker-collection-utils";
+import type { SqlFilter, TableSpec } from "./where-to-sql";
 
 export type { RowWriteOptions };
 
@@ -18,6 +19,14 @@ export interface RowAdapter<TRow extends object, TKey extends string | number> {
      * implement it just falls back to `loadAll`'s full-table behavior.
      */
     loadByKeys?: (db: SqlDriver, keys: readonly TKey[]) => Promise<TRow[]>;
+    /**
+     * Loads the rows matching a SQL filter (from `where-to-sql.ts`). With
+     * `tableSpec`, it lets an on-demand collection load just what a live
+     * query asks for, instead of `loadAll` at start.
+     */
+    loadWhere?: (db: SqlDriver, filter: SqlFilter) => Promise<TRow[]>;
+    /** How live-query filters on this row map to SQL (`where-to-sql.ts`). */
+    tableSpec?: TableSpec;
     rowVersion: (row: TRow) => string;
     insertRow: (
         db: SqlDriver,

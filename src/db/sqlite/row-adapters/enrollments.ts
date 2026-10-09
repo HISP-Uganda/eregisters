@@ -1,6 +1,7 @@
 import type { FlattenedEnrollment } from "@/schemas";
 import type { SqlDriver } from "@/db/sqlite/driver-types";
 import type { RowAdapter } from "@/db/sqlite/row-adapter";
+import type { TableSpec } from "@/db/sqlite/where-to-sql";
 import { loadUsersByUid, upsertUser, type SqlUser } from "./users";
 
 type EnrollmentParentRow = {
@@ -99,6 +100,27 @@ export async function getEnrollmentById(
     return reassemble(parent.rows[0], attributeRows.rows, usersByUid);
 }
 
+/** How a live query's filter on enrollments maps to SQL (see where-to-sql.ts). */
+export const ENROLLMENTS_TABLE_SPEC: TableSpec = {
+    table: "enrollments",
+    key: "enrollment",
+    columns: {
+        enrollment: "enrollment",
+        trackedEntity: "tracked_entity",
+        program: "program",
+        orgUnit: "org_unit",
+        status: "status",
+        enrolledAt: "enrolled_at",
+        syncStatus: "sync_status",
+    },
+    child: {
+        field: "attributes",
+        table: "enrollment_attributes",
+        foreignKey: "enrollment",
+        nameColumn: "attribute",
+    },
+};
+
 async function loadMany(
     db: SqlDriver,
     whereClause: string,
@@ -109,8 +131,11 @@ async function loadMany(
             `SELECT ${PARENT_COLUMNS} FROM enrollments WHERE ${whereClause}`,
             params,
         ),
+        // Only the matching enrollments' attributes, not the whole table.
         db.execute<AttributeRow>(
-            `SELECT ${ATTRIBUTE_COLUMNS} FROM enrollment_attributes`,
+            `SELECT ${ATTRIBUTE_COLUMNS} FROM enrollment_attributes
+             WHERE enrollment IN (SELECT enrollment FROM enrollments WHERE ${whereClause})`,
+            params,
         ),
         loadUsersByUid(db),
     ]);
@@ -161,8 +186,7 @@ export function findEnrollmentsBySyncStatusIn(
 }
 
 /**
- * Backs `collection-adapter.ts`'s scoped reloadAndDiff — unlike `loadMany`
- * (whose attribute-table read is always unfiltered), this filters BOTH
+ * Backs `collection-adapter.ts`'s scoped reloadAndDiff: filters both
  * tables by the given keys, so a single-row write reloads O(1) rows
  * instead of the whole collection.
  */
@@ -202,6 +226,9 @@ export const enrollmentsRowAdapter: RowAdapter<FlattenedEnrollment, string> = {
     rowVersion: (row) => row.updatedAt,
 
     loadByKeys,
+
+    loadWhere: (db, filter) => loadMany(db, filter.sql, filter.params),
+    tableSpec: ENROLLMENTS_TABLE_SPEC,
 
     loadAll: async (db) => {
         const [parents, attributeRows, usersByUid] = await Promise.all([

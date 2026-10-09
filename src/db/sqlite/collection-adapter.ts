@@ -1,4 +1,4 @@
-import type { SyncConfig } from "@tanstack/db";
+import type { LoadSubsetOptions, SyncConfig } from "@tanstack/db";
 import type { TrackerCollectionUtils } from "@/db/tracker-collection-utils";
 import { crossTabBus, type CrossTabBus } from "@/db/cross-tab";
 import type { SqlDriver } from "./driver-types";
@@ -7,6 +7,7 @@ import {
     safeCallPersistence,
     type SafeCallPersistenceOptions,
 } from "./safe-call-persistence";
+import { whereToSql, type SqlFilter } from "./where-to-sql";
 
 /**
  * Direct TanStack DB collection adapter over a SqlDriver, replacing
@@ -28,6 +29,14 @@ import {
  * version-only comparison would silently miss (found as a real bug while
  * verifying this against a real backend; covered by
  * collection-adapter.test.ts).
+ *
+ * With `syncMode: "on-demand"` (and a row adapter that can load by a SQL
+ * filter), the collection starts empty and each live query loads only the
+ * rows it asks for (`loadSubset`, filter translated by `where-to-sql.ts`),
+ * instead of every row being read into memory at start. Rows stay loaded
+ * once read. After a write, a row enters memory only if it's already
+ * loaded, written by this tab's own (non-pull) write, or matches a filter
+ * loaded so far.
  */
 export interface SqliteCollectionOptions<
     TRow extends object,
@@ -50,6 +59,23 @@ export interface SqliteCollectionOptions<
      * `onUpdate`, so they never stamp.
      */
     stampEdit?: () => Partial<TRow>;
+    /**
+     * "on-demand": load per live query instead of the whole table at start.
+     * Needs `row.loadWhere`, `row.tableSpec` and `row.loadByKeys`; without
+     * them the collection stays eager.
+     */
+    syncMode?: "eager" | "on-demand";
+}
+
+/** Keys per `IN (...)` read, well under SQLite's bound-parameter limit. */
+const KEY_CHUNK = 500;
+
+function chunks<T>(items: readonly T[]): T[][] {
+    const out: T[][] = [];
+    for (let i = 0; i < items.length; i += KEY_CHUNK) {
+        out.push(items.slice(i, i + KEY_CHUNK));
+    }
+    return out;
 }
 
 export function sqliteCollectionOptions<
@@ -60,17 +86,86 @@ export function sqliteCollectionOptions<
         options;
     const crossTab = options.crossTab ?? crossTabBus;
 
+    const writeListeners = new Set<() => void>();
+    function notifyWrite(): void {
+        for (const listener of writeListeners) listener();
+    }
+
     function publish(keys?: readonly TKey[]): void {
         crossTab.publish({
             kind: "collection",
             id,
             ...(keys ? { keys: [...keys] } : {}),
         });
+        notifyWrite();
     }
 
     let previousSnapshot = new Map<TKey, TRow>();
     let syncParams: Parameters<SyncConfig<TRow, TKey>["sync"]>[0] | null =
         null;
+
+    const onDemand =
+        options.syncMode === "on-demand" &&
+        Boolean(row.loadWhere && row.tableSpec && row.loadByKeys);
+
+    // Reloads and subset loads run one at a time, so a read that started
+    // before a write can't put back an older row after the write's reload.
+    let queue: Promise<unknown> = Promise.resolve();
+    function serialize<T>(fn: () => Promise<T>): Promise<T> {
+        const run = queue.then(fn);
+        queue = run.catch(() => undefined);
+        return run;
+    }
+
+    /**
+     * On-demand: the filters loaded so far, most recently used last. Each
+     * stays current: a written row that matches one enters memory (see
+     * reloadAndDiffScoped), so asking for it again needs no read and is
+     * answered synchronously. That matters for React: a component that
+     * suspends loses its hooks, so `useLiveSuspenseQuery` creates a new
+     * live query on each retry, and if each one waited for a read the
+     * component would suspend forever. Capped; a dropped filter is just
+     * read again when next asked for.
+     */
+    const loadedSubsets = new Map<string, SqlFilter>();
+    const MAX_LOADED_SUBSETS = 200;
+    /** On-demand: reads in progress, so a filter asked for twice is read once. */
+    const loadingSubsets = new Map<string, Promise<void>>();
+
+    function subsetId(filter: SqlFilter): string {
+        return `${filter.sql}\u0000${JSON.stringify(filter.params)}`;
+    }
+
+    async function loadByKeysChunked(keys: readonly TKey[]): Promise<TRow[]> {
+        const rows: TRow[] = [];
+        for (const chunk of chunks(keys)) {
+            rows.push(...(await row.loadByKeys!(db, chunk)));
+        }
+        return rows;
+    }
+
+    /** Which of `candidates` match a filter loaded so far (on-demand). */
+    async function matchingActiveSubsets(
+        candidates: readonly TKey[],
+    ): Promise<Set<TKey>> {
+        const filters = [...loadedSubsets.values()];
+        if (candidates.length === 0 || filters.length === 0) return new Set();
+        if (filters.some((f) => f.sql === "1")) return new Set(candidates);
+        const { table, key } = row.tableSpec!;
+        const anyFilter = filters.map((f) => `(${f.sql})`).join(" OR ");
+        const anyParams = filters.flatMap((f) => f.params);
+        const matched = new Set<TKey>();
+        for (const chunk of chunks(candidates)) {
+            const { rows } = await db.execute<{ k: TKey }>(
+                `SELECT ${table}.${key} AS k FROM ${table}
+                 WHERE ${table}.${key} IN (${chunk.map(() => "?").join(", ")})
+                 AND (${anyFilter})`,
+                [...chunk, ...anyParams],
+            );
+            for (const r of rows) matched.add(r.k);
+        }
+        return matched;
+    }
 
     function diffOne(nextRow: TRow | undefined, key: TKey): void {
         const prev = previousSnapshot.get(key);
@@ -105,24 +200,123 @@ export function sqliteCollectionOptions<
      */
     async function reloadAndDiffScoped(
         affectedKeys: readonly TKey[],
+        admitNew: boolean,
     ): Promise<void> {
         if (!syncParams) return;
-        const rows = await row.loadByKeys!(db, affectedKeys);
+        const rows = await loadByKeysChunked(affectedKeys);
         const foundByKey = new Map<TKey, TRow>();
         for (const r of rows) foundByKey.set(getKey(r), r);
+        // On-demand, a row nothing has loaded stays out of memory unless
+        // this tab wrote it, or it matches a filter loaded so far.
+        const admitted =
+            onDemand && !admitNew
+                ? await matchingActiveSubsets(
+                      affectedKeys.filter(
+                          (key) =>
+                              !previousSnapshot.has(key) &&
+                              foundByKey.has(key),
+                      ),
+                  )
+                : null;
+        if (!syncParams) return;
         syncParams.begin();
         for (const key of affectedKeys) {
+            if (
+                admitted &&
+                !previousSnapshot.has(key) &&
+                !admitted.has(key)
+            ) {
+                continue;
+            }
             diffOne(foundByKey.get(key), key);
         }
         syncParams.commit();
     }
 
-    async function reloadAndDiff(affectedKeys?: readonly TKey[]): Promise<void> {
+    /** On-demand: re-reads every loaded row, and every loaded filter's rows. */
+    async function reloadLoaded(): Promise<void> {
+        const loadedKeys = [...previousSnapshot.keys()];
+        const loaded = await loadByKeysChunked(loadedKeys);
+        const wanted = await Promise.all(
+            [...loadedSubsets.values()].map((filter) => row.loadWhere!(db, filter)),
+        );
         if (!syncParams) return;
-        if (affectedKeys && row.loadByKeys) {
-            await reloadAndDiffScoped(affectedKeys);
-            return;
+        const found = new Map<TKey, TRow>();
+        for (const r of [...loaded, ...wanted.flat()]) found.set(getKey(r), r);
+        syncParams.begin();
+        for (const key of loadedKeys) diffOne(found.get(key), key);
+        for (const [key, r] of found) {
+            if (!previousSnapshot.has(key)) diffOne(r, key);
         }
+        syncParams.commit();
+    }
+
+    /**
+     * Brings the collection up to date with the database: just
+     * `affectedKeys` when given (`admitNew`: false for rows this tab didn't
+     * write itself, which on-demand only enter memory when a query wants
+     * them), else everything loaded (on-demand) or the whole table (eager).
+     */
+    function reloadAndDiff(
+        affectedKeys?: readonly TKey[],
+        admitNew = true,
+    ): Promise<void> {
+        return serialize(async () => {
+            if (!syncParams) return;
+            if (affectedKeys && row.loadByKeys) {
+                await reloadAndDiffScoped(affectedKeys, admitNew);
+            } else if (onDemand) {
+                await reloadLoaded();
+            } else {
+                await reloadAll();
+            }
+        });
+    }
+
+    /**
+     * On-demand `loadSubset`: loads the rows a live query's filter selects
+     * (a superset, see where-to-sql.ts), once per filter (see loadedSubsets).
+     */
+    function loadSubset(opts: LoadSubsetOptions): true | Promise<void> {
+        const filter = whereToSql(row.tableSpec!, opts.where);
+        const key = subsetId(filter);
+        if (loadedSubsets.has(key)) {
+            loadedSubsets.delete(key);
+            loadedSubsets.set(key, filter);
+            return true;
+        }
+        const inFlight = loadingSubsets.get(key);
+        if (inFlight) return inFlight;
+        const load = (async () => {
+            const { receipt } = await serialize(async () => {
+                const rows = await row.loadWhere!(db, filter);
+                if (!syncParams) return { receipt: true as const };
+                syncParams.begin();
+                for (const r of rows) diffOne(r, getKey(r));
+                // Registered in the same step as the rows, so a write
+                // reconciled after this sees the filter (and admits matches).
+                loadedSubsets.set(key, filter);
+                if (loadedSubsets.size > MAX_LOADED_SUBSETS) {
+                    loadedSubsets.delete(loadedSubsets.keys().next().value!);
+                }
+                // Wrapped: an async function returning the receipt itself
+                // would wait for it inside the queue, and the receipt can
+                // wait on a user transaction whose write reload is queued
+                // behind this step.
+                return { receipt: syncParams.commit() as unknown };
+            });
+            if (receipt !== true) await receipt;
+        })();
+        loadingSubsets.set(key, load);
+        void load.then(
+            () => loadingSubsets.delete(key),
+            () => loadingSubsets.delete(key),
+        );
+        return load;
+    }
+
+    async function reloadAll(): Promise<void> {
+        if (!syncParams) return;
         const rows = await row.loadAll(db);
         const nextSnapshot = new Map<TKey, TRow>();
         syncParams.begin();
@@ -195,7 +389,8 @@ export function sqliteCollectionOptions<
                 }
             }
         });
-        await reloadAndDiff(rows.map(getKey));
+        // A pull's rows enter memory only where a query wants them.
+        await reloadAndDiff(rows.map(getKey), options?.source !== "server");
         publish(rows.map(getKey));
     }
 
@@ -252,16 +447,23 @@ export function sqliteCollectionOptions<
         sync: {
             sync: (params: Parameters<SyncConfig<TRow, TKey>["sync"]>[0]) => {
                 syncParams = params;
-                void reloadAndDiff()
-                    .then(() => params.markReady())
-                    .catch((error) => params.markError(error));
+                if (onDemand) {
+                    // Nothing to load until a query asks (loadSubset).
+                    params.markReady();
+                } else {
+                    void reloadAndDiff()
+                        .then(() => params.markReady())
+                        .catch((error) => params.markError(error));
+                }
                 const reloadForOtherTab = (keys?: readonly TKey[]) => {
-                    reloadAndDiff(keys).catch((error) =>
-                        console.warn(
-                            `${id}: reload after another tab's write failed`,
-                            error,
-                        ),
-                    );
+                    reloadAndDiff(keys, false)
+                        .then(notifyWrite)
+                        .catch((error) =>
+                            console.warn(
+                                `${id}: reload after another tab's write failed`,
+                                error,
+                            ),
+                        );
                 };
                 const unsubscribe = crossTab.subscribe((change) => {
                     if (change.kind === "collection" && change.id === id) {
@@ -269,13 +471,23 @@ export function sqliteCollectionOptions<
                     }
                 });
                 const offResume = crossTab.onResume(() => reloadForOtherTab());
-                return () => {
+                const cleanup = () => {
                     syncParams = null;
+                    loadedSubsets.clear();
                     unsubscribe();
                     offResume();
                 };
+                return onDemand
+                    ? { cleanup, loadSubset }
+                    : cleanup;
             },
         } satisfies SyncConfig<TRow, TKey>,
+        syncMode: onDemand ? ("on-demand" as const) : ("eager" as const),
+        // On-demand starting loads nothing, and a started collection keeps
+        // this tab's own new rows in memory (see reloadAndDiffScoped), so a
+        // record created before any query touched the collection can still
+        // be edited through it.
+        startSync: onDemand,
         onInsert: async ({
             transaction,
         }: {
@@ -335,6 +547,16 @@ export function sqliteCollectionOptions<
             updateLocally,
             deleteLocally,
             refresh,
+            /**
+             * Calls `listener` after any write to this table: this tab's,
+             * another tab's, or a pull's (whose rows may not be in memory).
+             */
+            subscribeWrites: (listener: () => void) => {
+                writeListeners.add(listener);
+                return () => {
+                    writeListeners.delete(listener);
+                };
+            },
         } satisfies TrackerCollectionUtils<TRow, TKey>,
     };
 }
