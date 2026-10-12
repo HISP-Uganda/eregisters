@@ -35,12 +35,6 @@ type DataValueRow = {
     event: string;
     data_element: string;
     value: string | null;
-    stored_by: string | null;
-    provided_elsewhere: number | null;
-    created_at: string | null;
-    updated_at: string | null;
-    created_by_uid: string | null;
-    updated_by_uid: string | null;
 };
 
 function toBool(n: number): boolean {
@@ -57,9 +51,9 @@ const PARENT_COLUMNS = `event, status, program, program_stage, enrollment,
                     completed_by, completed_at, created_by_uid,
                     updated_by_uid, notes, last_synced, sync_error,
                     version, sync_status`;
-const DATA_VALUE_COLUMNS = `event, data_element, value, stored_by,
-                    provided_elsewhere, created_at, updated_at,
-                    created_by_uid, updated_by_uid`;
+// Only what reassemble() reads: every column is copied out of the worker,
+// for each of an event's values.
+const DATA_VALUE_COLUMNS = `event, data_element, value`;
 
 // FlattenedEventSchema's `dataValues` is `z.record(z.string(), z.any())` —
 // today's flatten silently drops each dataValue's own audit fields (ticket

@@ -138,5 +138,8 @@ export async function openWaSqliteAdapter(
     };
 
     await execute("PRAGMA synchronous=FULL;");
+    // 8 MB of page cache (default 2 MB): a screen's queries read the same
+    // index and table pages, which otherwise come from OPFS again each time.
+    await execute("PRAGMA cache_size=-8192;");
     return { execute };
 }

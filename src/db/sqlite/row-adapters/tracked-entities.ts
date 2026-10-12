@@ -26,10 +26,6 @@ type AttributeRow = {
     tracked_entity: string;
     attribute: string;
     value: string | null;
-    display_name: string | null;
-    value_type: string | null;
-    created_at: string | null;
-    updated_at: string | null;
 };
 
 function toBool(n: number): boolean {
@@ -43,8 +39,9 @@ const PARENT_COLUMNS = `tracked_entity, tracked_entity_type, org_unit, created_a
                     updated_at, created_by_uid, updated_by_uid, inactive,
                     deleted, potential_duplicate, parent_entity,
                     last_synced, sync_error, version, sync_status`;
-const ATTRIBUTE_COLUMNS = `tracked_entity, attribute, value, display_name,
-                    value_type, created_at, updated_at`;
+// Only what reassemble() reads: every column is copied out of the worker,
+// for each of a client's attributes.
+const ATTRIBUTE_COLUMNS = `tracked_entity, attribute, value`;
 
 function reassemble(
     parent: TrackedEntityParentRow,
@@ -121,6 +118,7 @@ export const TRACKED_ENTITIES_TABLE_SPEC: TableSpec = {
         table: "tracked_entity_attributes",
         foreignKey: "tracked_entity",
         nameColumn: "attribute",
+        lookupIndex: true, // idx_tea_attribute_value
     },
 };
 
@@ -129,25 +127,16 @@ async function loadMany(
     whereClause: string,
     params: ReadonlyArray<unknown>,
 ): Promise<FlattenedTrackedEntity[]> {
-    const [parents, attributeRows, usersByUid] = await Promise.all([
+    const [parents, usersByUid] = await Promise.all([
         db.execute<TrackedEntityParentRow>(
             `SELECT ${PARENT_COLUMNS} FROM tracked_entities WHERE ${whereClause}`,
             params,
         ),
-        // Only the matching clients' attributes, not the whole table.
-        db.execute<AttributeRow>(
-            `SELECT ${ATTRIBUTE_COLUMNS} FROM tracked_entity_attributes
-             WHERE tracked_entity IN (SELECT tracked_entity FROM tracked_entities WHERE ${whereClause})`,
-            params,
-        ),
         loadUsersByUid(db),
     ]);
-    const attributesByEntity = new Map<string, AttributeRow[]>();
-    for (const attr of attributeRows.rows) {
-        const bucket = attributesByEntity.get(attr.tracked_entity) ?? [];
-        bucket.push(attr);
-        attributesByEntity.set(attr.tracked_entity, bucket);
-    }
+    // Then the matching clients' attributes, by key: running the filter
+    // again in a subquery would cost as much as the search itself.
+    const attributesByEntity = await loadAttributes(db, parents.rows.map((p) => p.tracked_entity));
     return parents.rows.map((parent) =>
         reassemble(
             parent,
@@ -155,6 +144,28 @@ async function loadMany(
             usersByUid,
         ),
     );
+}
+
+/** These clients' attributes, by client (in batches, within SQLite's parameter limit). */
+async function loadAttributes(
+    db: SqlDriver,
+    keys: readonly string[],
+): Promise<Map<string, AttributeRow[]>> {
+    const byEntity = new Map<string, AttributeRow[]>();
+    for (let i = 0; i < keys.length; i += 500) {
+        const batch = keys.slice(i, i + 500);
+        const { rows } = await db.execute<AttributeRow>(
+            `SELECT ${ATTRIBUTE_COLUMNS} FROM tracked_entity_attributes
+             WHERE tracked_entity IN (${batch.map(() => "?").join(", ")})`,
+            batch,
+        );
+        for (const attr of rows) {
+            const bucket = byEntity.get(attr.tracked_entity) ?? [];
+            bucket.push(attr);
+            byEntity.set(attr.tracked_entity, bucket);
+        }
+    }
+    return byEntity;
 }
 
 /**

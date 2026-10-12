@@ -20,6 +20,46 @@ interface VillageSelectProps {
     fieldId?: string;
 }
 
+type VillageOption = { value: string; label: string; search: string };
+type VillageList = { options: VillageOption[]; byValue: Map<string, Village> };
+
+let villageList: Promise<VillageList> | undefined;
+
+/**
+ * The country's villages (about 70,000), loaded and turned into options once
+ * for the whole app. Rebuilding them per field and per render made every
+ * screen with a village field slow to render and to type in.
+ */
+function loadVillages(): Promise<VillageList> {
+    villageList ??= fetch("./data/villages.min.json")
+        .then((res) => res.json())
+        .then((villages: Village[]) => {
+            const options: VillageOption[] = [];
+            const byValue = new Map<string, Village>();
+            for (const v of villages) {
+                const value = `${v.village_id}(${v.village_name})`;
+                const label = [v.village_name, v.parish_name, v.subcounty_name, v.District].filter(Boolean).join("/");
+                options.push({ value, label, search: label.toLowerCase() });
+                byValue.set(value, v);
+            }
+            return { options, byValue };
+        })
+        .catch((error) => {
+            villageList = undefined; // try again on the next field
+            throw error;
+        });
+    return villageList;
+}
+
+const EMPTY: VillageList = { options: [], byValue: new Map() };
+
+const SHOW_SEARCH = {
+    filterOption: (input: string, option?: VillageOption) => {
+        const parts = input.split(" ").map((part) => part.trim().toLowerCase());
+        return parts.every((part) => option?.search.includes(part) ?? false);
+    },
+};
+
 export default function VillageSelect({
     value,
     onChange,
@@ -30,12 +70,18 @@ export default function VillageSelect({
     onFieldChange,
     fieldId,
 }: VillageSelectProps) {
-    const [currentVillages, setCurrentVillages] = React.useState<Village[]>([]);
+    const [villages, setVillages] = React.useState<VillageList>(EMPTY);
 
     React.useEffect(() => {
-        fetch("./data/villages.min.json")
-            .then((res) => res.json())
-            .then(setCurrentVillages);
+        let current = true;
+        loadVillages()
+            .then((list) => {
+                if (current) setVillages(list);
+            })
+            .catch((error) => console.error("Failed to load villages:", error));
+        return () => {
+            current = false;
+        };
     }, []);
 
     const handleVillageChange = async (selectedValue: string) => {
@@ -61,10 +107,7 @@ export default function VillageSelect({
 
         if (syncParentFields) {
             try {
-                const selectedVillage = currentVillages?.find(
-                    ({ village_id, village_name }) =>
-                        `${village_id}(${village_name})` === selectedValue,
-                );
+                const selectedVillage = villages.byValue.get(selectedValue);
                 if (selectedVillage) {
                     const districtUpdates = Array.isArray(
                         watchFields[0].fieldId,
@@ -121,31 +164,8 @@ export default function VillageSelect({
             placeholder="Select Village"
             value={value}
             onChange={handleVillageChange}
-            options={currentVillages?.map((v) => {
-                const {
-                    District,
-                    subcounty_name,
-                    parish_name,
-                    village_id,
-                    village_name,
-                } = v;
-                return {
-                    value: `${village_id}(${village_name})`,
-                    label: [village_name, parish_name, subcounty_name, District]
-                        .filter(Boolean)
-                        .join("/"),
-                };
-            })}
-            showSearch={{
-                filterOption: (input, option) => {
-                    const allInputs = input
-                        .split(" ")
-                        .map((part) => part.trim().toLowerCase());
-                    return allInputs.every((part) => {
-                        return option?.label.toLowerCase().includes(part);
-                    });
-                },
-            }}
+            options={villages.options}
+            showSearch={SHOW_SEARCH}
             virtual
             allowClear
             style={{ width: "100%" }}

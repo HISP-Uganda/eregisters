@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { whereToSql } from "@/db/sqlite/where-to-sql";
+import { selectsNothing, whereToSql } from "@/db/sqlite/where-to-sql";
 import { EVENTS_TABLE_SPEC } from "@/db/sqlite/row-adapters/events";
+import { TRACKED_ENTITIES_TABLE_SPEC } from "@/db/sqlite/row-adapters/tracked-entities";
 
 const ref = (...path: string[]) => ({ type: "ref", path });
 const val = (value: unknown) => ({ type: "val", value });
@@ -63,5 +64,23 @@ describe("whereToSql", () => {
     it("leaves unmapped fields and non-string values to memory", () => {
         expect(whereToSql(EVENTS_TABLE_SPEC, fn("eq", ref("followUp"), val(true))).sql).toBe("1");
         expect(whereToSql(EVENTS_TABLE_SPEC, fn("eq", ref("version"), val(2))).sql).toBe("1");
+    });
+
+    it("selects nothing when an AND part matches no rows", () => {
+        const where = fn("and", fn("in", ref("event"), val([])), fn("eq", ref("orgUnit"), val("ou")));
+        const filter = whereToSql(EVENTS_TABLE_SPEC, where);
+        expect(filter).toEqual({ sql: "0", params: [] });
+        expect(selectsNothing(filter)).toBe(true);
+        expect(selectsNothing(whereToSql(EVENTS_TABLE_SPEC, fn("eq", ref("orgUnit"), val("ou"))))).toBe(false);
+        const withUndefined = fn("and", fn("eq", ref("parentEvent"), val(undefined)), fn("eq", ref("orgUnit"), val("ou")));
+        expect(whereToSql(EVENTS_TABLE_SPEC, withUndefined).sql).toBe("0");
+    });
+
+    it("looks up matching parents once through an indexed child table", () => {
+        const where = fn("ilike", ref("attributes", "first"), val("%ann%"));
+        expect(whereToSql(TRACKED_ENTITIES_TABLE_SPEC, where)).toEqual({
+            sql: "tracked_entities.tracked_entity IN (SELECT c.tracked_entity FROM tracked_entity_attributes c WHERE c.attribute = ? AND c.value LIKE ?)",
+            params: ["first", "%ann%"],
+        });
     });
 });

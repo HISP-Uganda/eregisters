@@ -37,12 +37,19 @@ export interface TableSpec {
         table: string;
         foreignKey: string;
         nameColumn: string;
+        /**
+         * The child table has an index on (name, value, foreign key). Then a
+         * test on one child value is a lookup of the matching parents, done
+         * once (`key IN (...)`), instead of a check per parent row.
+         */
+        lookupIndex?: boolean;
     };
 }
 
 type Translated = SqlFilter & { exact: boolean };
 
 const ALL: Translated = { sql: "1", params: [], exact: false };
+const NONE: Translated = { sql: "0", params: [], exact: true };
 
 function isString(value: unknown): value is string {
     return typeof value === "string";
@@ -77,7 +84,9 @@ function childName(spec: TableSpec, ref: Expr): string | null {
 function childExists(spec: TableSpec, name: string, test: string, params: unknown[]): Translated {
     const c = spec.child!;
     return {
-        sql: `EXISTS (SELECT 1 FROM ${c.table} c WHERE c.${c.foreignKey} = ${spec.table}.${spec.key} AND c.${c.nameColumn} = ? AND ${test})`,
+        sql: c.lookupIndex
+            ? `${spec.table}.${spec.key} IN (SELECT c.${c.foreignKey} FROM ${c.table} c WHERE c.${c.nameColumn} = ? AND ${test})`
+            : `EXISTS (SELECT 1 FROM ${c.table} c WHERE c.${c.foreignKey} = ${spec.table}.${spec.key} AND c.${c.nameColumn} = ? AND ${test})`,
         params: [name, ...params],
         // Value comparisons in the child table follow SQLite's type
         // affinity rather than JavaScript's, so never treat them as exact.
@@ -164,6 +173,11 @@ function translate(spec: TableSpec, node: Expr): Translated {
             const joiner = node.name === "and" ? " AND " : " OR ";
             // In an OR, one widened branch widens the whole OR.
             if (node.name === "or" && parts.some((p) => p.sql === "1")) return ALL;
+            // An AND with a "no rows" part selects nothing (each part is a
+            // superset, so "0" means none can match); exact only if all are.
+            if (node.name === "and" && parts.some((p) => p.sql === "0")) {
+                return { ...NONE, exact: parts.every((p) => p.exact) };
+            }
             const kept = node.name === "and" ? parts.filter((p) => p.sql !== "1") : parts;
             if (kept.length === 0) return { ...ALL, exact: parts.every((p) => p.exact) };
             return {
@@ -196,6 +210,11 @@ function translate(spec: TableSpec, node: Expr): Translated {
  * The SQL filter for `where` (undefined: every row). The SQL qualifies
  * columns with `spec.table`, so it can be used in a subquery over it.
  */
+/** A filter that selects nothing, so there is nothing to load. */
+export function selectsNothing(filter: SqlFilter): boolean {
+    return filter.sql === "0";
+}
+
 export function whereToSql(spec: TableSpec, where: unknown): SqlFilter {
     const expr = asExpr(where);
     if (!expr) return { sql: "1", params: [] };

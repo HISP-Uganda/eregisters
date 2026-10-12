@@ -7,7 +7,7 @@ import {
     safeCallPersistence,
     type SafeCallPersistenceOptions,
 } from "./safe-call-persistence";
-import { whereToSql, type SqlFilter } from "./where-to-sql";
+import { selectsNothing, whereToSql, type SqlFilter } from "./where-to-sql";
 
 /**
  * Direct TanStack DB collection adapter over a SqlDriver, replacing
@@ -279,6 +279,8 @@ export function sqliteCollectionOptions<
      */
     function loadSubset(opts: LoadSubsetOptions): true | Promise<void> {
         const filter = whereToSql(row.tableSpec!, opts.where);
+        // Asks for no rows (e.g. inArray(key, [])): nothing to load or wait for.
+        if (selectsNothing(filter)) return true;
         const key = subsetId(filter);
         if (loadedSubsets.has(key)) {
             loadedSubsets.delete(key);

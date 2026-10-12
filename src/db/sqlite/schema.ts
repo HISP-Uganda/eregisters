@@ -56,6 +56,9 @@ const TRACKER_SCHEMA_STATEMENTS: readonly string[] = [
         source TEXT NOT NULL CHECK (source IN ('local','server')),
         PRIMARY KEY (tracked_entity, attribute)
     )`,
+    // Client search: finds one attribute's matching values without visiting
+    // every client (see `lookupIndex` in where-to-sql.ts).
+    `CREATE INDEX IF NOT EXISTS idx_tea_attribute_value ON tracked_entity_attributes(attribute, value, tracked_entity)`,
     `CREATE TABLE IF NOT EXISTS enrollments (
         enrollment TEXT PRIMARY KEY,
         tracked_entity TEXT NOT NULL REFERENCES tracked_entities(tracked_entity),
