@@ -17,6 +17,23 @@ test("search by first name and surname together", async ({ page, fixtures }) => 
     await expect(page.locator(".ant-table-row")).toHaveCount(1);
 });
 
+test("a broad search shows the total and pages through the matches", async ({ page }) => {
+    // "a" is in most generated first names: hundreds of matches, five per page. Clear first: the form keeps
+    // the previous test's terms.
+    await page.getByRole("button", { name: "Clear", exact: true }).click();
+    await page.getByLabel("First name", { exact: true }).fill("a");
+    await page.getByRole("button", { name: "Search", exact: true }).click();
+    const rows = page.locator(".ant-table-row");
+    await expect(rows).toHaveCount(5);
+    const summary = await page.getByText(/^\d+ results matching$/).innerText();
+    expect(Number(summary.split(" ")[0])).toBeGreaterThan(5);
+    const firstPage = await rows.allInnerTexts();
+    await page.locator(".ant-pagination-item-2").click();
+    await expect(page.locator(".ant-pagination-item-active")).toHaveText("2");
+    await expect(rows).toHaveCount(5);
+    await expect.poll(() => rows.allInnerTexts()).not.toEqual(firstPage);
+});
+
 test("a client's page lists their visits, newest first", async ({ page, fixtures }) => {
     const client = fixtures.visits;
     await openClient(page, client);

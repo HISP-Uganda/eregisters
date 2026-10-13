@@ -169,6 +169,48 @@ async function loadAttributes(
 }
 
 /**
+ * Client search in SQL: the org unit's registered clients whose attributes
+ * contain every term (`LIKE '%term%'`, which ignores case for ASCII only, so
+ * pass ASCII terms; see client-search.ts). With `page`, only that page is
+ * loaded, newest registration first, plus the total count; without it,
+ * every match. Each term is a lookup in idx_tea_attribute_value.
+ */
+export async function searchTrackedEntities(
+    db: SqlDriver,
+    orgUnit: string,
+    terms: Record<string, string>,
+    page?: { offset: number; limit: number },
+): Promise<{ total: number; rows: FlattenedTrackedEntity[] }> {
+    const conditions = [`org_unit = ?`, `sync_status NOT IN ('draft', 'deleted')`];
+    const params: unknown[] = [orgUnit];
+    for (const [attribute, term] of Object.entries(terms)) {
+        conditions.push(
+            `tracked_entity IN (SELECT tracked_entity FROM tracked_entity_attributes WHERE attribute = ? AND value LIKE ?)`,
+        );
+        params.push(attribute, `%${term}%`);
+    }
+    const where = conditions.join(" AND ");
+    const order = `ORDER BY created_at DESC, tracked_entity`;
+    const [parents, count, usersByUid] = await Promise.all([
+        db.execute<TrackedEntityParentRow>(
+            page
+                ? `SELECT ${PARENT_COLUMNS} FROM tracked_entities WHERE ${where} ${order} LIMIT ? OFFSET ?`
+                : `SELECT ${PARENT_COLUMNS} FROM tracked_entities WHERE ${where} ${order}`,
+            page ? [...params, page.limit, page.offset] : params,
+        ),
+        page
+            ? db.execute<{ n: number }>(`SELECT COUNT(*) AS n FROM tracked_entities WHERE ${where}`, params)
+            : Promise.resolve(null),
+        loadUsersByUid(db),
+    ]);
+    const attributesByEntity = await loadAttributes(db, parents.rows.map((p) => p.tracked_entity));
+    const rows = parents.rows.map((parent) =>
+        reassemble(parent, attributesByEntity.get(parent.tracked_entity) ?? [], usersByUid),
+    );
+    return { total: count ? Number(count.rows[0]?.n ?? 0) : rows.length, rows };
+}
+
+/**
  * Backs `utils.ts`'s recursive parent/child-tracked-entity walk (see
  * `deleteRecursiveDraftSubtree`/`deleteEventWithChildren`/
  * `deleteTrackedEntityWithChildren`, and `tracked-entity.tsx`'s save-cascade

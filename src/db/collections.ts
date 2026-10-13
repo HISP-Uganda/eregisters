@@ -12,6 +12,8 @@ import {
     initDexieTrackerCollections,
 } from "./dexie/tracker-collections-instance";
 import type { StorageBackend } from "./backend";
+import { isAsciiTerm, pageInMemory, type ClientPage, type SearchTerms } from "./client-search";
+import { searchTrackedEntities } from "./sqlite/row-adapters/tracked-entities";
 
 /**
  * Backend-dispatching collection getters — the single place every non-test
@@ -110,6 +112,32 @@ export async function countClients(orgUnit: string, recentSince: string): Promis
         total: clients.length,
         recentCreatedAt: clients.map((te) => te.createdAt).filter((at) => at >= recentSince),
     };
+}
+
+/**
+ * One page of the org unit's clients matching the search terms, newest
+ * registration first, and the total. On SQLite only that page is loaded, so
+ * a broad search at a large facility costs no more than a narrow one. A
+ * non-ASCII term can't be matched case-insensitively in SQL: then SQL narrows
+ * by the other terms and the rest is matched in memory.
+ */
+export async function searchClients(
+    orgUnit: string,
+    terms: SearchTerms,
+    offset: number,
+    limit: number,
+): Promise<ClientPage> {
+    if (requireBackend() === "sqlite") {
+        const entries = Object.entries(terms);
+        if (entries.every(([, term]) => isAsciiTerm(term))) {
+            const { total, rows } = await searchTrackedEntities(activeSqlDriver!, orgUnit, terms, { offset, limit });
+            return { total, clients: rows };
+        }
+        const asciiTerms = Object.fromEntries(entries.filter(([, term]) => isAsciiTerm(term)));
+        const { rows } = await searchTrackedEntities(activeSqlDriver!, orgUnit, asciiTerms);
+        return pageInMemory(rows, orgUnit, terms, offset, limit);
+    }
+    return pageInMemory(getTrackedEntitiesDexieCollection().toArray, orgUnit, terms, offset, limit);
 }
 
 /** Calls `listener` after any change to the clients table; returns the unsubscribe. */
