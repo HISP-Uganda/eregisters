@@ -143,6 +143,10 @@ function translateInArray(spec: TableSpec, args: Expr[]): Translated {
 /**
  * `like`/`ilike`: SQLite's LIKE ignores ASCII case, so it's exact for an
  * ASCII `ilike` pattern and a superset for `like`. Non-ASCII patterns widen.
+ * Exact assumes the stored values fold like ASCII too: TanStack lowercases
+ * with Unicode rules, so a value with "İ" (U+0130) or the Kelvin sign
+ * (U+212A) can match an ASCII `ilike` in memory but not in SQL. Accepted:
+ * register data doesn't contain them.
  */
 function translateLike(spec: TableSpec, args: Expr[]): Translated {
     const cmp = comparison(spec, args);

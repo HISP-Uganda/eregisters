@@ -1,12 +1,33 @@
 import { describe, expect, it } from "vitest";
 import type { FlattenedTrackedEntity } from "@/schemas";
 import { clientColumns } from "@/screens/client-search/client-columns";
-import { filledTerms } from "@/screens/client-search/use-client-search";
+import { afterFailure, filledTerms, searchState } from "@/screens/client-search/use-client-search";
 
 describe("filledTerms", () => {
     it("keeps only the terms that were filled in", () => {
         expect(filledTerms({ a: "Jane", b: "", c: "07" })).toEqual({ a: "Jane", c: "07" });
         expect(filledTerms(undefined)).toEqual({});
+    });
+});
+
+describe("search state", () => {
+    const page = { total: 7, clients: [{ trackedEntity: "a" }] as FlattenedTrackedEntity[] };
+
+    it("is loading until this search's answer arrives, showing the previous page meanwhile", () => {
+        expect(searchState(null, "s1")).toEqual({ clients: [], total: 0, loading: true, failed: false });
+        expect(searchState({ key: "s1", page }, "s2")).toEqual({ ...page, loading: true, failed: false });
+        expect(searchState({ key: "s2", page }, "s2")).toEqual({ ...page, loading: false, failed: false });
+    });
+
+    it("stops loading and shows the failure when a search fails", () => {
+        const failed = afterFailure({ key: "s1", page }, "s2");
+        expect(searchState(failed, "s2")).toEqual({ clients: [], total: 0, loading: false, failed: true });
+        expect(searchState(afterFailure(null, "s1"), "s1").failed).toBe(true);
+    });
+
+    it("keeps the shown page when a reload of it fails", () => {
+        const shown = { key: "s1", page };
+        expect(afterFailure(shown, "s1")).toBe(shown);
     });
 });
 

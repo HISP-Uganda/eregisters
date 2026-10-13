@@ -1,4 +1,4 @@
-import { Button, Card, Flex, Table, Typography } from "antd";
+import { Button, Card, Flex, Result, Table, Typography } from "antd";
 import React, { useState } from "react";
 import { useMetadata } from "@/hooks/useMetadata";
 import { clientColumns } from "./client-columns";
@@ -19,9 +19,25 @@ export function ClientSearchScreen({
     const searchKey = JSON.stringify(search ?? {});
     const [chosen, setChosen] = useState({ searchKey, page: 1, pageSize: 5 });
     const paging = { page: chosen.searchKey === searchKey ? chosen.page : 1, pageSize: chosen.pageSize };
-    const { clients, total, terms, loading } = useClientSearch(search, paging.page, paging.pageSize);
+    const { clients, total, terms, loading, failed, retry } = useClientSearch(search, paging.page, paging.pageSize);
     const registration = useClientRegistration();
 
+    if (failed) {
+        return (
+            <Card variant="borderless" style={{ height: "calc(100vh - 144px)" }}>
+                <Result
+                    status="error"
+                    title="The search could not be run"
+                    subTitle="Try again. If it keeps failing, reload the app."
+                    extra={
+                        <Button type="primary" size="large" onClick={retry}>
+                            Try again
+                        </Button>
+                    }
+                />
+            </Card>
+        );
+    }
     if (loading && clients.length === 0) {
         return <Card variant="borderless" loading style={{ height: "calc(100vh - 144px)" }} />;
     }

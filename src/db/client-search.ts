@@ -6,7 +6,12 @@ export type SearchTerms = Record<string, string>;
 /** One page of search results, and how many clients match in all. */
 export type ClientPage = { total: number; clients: FlattenedTrackedEntity[] };
 
-/** SQLite's LIKE folds case for ASCII letters only, so only ASCII terms can be matched in SQL. */
+/**
+ * SQLite's LIKE folds case for ASCII letters only, so only ASCII terms can be
+ * matched in SQL. (Values are not checked: one with "İ" or the Kelvin sign,
+ * which lowercase to ASCII letters, can miss an ASCII term in SQL. Accepted,
+ * as in where-to-sql.ts.)
+ */
 export function isAsciiTerm(term: string): boolean {
     return /^[\x00-\x7f]*$/.test(term);
 }
