@@ -6,6 +6,7 @@
 //   node e2e/setup/setup.mjs --skip-import    # all but the configuration import (minutes; needed once)
 //   node e2e/setup/setup.mjs --app <zip>      # also install a built app (build/bundle/eregisters-*.zip)
 //   node e2e/setup/setup.mjs --app-only <zip> # only install a built app; leaves the data alone
+//   node e2e/setup/setup.mjs --target perf    # the performance profile's facility and user instead (config.mjs)
 //
 // 1. Imports the eRegisters configuration (E2E_CONFIG, default e2e/fixtures/eregisters-config.json.gz: the program,
 //    its rules, data sets and their dependencies, and the `eregisters` dataStore namespace), readable by all users.
@@ -21,7 +22,7 @@ import { existsSync, readFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { gunzipSync } from "node:zlib";
 import { dirname, join, basename } from "node:path";
 import { fileURLToPath } from "node:url";
-import { config, ORG_UNITS, FACILITY } from "../config.mjs";
+import { config, ORG_UNITS, TARGETS } from "../config.mjs";
 import { buildSeed } from "./seed-data.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -35,6 +36,11 @@ const appZip = appOnly
     : args.includes("--app")
       ? args[args.indexOf("--app") + 1]
       : null;
+const targetName = args.includes("--target") ? args[args.indexOf("--target") + 1] : "e2e";
+const target = TARGETS[targetName];
+if (!target) throw new Error(`unknown --target ${targetName}; one of ${Object.keys(TARGETS).join(", ")}`);
+const FACILITY = target.facility.id;
+const REPO = join(HERE, "..", "..");
 
 const AUTH = "Basic " + Buffer.from(`${config.admin.username}:${config.admin.password}`).toString("base64");
 
@@ -86,7 +92,7 @@ const SHARING = {
  */
 async function requireEmptyInstance() {
     if (process.env.E2E_ALLOW_NON_EMPTY === "1") return;
-    const ours = ORG_UNITS.map((ou) => ou.id);
+    const ours = [...ORG_UNITS.map((ou) => ou.id), ...Object.values(TARGETS).map((t) => t.facility.id)];
     const { json } = await api(
         "GET",
         `/api/organisationUnits?fields=id,name,displayName&pageSize=3&filter=id:!in:[${ours.join(",")}]`,
@@ -169,12 +175,14 @@ async function importConfiguration(configuration) {
 
 async function createOrgUnitsAndUser(configuration) {
     step("Org units, assignments, role and user");
-    const organisationUnits = ORG_UNITS.map((ou, i) => ({
+    // The shared chain down to sub county, then this target's facility.
+    const chain = [...ORG_UNITS.slice(0, -1), target.facility];
+    const organisationUnits = chain.map((ou, i) => ({
         id: ou.id,
         name: ou.name,
         shortName: ou.name,
         openingDate: "2000-01-01",
-        ...(i > 0 ? { parent: { id: ORG_UNITS[i - 1].id } } : {}),
+        ...(i > 0 ? { parent: { id: chain[i - 1].id } } : {}),
     }));
     await api("POST", "/api/metadata?importStrategy=CREATE_AND_UPDATE", { organisationUnits });
     await api("POST", `/api/programs/${config.program}/organisationUnits/${FACILITY}`);
@@ -203,12 +211,11 @@ async function createOrgUnitsAndUser(configuration) {
         ],
     };
     const facility = [{ id: FACILITY }];
+    // An existing user with this username is updated (keeping its id) rather than duplicated.
+    const existing = (await api("GET", `/api/users?filter=username:eq:${encodeURIComponent(target.user.username)}&fields=id`)).json.users?.[0];
     const user = {
-        id: "E2eUser0001",
-        username: config.user.username,
-        password: config.user.password,
-        firstName: "E2E",
-        surname: "Clerk",
+        ...target.user,
+        ...(existing ? { id: existing.id } : {}),
         userRoles: [{ id: role.id }],
         organisationUnits: facility,
         dataViewOrganisationUnits: facility,
@@ -216,7 +223,7 @@ async function createOrgUnitsAndUser(configuration) {
     };
     await api("POST", "/api/metadata?importStrategy=CREATE_AND_UPDATE", { userRoles: [role] });
     await api("POST", "/api/metadata?importStrategy=CREATE_AND_UPDATE", { users: [user] });
-    const userAuth = "Basic " + Buffer.from(`${config.user.username}:${config.user.password}`).toString("base64");
+    const userAuth = "Basic " + Buffer.from(`${target.user.username}:${target.user.password}`).toString("base64");
     const check = await api("GET", "/api/me?fields=username,organisationUnits[id]", undefined, { auth: userAuth });
     console.log(`test user ${check.json.username} at ${JSON.stringify(check.json.organisationUnits)}`);
 }
@@ -256,7 +263,13 @@ async function seedData(configuration) {
     }
     console.log(`deleted ${existing.length} clients`);
 
-    const seed = buildSeed(configuration.metadata, { clients: config.clients, seed: config.seed, orgUnit: FACILITY });
+    const seed = buildSeed(configuration.metadata, {
+        clients: target.clients,
+        seed: config.seed,
+        orgUnit: FACILITY,
+        dense: target.dense,
+        fixtures: target.fixtures,
+    });
     const started = Date.now();
     for (let i = 0; i < seed.trackedEntities.length; i += 200) {
         await tracker("CREATE_AND_UPDATE", { trackedEntities: seed.trackedEntities.slice(i, i + 200) });
@@ -264,8 +277,12 @@ async function seedData(configuration) {
     console.log(
         `seeded ${seed.summary.clients} clients, ${seed.summary.events} events in ${Math.round((Date.now() - started) / 1000)} s`,
     );
-    mkdirSync(join(E2E, ".state"), { recursive: true });
-    writeFileSync(join(E2E, ".state", "seed.json"), JSON.stringify({ summary: seed.summary, fixtures: seed.fixtures }, null, 1));
+    const state = join(REPO, target.state);
+    mkdirSync(dirname(state), { recursive: true });
+    writeFileSync(
+        state,
+        JSON.stringify({ summary: seed.summary, facility: FACILITY, fixtures: seed.fixtures, picks: seed.picks }, null, 1),
+    );
 }
 
 /** Whether the app is installed: the tests open the build installed on the instance, not a local one. */
@@ -300,7 +317,7 @@ if (!existsSync(configFile)) {
 }
 const configuration = JSON.parse(gunzipSync(readFileSync(configFile)).toString());
 const info = (await api("GET", "/api/system/info")).json;
-console.log(`DHIS2 ${info.version} at ${config.dhis2Url}`);
+console.log(`DHIS2 ${info.version} at ${config.dhis2Url}; target ${targetName} (${target.facility.name})`);
 if (!dataOnly) {
     // The import replaces the program's and data sets' org unit assignments, so assign after it.
     if (!skipImport) await importConfiguration(configuration);

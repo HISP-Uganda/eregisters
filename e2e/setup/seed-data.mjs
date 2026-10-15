@@ -49,7 +49,13 @@ const ALNUM = ALPHA + "0123456789";
 /** The Playwright projects; each gets its own fixtures, with the project's tag in their surnames. */
 export const PROJECTS = { desktop: "Desk", phone: "Phone" };
 
-export function buildSeed(metadata, { clients, seed, orgUnit }) {
+/**
+ * `dense`: visits as full as real ones (the performance profile): every mandatory attribute and about half the
+ * others, 1-8 visits per client with 25-60 valid values each, a lab test for 30% of visits. Text values start
+ * with a town name, so a first-name search for "Kampala" matches about 1 in 8 clients.
+ * `fixtures`: add the named clients the end-to-end tests use.
+ */
+export function buildSeed(metadata, { clients, seed, orgUnit, dense = false, fixtures: withFixtures = true }) {
     const rnd = mulberry32(seed);
     const uidRnd = mulberry32(seed ^ (Date.now() & 0x7fffffff));
     const pick = (list) => list[Math.floor(rnd() * list.length)];
@@ -103,23 +109,36 @@ export function buildSeed(metadata, { clients, seed, orgUnit }) {
     }
 
     const trackedEntities = [];
-    for (let i = 0; i < clients; i++) {
-        const first = day("2025-01-01", int(0, 600));
-        const visits = Array.from({ length: int(1, 4) }, (_, k) => ({
-            date: day(first, k * int(14, 60)),
-            values: { services: "Outpatient", opdType: "New", weight: int(40, 95), height: int(140, 190) },
-            labs: rnd() < 0.2 ? [{}] : [],
-        }));
-        trackedEntities.push(client({
-            firstName: pick(FIRST_NAMES), surname: pick(SURNAMES),
-            dob: day("1960-01-01", int(0, 15000)), sex: pick(["Female", "Male"]), visits,
-        }));
+    if (dense) {
+        trackedEntities.push(...denseClients(metadata, { clients, orgUnit, rnd, uid, day }));
+        events += trackedEntities.reduce((n, te) => n + te.enrollments[0].events.length, 0);
+    } else {
+        for (let i = 0; i < clients; i++) {
+            const first = day("2025-01-01", int(0, 600));
+            const visits = Array.from({ length: int(1, 4) }, (_, k) => ({
+                date: day(first, k * int(14, 60)),
+                values: { services: "Outpatient", opdType: "New", weight: int(40, 95), height: int(140, 190) },
+                labs: rnd() < 0.2 ? [{}] : [],
+            }));
+            trackedEntities.push(client({
+                firstName: pick(FIRST_NAMES), surname: pick(SURNAMES),
+                dob: day("1960-01-01", int(0, 15000)), sex: pick(["Female", "Male"]), visits,
+            }));
+        }
     }
+    // The clients a performance run opens: the one with the most visits, and a median one.
+    const byVisits = trackedEntities
+        .map((te) => ({ trackedEntity: te.trackedEntity, visits: te.enrollments[0].events.filter((e) => e.programStage === VISIT) }))
+        .sort((a, b) => a.visits.length - b.visits.length);
+    const pickOf = (c) => ({ trackedEntity: c.trackedEntity, visits: c.visits.length });
+    const picks = clients
+        ? { busiest: pickOf(byVisits[byVisits.length - 1]), median: pickOf(byVisits[Math.floor(byVisits.length / 2)]), search: "Kampala" }
+        : {};
 
     // Named fixtures, one or more per test and project. Surnames start with "E2e" and end with the project's tag,
     // so a search finds exactly one client.
     const fixtures = {};
-    for (const [project, tag] of Object.entries(PROJECTS)) {
+    for (const [project, tag] of withFixtures ? Object.entries(PROJECTS) : []) {
         const mine = (fixtures[project] = {});
         const fixture = (key, spec) => {
             const te = client({ dob: "1990-05-05", sex: "Female", ...spec });
@@ -161,6 +180,103 @@ export function buildSeed(metadata, { clients, seed, orgUnit }) {
     return {
         trackedEntities,
         fixtures,
-        summary: { clients: trackedEntities.length, generated: clients, events, seed },
+        picks,
+        summary: { clients: trackedEntities.length, generated: clients, events, seed, dense },
     };
+}
+
+// ---- dense workload (performance profile) -----------------------------------------------------------------------
+
+const TOWNS = ["Kampala", "Gulu", "Mbale", "Masaka", "Lira", "Arua", "Mbarara", "Jinja"];
+
+function denseClients(metadata, { clients, orgUnit, rnd, uid, day }) {
+    const program = metadata.programs.find((p) => p.id === PROGRAM);
+    const stages = Object.fromEntries(metadata.programStages.map((s) => [s.id, s]));
+    const dataElements = Object.fromEntries(metadata.dataElements.map((d) => [d.id, d]));
+    const attributesById = Object.fromEntries(metadata.trackedEntityAttributes.map((t) => [t.id, t]));
+    const options = {};
+    for (const o of metadata.options) (options[o.optionSet.id] ??= []).push(o.code);
+    const int = (lo, hi) => lo + Math.floor(rnd() * (hi - lo + 1));
+    const pick = (list) => list[Math.floor(rnd() * list.length)];
+    const sample = (list, k) => {
+        const copy = [...list];
+        const out = [];
+        while (out.length < k && copy.length) out.push(copy.splice(Math.floor(rnd() * copy.length), 1)[0]);
+        return out;
+    };
+    const dateBetween = (lo, hi) => day(lo, int(0, Math.max(1, (Date.parse(hi) - Date.parse(lo)) / 86_400_000) - 1));
+
+    /** A valid value for a data element or attribute, by option set, else value type (null: left empty). */
+    function value(object) {
+        const set = options[object.optionSet?.id];
+        if (set?.length) {
+            return object.valueType === "MULTI_TEXT" ? sample(set, int(1, Math.min(3, set.length))).join(",") : pick(set);
+        }
+        switch (object.valueType) {
+            case "INTEGER":
+            case "INTEGER_POSITIVE":
+                return String(int(1, 200));
+            case "INTEGER_ZERO_OR_POSITIVE":
+                return String(int(0, 200));
+            case "NUMBER":
+                return (0.5 + rnd() * 149.5).toFixed(1);
+            case "PERCENTAGE":
+                return String(int(0, 100));
+            case "BOOLEAN":
+                return pick(["true", "false"]);
+            case "TRUE_ONLY":
+                return "true";
+            case "DATE":
+            case "AGE":
+                return dateBetween("1950-01-01", "2025-12-31");
+            case "DATETIME":
+                return `${dateBetween("2024-10-01", "2026-09-30")}T10:00:00.000`;
+            case "PHONE_NUMBER":
+                return "07" + String(int(10_000_000, 99_999_999));
+            case "TEXT":
+            case "LONG_TEXT":
+                return `${pick(TOWNS)} ${uid().slice(0, 4)}`;
+            default:
+                return null;
+        }
+    }
+    function fill(stage, n) {
+        const ids = stage.programStageDataElements.map((p) => p.dataElement.id);
+        return sample(ids, n)
+            .map((id) => (dataElements[id] ? { dataElement: id, value: value(dataElements[id]) } : null))
+            .filter((dv) => dv && dv.value !== null);
+    }
+
+    const out = [];
+    for (let i = 0; i < clients; i++) {
+        const trackedEntity = uid();
+        const enrollment = uid();
+        const attributes = [];
+        for (const p of program.programTrackedEntityAttributes) {
+            const t = attributesById[p.trackedEntityAttribute.id];
+            if (!t || t.id === "FhyNxUVOpjh" || !(p.mandatory || rnd() < 0.5)) continue;
+            const v = value(t);
+            if (v !== null) attributes.push({ attribute: t.id, value: v });
+        }
+        const enrolledAt = dateBetween("2024-10-01", "2026-08-31");
+        const dates = Array.from({ length: int(1, 8) }, () => dateBetween(enrolledAt, "2026-09-30")).sort();
+        const events = [];
+        dates.forEach((date, k) => {
+            events.push({
+                event: uid(), program: PROGRAM, programStage: VISIT, orgUnit, enrollment, trackedEntity, occurredAt: date,
+                status: k === dates.length - 1 ? "ACTIVE" : "COMPLETED", dataValues: fill(stages[VISIT], int(25, 60)),
+            });
+            if (rnd() < 0.3) {
+                events.push({
+                    event: uid(), program: PROGRAM, programStage: LAB, orgUnit, enrollment, trackedEntity, occurredAt: date,
+                    status: "COMPLETED", dataValues: fill(stages[LAB], int(3, 10)),
+                });
+            }
+        });
+        out.push({
+            trackedEntity, trackedEntityType: program.trackedEntityType.id, orgUnit, attributes,
+            enrollments: [{ enrollment, program: PROGRAM, orgUnit, trackedEntity, status: "ACTIVE", enrolledAt, occurredAt: enrolledAt, events }],
+        });
+    }
+    return out;
 }

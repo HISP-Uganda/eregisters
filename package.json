@@ -13,6 +13,10 @@
         "test:vitest": "vitest run",
         "e2e:setup": "node e2e/setup/setup.mjs",
         "e2e": "playwright test -c e2e/playwright.config.ts",
+        "perf:setup": "node e2e/setup/setup.mjs --target perf",
+        "perf": "node perf/profile.mjs",
+        "perf:summary": "node perf/summary.mjs",
+        "perf:cpuprofile": "node perf/cpuprofile.mjs",
         "deploy": "d2-app-scripts deploy"
     },
     "dependencies": {

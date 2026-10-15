@@ -2,7 +2,7 @@
 
 Playwright tests that run the built app in Chromium against a real DHIS2 instance, as a facility clerk would use it: first start, pulling data, searching, opening and editing visits, pushing, deleting, working offline and in two tabs. Every test runs twice, on a desktop screen (1366×900) and on a phone (412×915, touch, mobile layout).
 
-They check behaviour, not speed. Each test records its step times in the report, and two generous ceilings (first start under 90 s, first pull of the test facility under 3 min) catch hangs. Performance is measured separately.
+They check behaviour, not speed. Each test records its step times in the report, and two generous ceilings (first start under 90 s, first pull of the test facility under 3 min) catch hangs. Performance is measured separately, by the profile in `perf/`, which uses the same setup (`--target perf`).
 
 ## What you need
 

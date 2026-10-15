@@ -42,3 +42,34 @@ export const ORG_UNITS = [
     { id: "E2eFacil001", name: "E2E Health Centre IV", level: 6 },
 ];
 export const FACILITY = ORG_UNITS[ORG_UNITS.length - 1].id;
+
+/**
+ * What the setup prepares (`setup.mjs --target <name>`):
+ * - e2e: the end-to-end tests' facility, re-seeded before every test run, with named fixture clients;
+ * - perf: the performance profile's facility (perf/README.md), a fixed and larger workload with visits as full as
+ *   real ones. It sits next to the e2e facility, under the same chain, with its own user.
+ */
+export const TARGETS = {
+    e2e: {
+        facility: { id: FACILITY, name: ORG_UNITS[ORG_UNITS.length - 1].name },
+        user: { id: "E2eUser0001", ...config.user, firstName: "E2E", surname: "Clerk" },
+        clients: config.clients,
+        dense: false,
+        fixtures: true,
+        state: "e2e/.state/seed.json",
+    },
+    perf: {
+        facility: { id: "PrfFacil001", name: "Perf Health Centre IV" },
+        user: {
+            id: "PrfUser0001",
+            username: env("PERF_USER", "perf_clerk"),
+            password: env("PERF_PASSWORD", "Perf-Clerk-2026!"),
+            firstName: "Perf",
+            surname: "Clerk",
+        },
+        clients: Number(env("PERF_CLIENTS", "3000")),
+        dense: true,
+        fixtures: false,
+        state: "perf/.state/seed.json",
+    },
+};

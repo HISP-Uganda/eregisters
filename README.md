@@ -4,6 +4,7 @@ This project was bootstrapped with [DHIS2 Application Platform](https://github.c
 
 - **Unit tests**: `pnpm test:vitest`.
 - **End-to-end tests** (Playwright, against a real DHIS2 instance): see [`e2e/README.md`](e2e/README.md). They run the build installed on the instance, so `pnpm e2e:setup` needs `--app build/bundle/eregisters-*.zip`.
+- **Performance profile** (emulated slow devices or a real Android device): see [`perf/README.md`](perf/README.md).
 
 ## Available Scripts
 
