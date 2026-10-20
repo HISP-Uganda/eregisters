@@ -166,7 +166,12 @@ export function transformEvent(
     dataElements?: Map<string, DataElement>,
     optionSets?: Map<string, FlattenedOptionSet[]>,
 ) {
-    const { dataValues, ...eventRest } = event;
+    const {
+        dataValues,
+        ruleActionKey: _ruleActionKey,
+        occurredAt: eventOccurredAt,
+        ...eventRest
+    } = event;
     const { occurredAt, ...otherDataElements } = dataValues;
 
     let finalDataValues: Record<string, any> = otherDataElements;
@@ -209,6 +214,8 @@ export function transformEvent(
                 return [];
             },
         ),
-        occurredAt: occurredAt || eventRest.occurredAt,
+        ...(event.status === "SCHEDULE"
+            ? {}
+            : { occurredAt: occurredAt || eventOccurredAt }),
     };
 }

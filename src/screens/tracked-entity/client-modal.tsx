@@ -29,7 +29,7 @@ export function ClientModal({
     onClose: () => void;
     enrollment: FlattenedEnrollment;
 }) {
-    const { programRules, programRuleVariables } = useMetadata();
+    const { ruleEnvironment, programRules, programRuleVariables } = useMetadata();
     const { mainStageDataElements, teaMandatoryIds, teaLabels } = useFormMetadata();
     const [ruleResult, setRuleResult] = useState<ProgramRuleResult | null>(null);
 
@@ -40,13 +40,14 @@ export function ClientModal({
             onClose={onClose}
             onCancel={() => cancelDataModal(client!)}
             enrollment={enrollment}
-            onSave={async ({ values }) => {
+            onSave={async ({ values, complete }) => {
                 if (client && values) {
-                    await saveClient(client, values, enrollment);
+                    await saveClient(client, values, enrollment, ruleResult, complete);
                 }
             }}
             title="Edit Client"
             submitButtonText="Save Client"
+            completionFeedback={{ errors: (ruleResult?.completionErrors ?? []).map((m) => m.content), warnings: (ruleResult?.completionWarnings ?? []).map((m) => m.content) }}
             saveBlockFor={(values) =>
                 computeSaveBlock({
                     metadataMandatoryIds: teaMandatoryIds,
@@ -69,6 +70,7 @@ export function ClientModal({
                 <TrackedEntityContext.Provider
                     options={{
                         input: {
+                            ruleEnvironment,
                             programRules,
                             programRuleVariables,
                             program: PROGRAM,

@@ -72,6 +72,18 @@ describe("transformEvent option-set validation", () => {
         version: 1,
     } as unknown as FlattenedEvent;
 
+    it("sends scheduled dates without occurrence dates or internal action keys", () => {
+        const result = transformEvent({ ...baseEvent, status: "SCHEDULE", scheduledAt: "2026-09-01", ruleActionKey: "rule:action", dataValues: { occurredAt: "2026-08-10" } });
+        expect(result.scheduledAt).toBe("2026-09-01");
+        expect(result).not.toHaveProperty("occurredAt");
+        expect(result).not.toHaveProperty("ruleActionKey");
+        expect(result.dataValues).toEqual([]);
+    });
+
+    it("preserves the active event date override", () => {
+        expect(transformEvent({ ...baseEvent, dataValues: { occurredAt: "2026-08-10" } }).occurredAt).toBe("2026-08-10");
+    });
+
     it("keeps a data value whose value is a valid option code", () => {
         const event = {
             ...baseEvent,

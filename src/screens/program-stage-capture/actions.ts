@@ -1,12 +1,15 @@
+import { assertRuleSaveAllowed, captureEventStatus } from "@/program-rules/save-actions";
 import { message } from "antd";
 import { getEventsCollection } from "@/db/collections";
 import {
     FlattenedEnrollment,
     FlattenedEvent,
     FlattenedTrackedEntity,
+    ProgramRuleResult,
 } from "@/schemas";
 import { deleteEventWithChildren } from "@/utils/record-cascades";
 import { createEmptyEvent } from "@/utils/record-factories";
+import { commitRuleEventActions } from "@/program-rules/commit-actions";
 
 /** What a visit's stage table writes. `pushData` starts a push to DHIS2. */
 
@@ -16,13 +19,17 @@ export async function createStageEvent({
     enrollment,
     programStage,
     visit,
+    blockedStages = [],
 }: {
     trackedEntity: FlattenedTrackedEntity;
     enrollment: FlattenedEnrollment;
     programStage: string;
     visit: FlattenedEvent;
+    blockedStages?: string[];
 }): Promise<FlattenedEvent> {
-    const occurredAt = visit.dataValues["occurredAt"] || visit.occurredAt;
+    if (blockedStages.includes(programStage)) throw new Error("Program rules prevent adding events to this stage.");
+    const occurredAt = visit.dataValues?.occurredAt;
+    if (!occurredAt) throw new Error("Set the parent visit date before adding a child event.");
     const newEvent = createEmptyEvent({
         trackedEntity: trackedEntity.trackedEntity,
         program: enrollment.program,
@@ -42,12 +49,23 @@ export async function saveStageEvent(
     event: string,
     values: Record<string, any>,
     visit: string,
+    ruleResult?: ProgramRuleResult | null,
+    complete = false,
 ) {
+    assertRuleSaveAllowed(ruleResult, complete);
     await getEventsCollection().update(event, (draft) => {
-        draft.dataValues = values;
+        draft.dataValues = { ...draft.dataValues, ...values };
         draft.syncStatus = "draft";
         draft.parentEvent = visit;
+        draft.status = captureEventStatus(draft.status, draft.dataValues, complete);
+        if (draft.dataValues.occurredAt) draft.occurredAt = draft.dataValues.occurredAt;
+        if (complete) {
+            draft.status = "COMPLETED";
+            draft.completedAt = new Date().toISOString();
+        }
     }).isPersisted.promise;
+    const saved = getEventsCollection().get(event);
+    if (saved) await commitRuleEventActions(saved, ruleResult);
 }
 
 /** Saves one cell of an inline-row event. */
@@ -93,6 +111,7 @@ export function moveEventsToVisitDate(
 ) {
     const eventsCollection = getEventsCollection();
     for (const event of events) {
+        if (event.status === "SCHEDULE") continue;
         // Skip rows not yet committed to the collection — a live-query
         // result can briefly include an optimistic row before the write
         // lands. The caller's effect re-runs once the row is persisted.

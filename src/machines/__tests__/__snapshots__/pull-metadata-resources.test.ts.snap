@@ -63,7 +63,7 @@ exports[`the metadata pull > adds a lastUpdated filter to the incremental resour
   {
     "organisationUnits": {
       "params": {
-        "fields": "id,name,code,path,parent",
+        "fields": "id,name,code,path,parent,organisationUnitGroups[id,code]",
         "includeDescendants": true,
         "paging": false,
       },
@@ -194,7 +194,7 @@ exports[`the metadata pull > requests every resource in full 1`] = `
   {
     "organisationUnits": {
       "params": {
-        "fields": "id,name,code,path,parent",
+        "fields": "id,name,code,path,parent,organisationUnitGroups[id,code]",
         "includeDescendants": true,
         "paging": false,
       },

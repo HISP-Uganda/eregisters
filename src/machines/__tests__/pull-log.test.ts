@@ -17,6 +17,9 @@ describe("countFetched", () => {
 });
 
 describe("pullFailureOutcome", () => {
+    it("logs a 522 proxy response as offline", () => {
+        expect(pullFailureOutcome(new FetchError({ type: "unknown", message: "An unknown error occurred -  (522)", details: {} }))).toBe("offline");
+    });
     it("treats a network failure as offline", () => {
         expect(
             pullFailureOutcome(new FetchError({ type: "network", message: "Failed to fetch", details: {} })),

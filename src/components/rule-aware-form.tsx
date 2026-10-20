@@ -1,3 +1,4 @@
+import { RuleFeedback } from "./rule-feedback";
 import React, { useEffect } from "react";
 import { EventContext, TrackedEntityContext } from "@/machines";
 import type { ProgramRuleResult } from "@/schemas";
@@ -13,7 +14,7 @@ export function EventRuleAwareForm({
     useEffect(() => {
         onRuleResult(ruleResult);
     }, [ruleResult, onRuleResult]);
-    return <>{children}</>;
+    return <><RuleFeedback result={ruleResult} />{children}</>;
 }
 
 export function TrackedEntityRuleAwareForm({
@@ -29,5 +30,5 @@ export function TrackedEntityRuleAwareForm({
     useEffect(() => {
         onRuleResult(ruleResult);
     }, [ruleResult, onRuleResult]);
-    return <>{children}</>;
+    return <><RuleFeedback result={ruleResult} />{children}</>;
 }

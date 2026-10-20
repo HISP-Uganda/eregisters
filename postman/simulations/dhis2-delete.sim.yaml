@@ -1,0 +1,5 @@
+simulation: dhis2-delete
+routing: path
+mocks:
+  - routeKey: dhis2
+    path: ../mocks/dhis2-delete/config.yaml

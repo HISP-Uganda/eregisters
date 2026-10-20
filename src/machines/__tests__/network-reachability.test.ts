@@ -12,6 +12,15 @@ import {
 import type { Engine } from "@/schemas";
 
 describe("classifyFetchError", () => {
+    it.each([
+        { message: "Connection timed out", details: { httpStatusCode: 522 } },
+        { message: "An unknown error occurred -  (522)", details: {} },
+    ])("treats HTTP 522 as offline even when the proxy returns HTML: %j", async ({ message, details }) => {
+        const error = new FetchError({ type: "unknown", message, details });
+        expect(classifyFetchError(error)).toBe("network");
+        expect(toConnectivityStatus({ reachable: false, reason: classifyFetchError(error) })).toBe("offline");
+    });
+
     it("maps FetchError type 'access' to 'access'", () => {
         const error = new FetchError({
             type: "access",

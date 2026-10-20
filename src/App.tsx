@@ -28,7 +28,7 @@ const ME_QUERY = {
     me: {
         resource: "me",
         params: {
-            fields: "id,displayName,username,firstName,surname,authorities,organisationUnits[id,name,path,programs[id,name]],dataSets[id,name,code]",
+            fields: "id,displayName,username,firstName,surname,authorities,userRoles[id],userCredentials[userRoles[id]],userGroups[id],organisationUnits[id,name,path,programs[id,name],organisationUnitGroups[id,code]],dataSets[id,name,code]",
         },
     },
 } as const;

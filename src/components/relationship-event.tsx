@@ -111,16 +111,17 @@ export default function RelationshipEvent({
         );
 
         if (current === undefined && currentChild && enrollment) {
+            const occurredAt = mainEvent.dataValues?.occurredAt;
+            if (!occurredAt) return;
             const newEvent = createEmptyEvent({
                 trackedEntity: currentChild.trackedEntity,
                 program: enrollment.program,
                 orgUnit: enrollment.orgUnit,
                 enrollment: enrollment.enrollment,
                 programStage: "K2nxbE9ubSs",
+                occurredAt,
                 dataValues: {
-                    occurredAt:
-                        mainEvent.dataValues["occurredAt"] ||
-                        mainEvent.occurredAt,
+                    occurredAt,
 
                     UuxHHVp5CnF:
                         section === "Maternity" ? "Newborn" : "Postnatal",
@@ -159,6 +160,9 @@ export default function RelationshipEvent({
                         activeKey === trackedEntity.trackedEntity;
                     return {
                         key: trackedEntity.trackedEntity,
+                        disabled: !mainEvent.dataValues?.occurredAt && !events.some(
+                            (event) => event.trackedEntity === trackedEntity.trackedEntity,
+                        ),
                         closeIcon: trackedEntity.syncStatus === "draft",
                         label: (
                             <Flex

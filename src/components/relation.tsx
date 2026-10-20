@@ -19,7 +19,7 @@ export default function Relation({
     mainEvent: FlattenedEvent;
     trackedEntity: FlattenedTrackedEntity;
 }) {
-    const { program, programRuleVariables, programRules } = useMetadata();
+    const { ruleEnvironment, program, programRuleVariables, programRules } = useMetadata();
     const eventsCollection = getEventsCollection();
     const enrollmentsCollection = getEnrollmentsCollection();
 
@@ -83,6 +83,7 @@ export default function Relation({
         <EventContext.Provider
             options={{
                 input: {
+                            ruleEnvironment,
                     programRules,
                     programRuleVariables,
                     enrollment: enrollment,
@@ -94,6 +95,9 @@ export default function Relation({
                     form,
                     allEnrollmentEvents: allEnrollmentEventsRaw.map((e) => ({
                         event: e.event,
+                        ...(e.enrollment ? { enrollment: e.enrollment } : {}),
+                        ...(e.createdAt ? { createdAt: e.createdAt } : {}),
+                        ...(e.status ? { status: e.status } : {}),
                         programStage: e.programStage,
                         occurredAt: e.occurredAt,
                         dataValues: e.dataValues,

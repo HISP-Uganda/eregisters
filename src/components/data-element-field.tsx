@@ -12,6 +12,7 @@ import {
 import { createGetValueProps, createNormalize } from "@/utils/form-fields";
 import { FieldInput, OPTION_SELECT_WRAP_CSS } from "./data-element-field/field-inputs";
 import { fieldKind, takesFullRow, VILLAGE_CASCADED_FIELDS } from "./data-element-field/field-kind";
+import { RuleMessages } from "./rule-feedback";
 import DobPicker from "./dob-picker";
 
 type Props = {
@@ -51,6 +52,7 @@ function Field({
     finalOptions,
     errors,
     warnings,
+    messages,
     required,
     sm,
     lg,
@@ -69,6 +71,9 @@ function Field({
     if (dataElement.valueType === "AGE") {
         return (
             <Col key={dataElement.id} sm={{ span: sm }} md={{ span: md }} lg={{ span: lg }} xs={{ span: xs }} xl={{ span: xl }}>
+                <RuleMessages messages={messages} />
+                <RuleMessages messages={errors} type="error" />
+                <RuleMessages messages={warnings} type="warning" />
                 <DobPicker form={form} dataElement={dataElement} onFieldChange={onFieldChange} label={label} />
             </Col>
         );
@@ -79,6 +84,7 @@ function Field({
     const span = (value?: number) => ({ span: full ? 24 : value });
     return (
         <Col key={dataElement.id} sm={span(sm)} md={span(md)} lg={span(lg)} xs={{ span: xs }} xl={span(xl)}>
+            <RuleMessages messages={messages} />
             {/* A sibling of Form.Item, which needs a single child. */}
             {(kind === "select" || kind === "multiSelect") && <style>{OPTION_SELECT_WRAP_CSS}</style>}
             <Form.Item

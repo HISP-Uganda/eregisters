@@ -1,3 +1,4 @@
+import type { RuleEnvironment } from "@/program-rules/history";
 import { createActorContext } from "@xstate/react";
 import { FormInstance } from "antd";
 import { assertEvent, assign, fromPromise, setup } from "xstate";
@@ -26,6 +27,7 @@ const trackedEntityFormMachine = setup({
             program: string;
             validDataElements: Set<string>;
             form: FormInstance;
+            ruleEnvironment?: RuleEnvironment;
             persistenceError: string | null;
             previousAssignments: Record<string, any>;
         },
@@ -36,6 +38,7 @@ const trackedEntityFormMachine = setup({
             validDataElements: Set<string>;
             program: string;
             form: FormInstance;
+            ruleEnvironment?: RuleEnvironment;
         },
     },
     actions: {
@@ -60,7 +63,7 @@ const trackedEntityFormMachine = setup({
             },
         }),
         applyRuleResults: assign(({ context }) =>
-            applyRuleResultsToForm(context.ruleResult, context.form),
+            applyRuleResultsToForm(context.ruleResult, context.form, context.formData),
         ),
         executeRulesSync: assign(({ context }) => {
             const {
@@ -71,6 +74,8 @@ const trackedEntityFormMachine = setup({
                 ruleResult,
             } = context;
             const result = executeProgramRules({
+                ruleEnvironment: context.ruleEnvironment,
+                orgUnit: context.trackedEntity.orgUnit,
                 programRuleVariables,
                 programRules,
                 program,
@@ -96,11 +101,12 @@ const trackedEntityFormMachine = setup({
                     formData: Record<string, any>;
                 };
             }) => {
+                const latest = getTrackedEntitiesCollection().get(data.trackedEntity) ?? data;
                 await whileSaving("saving a client", () =>
                     getTrackedEntitiesCollection().utils.insertLocally({
-                        ...data,
+                        ...latest,
                         attributes: {
-                            ...data.attributes,
+                            ...latest.attributes,
                             ...formData,
                         },
                     }),
@@ -119,6 +125,7 @@ const trackedEntityFormMachine = setup({
             program,
             programRules,
             form,
+            ruleEnvironment,
         },
     }) => {
         return {
@@ -131,6 +138,7 @@ const trackedEntityFormMachine = setup({
             trackedEntity,
             validDataElements,
             form,
+            ruleEnvironment,
             persistenceError: null,
             previousAssignments: {},
         };

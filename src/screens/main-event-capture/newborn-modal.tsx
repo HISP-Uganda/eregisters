@@ -1,3 +1,6 @@
+import { commitEnrollmentRuleActions } from "@/program-rules/commit-actions";
+import { assertRuleSaveAllowed } from "@/program-rules/save-actions";
+import type { ProgramRuleResult } from "@/schemas";
 import { Form } from "antd";
 import React, { useMemo } from "react";
 import { DataModal } from "@/components/data-modal";
@@ -37,15 +40,19 @@ async function saveNewborn(
     values: Record<string, any>,
     mother: FlattenedTrackedEntity,
     motherVisit: FlattenedEvent,
+    ruleResult?: ProgramRuleResult | null,
 ) {
+    assertRuleSaveAllowed(ruleResult);
     await getTrackedEntitiesCollection().update(child.trackedEntity, (draft) => {
         draft.parentEntity = mother.trackedEntity;
+        draft.attributes = { ...draft.attributes, ...values };
     }).isPersisted.promise;
     await getEnrollmentsCollection().update(enrollment.enrollment, (draft) => {
-        draft.attributes = child.attributes;
+        draft.attributes = { ...child.attributes, ...values };
     }).isPersisted.promise;
     await getEventsCollection().insert(newbornFirstVisit(enrollment, values, motherVisit.event))
         .isPersisted.promise;
+    await commitEnrollmentRuleActions(enrollment, values, ruleResult, "draft");
 }
 
 /** The "New Born Child" registration popup, opened from the mother's visit. */
@@ -67,8 +74,8 @@ export function NewbornModal({
     /** Saved with "add another" (twins): close this child and start the next. */
     onAddAnother: () => Promise<void>;
 }) {
-    const { program, programRules, programRuleVariables } = useMetadata();
-    const { saveBlockFor, onRuleResult } = useTrackedEntitySaveBlock({
+    const { ruleEnvironment, program, programRules, programRuleVariables } = useMetadata();
+    const { saveBlockFor, onRuleResult, ruleResult } = useTrackedEntitySaveBlock({
         ...(child?.attributes ?? {}),
         ...(enrollment?.attributes ?? {}),
     });
@@ -92,7 +99,7 @@ export function NewbornModal({
             enrollment={enrollment}
             onSave={async ({ values, addAnother }) => {
                 if (child && values && enrollment) {
-                    await saveNewborn(child, enrollment, values, mother, motherVisit);
+                    await saveNewborn(child, enrollment, values, mother, motherVisit, ruleResult);
                     if (addAnother) await onAddAnother();
                 }
             }}
@@ -106,6 +113,7 @@ export function NewbornModal({
                         key={child.trackedEntity}
                         options={{
                             input: {
+                            ruleEnvironment,
                                 programRules,
                                 programRuleVariables,
                                 program: "ueBhWkWll5v",

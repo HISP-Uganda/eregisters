@@ -1,3 +1,4 @@
+import type { RuleEnvironment } from "@/program-rules/history";
 import type { FormInstance } from "antd";
 import type { useMetadata } from "@/hooks/useMetadata";
 import type { EventForRules } from "@/program-rules/execute-program-rules";
@@ -20,6 +21,7 @@ export type CaptureMode = "modal" | "inline-expand" | "inline-row";
 
 /** What every event form of one stage, in one visit, needs. */
 export type StageFormContext = {
+    ruleEnvironment?: RuleEnvironment;
     programStage: ProgramStage;
     enrollment: FlattenedEnrollment;
     trackedEntity: FlattenedTrackedEntity;
@@ -36,6 +38,7 @@ export function eventFormInput(
     form: FormInstance,
 ) {
     return {
+        ruleEnvironment: context.ruleEnvironment,
         programRules: context.programRules,
         programRuleVariables: context.programRuleVariables,
         enrollment: context.enrollment,
@@ -58,6 +61,9 @@ export function eventDate(event: Pick<FlattenedEvent, "dataValues" | "occurredAt
 export function toRuleEvents(events: FlattenedEvent[]): EventForRules[] {
     return events.map((e) => ({
         event: e.event,
+                        ...(e.enrollment ? { enrollment: e.enrollment } : {}),
+                        ...(e.createdAt ? { createdAt: e.createdAt } : {}),
+                        ...(e.status ? { status: e.status } : {}),
         programStage: e.programStage,
         occurredAt: e.occurredAt,
         dataValues: e.dataValues,
@@ -93,5 +99,5 @@ export function eventsOffVisitDate(
     visitDate: string | undefined,
 ): FlattenedEvent[] {
     if (!visitDate) return [];
-    return events.filter((e) => eventDate(e) !== visitDate);
+    return events.filter((e) => e.status !== "SCHEDULE" && eventDate(e) !== visitDate);
 }

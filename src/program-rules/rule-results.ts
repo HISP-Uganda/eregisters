@@ -1,4 +1,4 @@
-import { ProgramRuleResult } from "@/schemas";
+import { Message, ProgramRuleResult } from "@/schemas";
 
 /**
  * Structural equality check for ProgramRuleResult.
@@ -24,11 +24,11 @@ export function programRuleResultsEqual(
         );
     };
     const msgArrEq = (
-        x: { key: string; content: string }[],
-        y: { key: string; content: string }[],
+        x: Message[],
+        y: Message[],
     ) =>
         x.length === y.length &&
-        x.every((m, i) => m.key === y[i].key && m.content === y[i].content);
+        x.every((m, i) => m.key === y[i].key && m.content === y[i].content && m.location === y[i].location && m.value === y[i].value);
     const assignEq = (x: Record<string, any>, y: Record<string, any>) => {
         const xk = Object.keys(x).sort();
         const yk = Object.keys(y).sort();
@@ -37,6 +37,8 @@ export function programRuleResultsEqual(
         );
     };
     return (
+        JSON.stringify([a.blockedStages ?? [], a.completionErrors ?? [], a.completionWarnings ?? [], a.displayKeyValues ?? [], a.eventActions ?? [], a.notificationActions ?? []]) ===
+            JSON.stringify([b.blockedStages ?? [], b.completionErrors ?? [], b.completionWarnings ?? [], b.displayKeyValues ?? [], b.eventActions ?? [], b.notificationActions ?? []]) &&
         strArrEq(a.hiddenFields, b.hiddenFields) &&
         strArrEq(a.shownFields, b.shownFields) &&
         strArrEq(a.hiddenSections, b.hiddenSections) &&

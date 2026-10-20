@@ -1,5 +1,8 @@
 import { Flex, Grid, Splitter, Typography } from "antd";
-import React, { useCallback } from "react";
+import React, { useCallback, useMemo } from "react";
+import { useMetadata } from "@/hooks/useMetadata";
+import { executeProgramRules } from "@/program-rules/execute-program-rules";
+import { MAIN_STAGE } from "./client";
 import { useModalState } from "@/hooks/useModalState";
 import { SyncContext } from "@/machines/sync";
 import {
@@ -65,6 +68,16 @@ function ClientView({
     const syncActor = SyncContext.useActorRef();
     const pushData = useCallback(() => syncActor.send({ type: "PUSH_DATA" }), [syncActor]);
     const { teaLabels } = useFormMetadata();
+    const { programRules, programRuleVariables, ruleEnvironment } = useMetadata();
+    const blockedStages = useMemo(() => {
+        const latest = visits.filter((event) => event.enrollment === enrollment.enrollment && event.status !== "SCHEDULE")[0];
+        return executeProgramRules({ programRules, programRuleVariables, ruleEnvironment,
+            program: enrollment.program, programStage: MAIN_STAGE, orgUnit: enrollment.orgUnit,
+            enrollment: enrollment.enrollment, dataValues: latest?.dataValues ?? {},
+            attributeValues: trackedEntity.attributes, currentEventId: latest?.event,
+            currentEventCreatedAt: latest?.createdAt, allEnrollmentEvents,
+        }).blockedStages ?? [];
+    }, [programRules, programRuleVariables, ruleEnvironment, visits, enrollment, trackedEntity, allEnrollmentEvents]);
     const isMobile = !Grid.useBreakpoint().lg;
     const visitModal = useModalState<FlattenedEvent>();
     const clientModal = useModalState<FlattenedTrackedEntity>();
@@ -92,8 +105,9 @@ function ClientView({
             onOpen={openVisit}
             onResend={resend}
             onDelete={remove}
+            addDisabled={blockedStages.includes(MAIN_STAGE)}
             onAdd={async () => {
-                const visit = await createVisit(trackedEntity, enrollment);
+                const visit = await createVisit(trackedEntity, enrollment, blockedStages);
                 visitModal.openModal(visit, enrollment, true);
             }}
         />

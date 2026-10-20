@@ -1,3 +1,6 @@
+import { commitEnrollmentRuleActions } from "@/program-rules/commit-actions";
+import { assertRuleSaveAllowed } from "@/program-rules/save-actions";
+import type { ProgramRuleResult } from "@/schemas";
 import { useNavigate } from "@tanstack/react-router";
 import { Form } from "antd";
 import React, { useMemo } from "react";
@@ -18,15 +21,20 @@ async function saveRegistration(
     client: FlattenedTrackedEntity,
     enrollment: FlattenedEnrollment,
     values: Record<string, any>,
+    ruleResult?: ProgramRuleResult | null,
+    complete = false,
 ) {
+    assertRuleSaveAllowed(ruleResult, complete);
     await getTrackedEntitiesCollection().update(client.trackedEntity, (draft) => {
         draft.attributes = { ...client.attributes, ...values };
         draft.syncStatus = "pending";
     }).isPersisted.promise;
     await getEnrollmentsCollection().update(enrollment.enrollment, (draft) => {
         draft.attributes = { ...enrollment.attributes, ...values };
+        if (complete) draft.status = "COMPLETED";
         draft.syncStatus = "pending";
     }).isPersisted.promise;
+    await commitEnrollmentRuleActions(enrollment, values, ruleResult);
 }
 
 /**
@@ -59,8 +67,8 @@ export function useClientRegistration() {
 export function RegisterClientModal({ registration }: { registration: ReturnType<typeof useClientRegistration> }) {
     const { data: client, enrollment, isOpen, closeModal, start } = registration;
     const navigate = useNavigate();
-    const { program, programRules, programRuleVariables } = useMetadata();
-    const { saveBlockFor, onRuleResult } = useTrackedEntitySaveBlock({
+    const { ruleEnvironment, program, programRules, programRuleVariables } = useMetadata();
+    const { saveBlockFor, onRuleResult, ruleResult } = useTrackedEntitySaveBlock({
         ...(client?.attributes ?? {}),
         ...(enrollment?.attributes ?? {}),
     });
@@ -76,9 +84,9 @@ export function RegisterClientModal({ registration }: { registration: ReturnType
             onClose={closeModal}
             onCancel={() => cancelDataModal(client!)}
             enrollment={enrollment}
-            onSave={async ({ values, addAnother }) => {
+            onSave={async ({ values, addAnother, complete }) => {
                 if (!values || !client || !enrollment) return;
-                await saveRegistration(client, enrollment, values);
+                await saveRegistration(client, enrollment, values, ruleResult, complete);
                 if (addAnother) {
                     closeModal();
                     await start();
@@ -88,6 +96,7 @@ export function RegisterClientModal({ registration }: { registration: ReturnType
             }}
             title="Register New Client"
             submitButtonText="Register client"
+            completionFeedback={{ errors: (ruleResult?.completionErrors ?? []).map((m) => m.content), warnings: (ruleResult?.completionWarnings ?? []).map((m) => m.content) }}
             hasAddAnother={true}
             saveBlockFor={saveBlockFor}
         >
@@ -96,6 +105,7 @@ export function RegisterClientModal({ registration }: { registration: ReturnType
                     key={client?.trackedEntity || "closed"}
                     options={{
                         input: {
+                            ruleEnvironment,
                             programRules,
                             programRuleVariables,
                             program: "ueBhWkWll5v",

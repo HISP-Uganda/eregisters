@@ -9,6 +9,7 @@ import {
     Spin,
     Tooltip,
     Typography,
+    message,
 } from "antd";
 import React, { useEffect, useState } from "react";
 import type { SaveBlock } from "@/utils/save-block";
@@ -40,12 +41,14 @@ interface DataModalProps<T extends FlattenedTrackedEntity | FlattenedEvent> {
     onSave: (currentInfo: {
         values: Record<string, any>;
         addAnother?: boolean;
+        complete?: boolean;
     }) => void | Promise<void>;
     enrollment: FlattenedEnrollment | null;
     title?: string;
     children: (form: FormInstance) => React.ReactNode;
     submitButtonText?: string;
     hasAddAnother?: boolean;
+    completionFeedback?: { errors: string[]; warnings: string[] };
     status?: string;
     saveBlockFor?: (values: Record<string, unknown>) => SaveBlock;
 }
@@ -59,6 +62,7 @@ interface ModalContentProps<T extends FlattenedTrackedEntity | FlattenedEvent> {
     isMobile: boolean;
     submitButtonText: string;
     hasAddAnother: boolean;
+    completionFeedback?: { errors: string[]; warnings: string[] };
     status: string;
     saveBlockFor?: (values: Record<string, unknown>) => SaveBlock;
     title: React.ReactNode;
@@ -75,6 +79,7 @@ function ModalContent<T extends FlattenedTrackedEntity | FlattenedEvent>({
     isMobile,
     submitButtonText,
     hasAddAnother,
+    completionFeedback,
     status,
     saveBlockFor,
     title,
@@ -84,6 +89,7 @@ function ModalContent<T extends FlattenedTrackedEntity | FlattenedEvent>({
     setLoading,
 }: ModalContentProps<T>) {
     const [form] = Form.useForm<T>();
+    const [confirmation, confirmationHolder] = Modal.useModal();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const watchedValues: Record<string, any> = Form.useWatch((values) => values, form) ?? {};
     const block = saveBlockFor?.(watchedValues);
@@ -107,13 +113,27 @@ function ModalContent<T extends FlattenedTrackedEntity | FlattenedEvent>({
     const handleOk = async (addAnother = false) => {
         try {
             const values = await form.validateFields();
+            const latestBlock = saveBlockFor?.(values);
+            if (latestBlock && (latestBlock.errors.length || latestBlock.missing.length)) return;
+            if (completionFeedback?.errors.length) {
+                confirmation.error({ title: "Cannot complete this event", content: completionFeedback.errors.join("; ") });
+                return;
+            }
             setLoading(true);
-            await onSave({ values, addAnother });
+            if (completionFeedback?.warnings.length) {
+                const accepted = await new Promise<boolean>((resolve) => {
+                    confirmation.confirm({ title: "Complete this event?", content: completionFeedback.warnings.join("; "),
+                        okText: "Complete", onOk: () => { resolve(true); }, onCancel: () => { resolve(false); } });
+                });
+                if (!accepted) return;
+            }
+            await onSave({ values, addAnother, complete: true });
             if (!addAnother) {
                 onClose();
             }
         } catch (error) {
             console.error("Validation failed:", error);
+            message.error(error instanceof Error ? error.message : "Please check the form before saving.");
         } finally {
             setLoading(false);
         }
@@ -121,6 +141,7 @@ function ModalContent<T extends FlattenedTrackedEntity | FlattenedEvent>({
 
     return (
         <>
+            {confirmationHolder}
             <Modal
                 open={open}
                 onCancel={onCancel}
@@ -261,6 +282,7 @@ export function DataModal<T extends FlattenedTrackedEntity | FlattenedEvent>({
     children,
     submitButtonText = "Save",
     hasAddAnother = false,
+    completionFeedback,
     status = "draft",
     saveBlockFor,
 }: DataModalProps<T>) {
@@ -316,6 +338,7 @@ export function DataModal<T extends FlattenedTrackedEntity | FlattenedEvent>({
             isMobile={isMobile}
             submitButtonText={submitButtonText}
             hasAddAnother={hasAddAnother}
+            completionFeedback={completionFeedback}
             status={status}
             saveBlockFor={saveBlockFor}
             title={titleNode}

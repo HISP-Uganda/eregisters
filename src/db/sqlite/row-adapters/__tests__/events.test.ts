@@ -67,6 +67,35 @@ describe("eventsRowAdapter", () => {
         expect(rows).toEqual([event]);
     });
 
+    it("persists scheduled dates and rule action keys on insert and update", async () => {
+        const { driver, close: c } = createNodeSqliteDriver();
+        close = c;
+        await createSchema(driver);
+        await seedParents(driver);
+        const event = makeEvent({ status: "SCHEDULE", occurredAt: "", scheduledAt: "2026-02-01", ruleActionKey: "rule:action:enrollment" });
+        await eventsRowAdapter.insertRow(driver, event);
+        expect(await getEventById(driver, event.event)).toEqual(event);
+        const updated = { ...event, scheduledAt: "2026-03-01", ruleActionKey: "rule:action:updated" };
+        await eventsRowAdapter.updateRow(driver, updated);
+        expect(await eventsRowAdapter.loadAll(driver)).toEqual([updated]);
+    });
+
+    it("upgrades existing event tables without losing rows and can run repeatedly", async () => {
+        const { driver, close: c } = createNodeSqliteDriver();
+        close = c;
+        await createSchema(driver);
+        await seedParents(driver);
+        await eventsRowAdapter.insertRow(driver, makeEvent());
+        await driver.execute("ALTER TABLE events DROP COLUMN scheduled_at");
+        await driver.execute("ALTER TABLE events DROP COLUMN rule_action_key");
+        await driver.execute("PRAGMA user_version = 0");
+        await createSchema(driver);
+        await createSchema(driver);
+        expect(await getEventById(driver, "evt-1")).toEqual(makeEvent());
+        const version = await driver.execute<{ user_version: number }>("PRAGMA user_version");
+        expect(version.rows[0]?.user_version).toBeGreaterThan(0);
+    });
+
     it("supports a self-referential parentEvent", async () => {
         const { driver, close: c } = createNodeSqliteDriver();
         close = c;

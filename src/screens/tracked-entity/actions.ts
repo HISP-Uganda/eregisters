@@ -1,3 +1,4 @@
+import { applyRuleValues, assertRuleSaveAllowed, captureEventStatus, evaluateEventForSave, type RuleSaveMetadata } from "@/program-rules/save-actions";
 import {
     getEnrollmentsCollection,
     getEventsCollection,
@@ -15,6 +16,8 @@ import {
     resendEventWithChildren,
 } from "@/utils/record-cascades";
 import { createEmptyEvent } from "@/utils/record-factories";
+import type { ProgramRuleResult } from "@/schemas";
+import { commitEnrollmentRuleActions, commitRuleEventActions } from "@/program-rules/commit-actions";
 import { MAIN_STAGE } from "./client";
 
 /** What the client page writes. `pushData` starts a push to DHIS2. */
@@ -22,7 +25,9 @@ import { MAIN_STAGE } from "./client";
 export async function createVisit(
     trackedEntity: FlattenedTrackedEntity,
     enrollment: FlattenedEnrollment,
+    blockedStages: string[] = [],
 ): Promise<FlattenedEvent> {
+    if (blockedStages.includes(MAIN_STAGE)) throw new Error("Program rules prevent adding visits.");
     const newEvent = createEmptyEvent({
         trackedEntity: trackedEntity.trackedEntity,
         program: enrollment.program,
@@ -43,10 +48,51 @@ export async function saveVisit(
     visit: FlattenedEvent,
     values: Record<string, any>,
     trackedEntity: FlattenedTrackedEntity,
+    ruleResult?: ProgramRuleResult | null,
+    complete = false,
+    ruleMetadata?: RuleSaveMetadata,
 ) {
+    assertRuleSaveAllowed(ruleResult, complete);
     const trackedEntitiesCollection = getTrackedEntitiesCollection();
     const enrollmentsCollection = getEnrollmentsCollection();
     const eventsCollection = getEventsCollection();
+    const currentVisit = { ...visit, dataValues: { ...visit.dataValues, ...values } };
+    const childIds = new Set(trackedEntitiesCollection.toArray.filter((tei) => tei.parentEntity === trackedEntity.trackedEntity).map((tei) => tei.trackedEntity));
+    const pending = [currentVisit, ...eventsCollection.toArray.filter((event) => event.event !== visit.event && event.syncStatus !== "synced" && event.syncStatus !== "deleted" && !event.deleted && (event.parentEvent === visit.event || childIds.has(event.trackedEntity))).map((event) => ({ ...event, dataValues: { ...event.dataValues } }))];
+    const evaluated = new Map<string, ProgramRuleResult>();
+    const history = new Map<string, FlattenedEvent>(eventsCollection.toArray.map((event) => [event.event, event]));
+    history.set(currentVisit.event, currentVisit);
+    if (ruleMetadata) {
+        for (const event of pending) {
+            if (event.status === "SCHEDULE" && !event.dataValues.occurredAt) continue;
+            const attributes = event.trackedEntity === trackedEntity.trackedEntity ? trackedEntity.attributes : trackedEntitiesCollection.get(event.trackedEntity)?.attributes ?? {};
+            const result = evaluateEventForSave(event, ruleMetadata, attributes, [...history.values()]);
+            assertRuleSaveAllowed(result, event.event === visit.event ? complete : event.status === "COMPLETED");
+            evaluated.set(event.event, result);
+            event.dataValues = applyRuleValues(event.dataValues, result);
+            history.set(event.event, event);
+        }
+    }
+    await eventsCollection.update(visit.event, (draft) => {
+        draft.dataValues = applyRuleValues(currentVisit.dataValues, evaluated.get(visit.event) ?? ruleResult);
+        draft.status = captureEventStatus(draft.status, draft.dataValues, complete);
+        if (draft.dataValues.occurredAt) draft.occurredAt = draft.dataValues.occurredAt;
+        if (complete) {
+            draft.status = "COMPLETED";
+            draft.completedAt = new Date().toISOString();
+        }
+    }).isPersisted.promise;
+    await commitRuleEventActions(currentVisit, evaluated.get(visit.event) ?? ruleResult);
+    for (const event of pending.filter((event) => event.event !== visit.event)) {
+        if (evaluated.has(event.event)) {
+            await eventsCollection.update(event.event, (draft) => {
+                draft.dataValues = event.dataValues;
+                draft.status = captureEventStatus(draft.status, draft.dataValues);
+                if (draft.dataValues.occurredAt) draft.occurredAt = draft.dataValues.occurredAt;
+            }).isPersisted.promise;
+        }
+        await commitRuleEventActions(event, evaluated.get(event.event));
+    }
 
     // Backend-agnostic local lookups — both backends' collections already
     // hold this device's full local dataset in memory for their live
@@ -123,7 +169,10 @@ export async function saveClient(
     client: FlattenedTrackedEntity,
     values: Record<string, any>,
     enrollment: FlattenedEnrollment,
+    ruleResult?: ProgramRuleResult | null,
+    complete = false,
 ) {
+    assertRuleSaveAllowed(ruleResult, complete);
     const { enrolledAt, ...attributeValues } = values;
     const attributes = { ...client.attributes, ...attributeValues };
 
@@ -132,14 +181,15 @@ export async function saveClient(
         draft.syncStatus = "pending";
     }).isPersisted.promise;
 
-    if (enrolledAt) {
+    if (enrolledAt || complete) {
         await getEnrollmentsCollection().update(enrollment.enrollment, (draft) => {
-            draft.enrolledAt = enrolledAt;
-            draft.occurredAt = enrolledAt;
+            if (enrolledAt) { draft.enrolledAt = enrolledAt; draft.occurredAt = enrolledAt; }
+            if (complete) draft.status = "COMPLETED";
             draft.syncStatus = "pending";
             draft.attributes = attributes;
         }).isPersisted.promise;
     }
+    await commitEnrollmentRuleActions(enrollment, { enrolledAt: enrollment.attributes.enrolledAt ?? enrollment.enrolledAt, ...values }, ruleResult);
 }
 
 export async function resendVisit(event: string, pushData: () => void) {

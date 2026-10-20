@@ -30,6 +30,7 @@ export function ProgramStageCapture({
     mainEvent: visit,
     captureMode = "modal",
     enrollment,
+    blockedStages = [],
 }: {
     programStage: ProgramStage;
     trackedEntity: FlattenedTrackedEntity;
@@ -37,18 +38,22 @@ export function ProgramStageCapture({
     mainEvent: FlattenedEvent;
     captureMode?: CaptureMode;
     enrollment: FlattenedEnrollment;
+    blockedStages?: string[];
 }) {
     const isMobile = !Grid.useBreakpoint().lg;
     const modal = useModalState<FlattenedEvent>();
-    const { dataElements, optionSets, programRuleVariables, programRules } = useMetadata();
+    const { dataElements, optionSets, programRuleVariables, programRules, ruleEnvironment } = useMetadata();
     const syncActor = SyncContext.useActorRef();
     const pushData = useCallback(() => syncActor.send({ type: "PUSH_DATA" }), [syncActor]);
     const [expandedRowKeys, setExpandedRowKeys] = useState<string[]>([]);
-    const { events, ruleEvents } = useStageEvents(programStage, visit, trackedEntity.trackedEntity);
+    const { events, ruleEvents, currentVisit } = useStageEvents(programStage, visit, trackedEntity.trackedEntity);
+    const stageBlocked = blockedStages.includes(programStage.id);
+    const canAddEvent = Boolean(currentVisit.dataValues?.occurredAt) && !stageBlocked;
 
     const stageDataElements = useMemo(() => stageDataElementIds(programStage), [programStage]);
     const context: StageFormContext = useMemo(
         () => ({
+            ruleEnvironment,
             programStage,
             enrollment,
             trackedEntity,
@@ -57,7 +62,7 @@ export function ProgramStageCapture({
             programRuleVariables,
             allEnrollmentEvents: ruleEvents,
         }),
-        [programStage, enrollment, trackedEntity, stageDataElements, programRules, programRuleVariables, ruleEvents],
+        [programStage, enrollment, trackedEntity, stageDataElements, programRules, programRuleVariables, ruleEvents, ruleEnvironment],
     );
 
     const toggleExpanded = (event: string) =>
@@ -71,11 +76,13 @@ export function ProgramStageCapture({
         );
 
     const handleCreate = async () => {
+        if (!canAddEvent) return;
         const event = await createStageEvent({
             trackedEntity,
             enrollment,
             programStage: programStage.id,
-            visit,
+            visit: currentVisit,
+            blockedStages,
         });
         if (captureMode === "modal") modal.openModal(event, enrollment, true);
         else if (captureMode === "inline-expand") setExpandedRowKeys((prev) => [...prev, event.event]);
@@ -149,6 +156,7 @@ export function ProgramStageCapture({
                             icon={<PlusOutlined />}
                             size="middle"
                             onClick={handleCreate}
+                            disabled={!canAddEvent}
                             style={{ background: "#7c3aed", borderColor: "#7c3aed", borderRadius: 6 }}
                         >
                             {isMobile ? "Add" : `Add ${programStage.name}`}
@@ -156,6 +164,11 @@ export function ProgramStageCapture({
                     </Flex>
                 )}
             />
+            {!canAddEvent && (
+                <Typography.Text type="secondary">
+                    {stageBlocked ? "Program rules prevent adding events to this stage." : "Set the parent visit date before adding an event."}
+                </Typography.Text>
+            )}
 
             {captureMode === "modal" && (
                 <StageEventModal
@@ -163,7 +176,7 @@ export function ProgramStageCapture({
                     event={modal.data}
                     isOpen={modal.isOpen}
                     isNew={modal.isNew}
-                    visit={visit}
+                    visit={currentVisit}
                     onClose={modal.closeModal}
                     onAddAnother={async () => {
                         modal.closeModal();

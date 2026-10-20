@@ -133,6 +133,43 @@ describe("d2 functions", () => {
         expect(fires("d2:contains(#{a}, 'C')", {})).toBe(false);
     });
 
+    it.each([
+        ["Red Cells", true],
+        ["White Cells,Red Cells", true],
+        ["White Cells", false],
+        ["Red Cells Casts", false],
+        ["red cells", false],
+        ["White Cells, Red Cells", false],
+        ["", false],
+        [null, false],
+        [undefined, false],
+    ])("containsItems and its negation for %s", (value, expected) => {
+        const warningCount = vi.mocked(console.warn).mock.calls.length;
+        const condition = "d2:containsItems(#{Urinalysis Microscopy Results},'Red Cells')";
+        const variables = [variable("Urinalysis Microscopy Results", { de: "deA" })];
+        const run = (condition: string) => inEvent(
+            [rule(condition, [assign("out", "1")])],
+            { deA: value },
+            { programRuleVariables: variables },
+        ).assignments.out === 1;
+        expect(run(condition)).toBe(expected);
+        expect(run(`!${condition}`)).toBe(!expected);
+        expect(console.warn).toHaveBeenCalledTimes(warningCount);
+    });
+
+    it("containsItems requires every requested item", () => {
+        const condition = "d2:containsItems(#{a}, 'Red Cells', 'White Cells')";
+        expect(fires(condition, { deA: "White Cells,Red Cells" })).toBe(true);
+        expect(fires(condition, { deA: "Red Cells" })).toBe(false);
+    });
+
+    it("containsItems accepts literal lists and ASSIGN expressions", () => {
+        expect(evaluate("d2:containsItems('Red Cells,White Cells', 'Red Cells', 'White Cells')")).toBe(true);
+        expect(evaluate("d2:containsItems('White Cells, Red Cells', 'Red Cells')")).toBe(false);
+        expect(evaluate("d2:containsItems(#{a}, 'Red Cells')", { deA: "Red Cells" })).toBe(true);
+        expect(evaluate("d2:containsItems(#{a}, 'Red Cells')")).toBe(false);
+    });
+
     it("validatePattern anchors the pattern", () => {
         expect(fires("d2:validatePattern(#{a}, '[0-9]+')", { deA: "123" })).toBe(true);
         expect(fires("d2:validatePattern(#{a}, '[0-9]+')", { deA: "12a" })).toBe(false);
@@ -220,8 +257,8 @@ describe("variables", () => {
         }).assignments.out;
     }
 
-    it("DATAELEMENT_PREVIOUS_EVENT: the latest same-stage event on or before this one", () => {
-        expect(withSource("DATAELEMENT_PREVIOUS_EVENT", "2026-03-15")).toBe("second");
+    it("DATAELEMENT_PREVIOUS_EVENT: the latest prior event across the enrollment", () => {
+        expect(withSource("DATAELEMENT_PREVIOUS_EVENT", "2026-03-15")).toBe("other");
         expect(withSource("DATAELEMENT_PREVIOUS_EVENT", "2025-12-01")).toBe(null);
     });
 
@@ -313,10 +350,10 @@ describe("which rules and actions apply", () => {
         const result = inEvent([rule("true", actions), rule("1 == 1", actions)], {});
         expect(result).toEqual({
             assignments: {},
-            hiddenFields: ["de"],
+            hiddenFields: [],
             shownFields: ["de"],
             mandatoryFields: ["de"],
-            hiddenSections: ["sec"],
+            hiddenSections: [],
             shownSections: ["sec"],
             hiddenOptions: { de: ["opt"] },
             shownOptions: { de: ["opt"] },
@@ -361,9 +398,9 @@ describe("which rules and actions apply", () => {
         expect(prioritizedOnly.assignments.x).toBe("second");
     });
 
-    it("ignores HIDEPROGRAMSTAGE on purpose", () => {
+    it("preserves the accepted TB-only HIDEPROGRAMSTAGE exemption", () => {
         const result = inEvent(
-            [rule("true", [{ programRuleActionType: "HIDEPROGRAMSTAGE" as any, programStage: { id: "stage", displayName: "" } }])],
+            [rule("true", [{ programRuleActionType: "HIDEPROGRAMSTAGE", programStage: { id: "stage", displayName: "" } }], { id: "YFZmzMxHfAx" })],
             {},
         );
         expect(result).toEqual(inEvent([], {}));

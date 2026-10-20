@@ -3,7 +3,7 @@ import { useEffect, useMemo } from "react";
 import { getEventsCollection } from "@/db/collections";
 import { FlattenedEvent, ProgramStage } from "@/schemas";
 import { moveEventsToVisitDate } from "./actions";
-import { eventDate, eventsOffVisitDate, toRuleEvents } from "./stage";
+import { eventsOffVisitDate, toRuleEvents } from "./stage";
 
 /**
  * A visit's events of one stage, live, plus the enrollment's events for
@@ -52,7 +52,7 @@ export function useStageEvents(
         [trackedEntity],
     );
 
-    const visitDate = eventDate(storedVisit ?? visit);
+    const visitDate = (storedVisit ?? visit).dataValues?.occurredAt;
     useEffect(() => {
         if (!visitDate) return;
         moveEventsToVisitDate(eventsOffVisitDate(events, visitDate), visitDate);
@@ -60,5 +60,5 @@ export function useStageEvents(
 
     const ruleEvents = useMemo(() => toRuleEvents(enrollmentEvents), [enrollmentEvents]);
 
-    return { events, ruleEvents };
+    return { events, ruleEvents, currentVisit: storedVisit ?? visit };
 }

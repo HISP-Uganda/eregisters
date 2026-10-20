@@ -115,10 +115,12 @@ function visitColumns(handlers: VisitHandlers): TableProps<FlattenedEvent>["colu
 export function VisitsCard({
     visits,
     onAdd,
+    addDisabled = false,
     ...handlers
 }: VisitHandlers & {
     visits: FlattenedEvent[];
     onAdd: () => void;
+    addDisabled?: boolean;
 }) {
     const connectivityStatus = SyncContext.useSelector(
         (a) => a.context.connectivityStatus,
@@ -142,7 +144,7 @@ export function VisitsCard({
                 </Space>
             }
             extra={
-                <Button type="primary" icon={<PlusOutlined />} onClick={onAdd}>
+                <Button type="primary" icon={<PlusOutlined />} onClick={onAdd} disabled={addDisabled} title={addDisabled ? "Program rules prevent adding visits." : undefined}>
                     Add new visit
                 </Button>
             }

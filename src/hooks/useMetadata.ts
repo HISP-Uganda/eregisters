@@ -1,8 +1,11 @@
 import { SyncContext } from "@/machines";
 import { DataElement, Program, TrackedEntityAttribute } from "@/schemas";
+import { buildRuleEnvironment } from "@/program-rules/history";
+import { useMemo } from "react";
 
 export const useMetadata = () => {
     const metadata = SyncContext.useSelector((a) => a.context.metadata);
+    const userInfo = SyncContext.useSelector((a) => a.context.userInfo);
     const {
         organisationUnits: [{ id, name }],
     } = SyncContext.useSelector((a) => a.context.userInfo);
@@ -38,7 +41,9 @@ export const useMetadata = () => {
         categoryOptionCombos = [],
     } = metadata;
 
+    const ruleEnvironment = useMemo(() => buildRuleEnvironment(userInfo, organisationUnits), [userInfo, organisationUnits]);
     return {
+        ruleEnvironment,
         trackedEntityAttributes,
         programRules,
         programRuleVariables,

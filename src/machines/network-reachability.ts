@@ -83,6 +83,13 @@ export function mutateWithTimeout(
 
 export function classifyFetchError(error: unknown): ReachabilityFailureReason {
     if (error instanceof FetchError) {
+        // A 522 means the origin is unreachable: keep working locally. For
+        // HTML proxy responses the data engine has no JSON details, but keeps
+        // the HTTP status at the end of its generated error message.
+        if (error.details?.httpStatusCode === 522 ||
+            (error.type === "unknown" && /\(522\)\s*$/.test(error.message))) {
+            return "network";
+        }
         if (error.type === "access") {
             return "access";
         }

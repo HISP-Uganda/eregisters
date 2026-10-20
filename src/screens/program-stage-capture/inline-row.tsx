@@ -1,5 +1,8 @@
-import { Form, Typography } from "antd";
+import { Form, Typography, message } from "antd";
 import React from "react";
+import { useMetadata } from "@/hooks/useMetadata";
+import { filterRuleOptions } from "@/program-rules/option-filter";
+import { assertRuleSaveAllowed } from "@/program-rules/save-actions";
 import { EventContext } from "@/machines";
 import { FlattenedEvent } from "@/schemas";
 import { EditableCell, OptionRow } from "./editable-cell";
@@ -73,18 +76,19 @@ export function InlineEditableCell({
     options?: OptionRow[];
     persist: (value: unknown) => Promise<void>;
 }) {
+    const { optionGroups } = useMetadata();
     const eventActor = EventContext.useActorRef();
     const ruleResult = EventContext.useSelector((s) => s.context.ruleResult);
     const form = EventContext.useSelector((s) => s.context.form);
     const currentValue = Form.useWatch(dataElementId, form);
     const isHidden = ruleResult?.hiddenFields.includes(dataElementId) ?? false;
-    const isEffectivelyEmpty =
-        currentValue === undefined ||
-        currentValue === null ||
-        currentValue === "" ||
-        (Array.isArray(currentValue) && currentValue.length === 0);
-
-    if (isHidden && isEffectivelyEmpty) {
+    const finalOptions = options ? filterRuleOptions(options, optionGroups, {
+        hiddenOptions: ruleResult.hiddenOptions[dataElementId],
+        shownOptions: ruleResult.shownOptions[dataElementId],
+        hiddenOptionGroups: ruleResult.hiddenOptionGroups[dataElementId],
+        shownOptionGroups: ruleResult.shownOptionGroups[dataElementId],
+    }) : undefined;
+    if (isHidden || (options?.length && !finalOptions?.length)) {
         return (
             <Typography.Text type="secondary" style={{ fontSize: 11, fontStyle: "italic" }}>
                 —
@@ -92,19 +96,29 @@ export function InlineEditableCell({
         );
     }
 
+    if (dataElementId in ruleResult.assignments) {
+        return <Typography.Text>{String(currentValue ?? "—")}</Typography.Text>;
+    }
     return (
         <EditableCell
             valueType={valueType}
             value={currentValue}
-            options={options}
+            options={finalOptions}
             disabled={isHidden}
             onCommit={async (v) => {
-                form?.setFieldValue(dataElementId, v);
-                await persist(v);
-                eventActor.send({
-                    type: "FIELD_CHANGED",
-                    formData: { ...(form?.getFieldsValue() ?? {}), [dataElementId]: v },
-                });
+                try {
+                    form?.setFieldValue(dataElementId, v);
+                    eventActor.send({
+                        type: "FIELD_CHANGED",
+                        formData: { ...(form?.getFieldsValue() ?? {}), [dataElementId]: v },
+                    });
+                    // FIELD_CHANGED evaluates rules synchronously before the external save.
+                    assertRuleSaveAllowed(eventActor.getSnapshot().context.ruleResult);
+                    await form?.validateFields([dataElementId]);
+                    await persist(eventActor.getSnapshot().context.formData[dataElementId]);
+                } catch (error) {
+                    message.error(error instanceof Error ? error.message : "Please check the field before saving.");
+                }
             }}
         />
     );

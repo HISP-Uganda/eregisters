@@ -39,6 +39,11 @@ describe("newbornAttributes", () => {
 });
 
 describe("newbornFirstVisit", () => {
+    it("rejects creation without a date instead of defaulting to today", () => {
+        expect(() => newbornFirstVisit({} as FlattenedEnrollment, {}, "mumVisit"))
+            .toThrow("parent visit date");
+    });
+
     it("is a newborn child-health visit under the mother's visit, dated at enrollment", () => {
         const enrollment = {
             enrollment: "en",
@@ -48,6 +53,7 @@ describe("newbornFirstVisit", () => {
         } as FlattenedEnrollment;
         const visit = newbornFirstVisit(enrollment, { enrolledAt: "2026-09-02" }, "mumVisit");
         expect(visit).toMatchObject({
+            occurredAt: "2026-09-02",
             trackedEntity: "baby",
             enrollment: "en",
             programStage: "K2nxbE9ubSs",

@@ -85,14 +85,17 @@ export function newbornFirstVisit(
     values: Record<string, any>,
     motherVisit: string,
 ): FlattenedEvent {
+    const occurredAt = values["enrolledAt"] || values["occurredAt"];
+    if (!occurredAt) throw new Error("Set the parent visit date before adding a child event.");
     return createEmptyEvent({
         trackedEntity: enrollment.trackedEntity,
         program: enrollment.program,
         orgUnit: enrollment.orgUnit,
         enrollment: enrollment.enrollment,
         programStage: "K2nxbE9ubSs",
+        occurredAt,
         dataValues: {
-            occurredAt: values["enrolledAt"] || values["occurredAt"],
+            occurredAt,
             UuxHHVp5CnF: "Newborn",
             mrKZWf2WMIC: "Child Health Services",
         },

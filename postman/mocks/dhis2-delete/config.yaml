@@ -1,0 +1,9 @@
+version: 1
+name: DHIS2 tracker deletion responses
+slug: dhis2-delete
+protocol: http
+interceptRequests: true
+scenarios:
+  - name: default
+    path: ./default.js
+    default: true

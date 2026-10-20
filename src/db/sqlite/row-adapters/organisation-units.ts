@@ -7,6 +7,7 @@ import type { RowAdapter } from "@/db/sqlite/row-adapter";
  * (`src/utils/utils.ts:1510-1512`, `WHERE path LIKE 'prefix%'`).
  */
 export type OrgUnitRow = {
+    organisationUnitGroups?: Array<{ id: string; code?: string }>;
     id: string;
     name: string;
     code?: string;

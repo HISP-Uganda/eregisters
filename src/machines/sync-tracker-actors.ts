@@ -135,7 +135,9 @@ export async function syncReportToLocal({
     const payload = entities.reduce<{
         trackedEntities: TrackedEntity[];
         enrollments: Enrollment[];
-        events: Event[];
+        events: Array<
+            Omit<Event, "occurredAt" | "ruleActionKey"> & { occurredAt?: string }
+        >;
     }>(
         (acc, entity) => {
             if ("trackedEntityType" in entity) {
@@ -175,7 +177,7 @@ export async function syncReportToLocal({
             importStrategy: "CREATE_AND_UPDATE",
             atomicMode: "OBJECT",
             skipPatternValidation: "true",
-            skipSideEffects: "true",
+            skipSideEffects: "false",
         },
     });
     const failedResponses = new Map<string, string>();
@@ -366,34 +368,56 @@ export async function syncDeleteToLocal({
             .map((e) => ({ event: e.event }));
     }
 
-    const response = await submitTrackerImportAndWaitForReport({
-        engine,
-        data: payload,
-        params: { importStrategy: "DELETE", atomicMode: "OBJECT" },
-    });
+    let response: Dhis2Report;
+    try {
+        response = await submitTrackerImportAndWaitForReport({
+            engine,
+            data: payload,
+            params: { importStrategy: "DELETE", atomicMode: "OBJECT" },
+        });
+    } catch (error) {
+        // Tracker validation failures may arrive as HTTP 409. The data engine
+        // throws those, retaining the import report in details (or its response).
+        // A bare 404/access/network error never confirms any particular UID.
+        if (!(error instanceof Error) || !("details" in error) || !("type" in error) ||
+            (error.type !== "access" && error.type !== "unknown")) throw error;
+        const details = error.details as Record<string, any> | undefined;
+        const report = details?.response ?? details;
+        const errors = report?.validationReport?.errorReports;
+        if (!Array.isArray(errors) || !errors.length || !errors.every((entry) =>
+            typeof entry?.uid === "string" && typeof entry?.trackerType === "string" && typeof entry?.errorCode === "string")) throw error;
+        response = report as Dhis2Report;
+    }
 
-    // E1114 = TE already deleted, E1082 = Event already deleted, E1113 = Enrollment already deleted
-    const ALREADY_DELETED_CODES = new Set(["E1082", "E1113", "E1114"]);
+    // Match both the code and the target type: a missing attribute or a missing
+    // parent referenced by another record does not confirm this record is gone.
+    // DHIS2 ValidationCode: E1063/E1081/E1032 = missing TE/enrollment/event;
+    // E1114/E1113/E1082 = already deleted TE/enrollment/event.
+    const ABSENT_RECORD_CODES: Record<string, ReadonlySet<string>> = {
+        TRACKED_ENTITY: new Set(["E1063", "E1114"]),
+        ENROLLMENT: new Set(["E1081", "E1113"]),
+        EVENT: new Set(["E1032", "E1082"]),
+    };
 
     const cleanupTeUids = new Set(
-        response.bundleReport.typeReportMap.TRACKED_ENTITY.objectReports.map(
+        (response.bundleReport?.typeReportMap?.TRACKED_ENTITY?.objectReports ?? []).map(
             (r) => r.uid,
         ),
     );
     const cleanupEnrollmentUids = new Set(
-        response.bundleReport.typeReportMap.ENROLLMENT.objectReports.map(
+        (response.bundleReport?.typeReportMap?.ENROLLMENT?.objectReports ?? []).map(
             (r) => r.uid,
         ),
     );
     const cleanupEventUids = new Set(
-        response.bundleReport.typeReportMap.EVENT.objectReports.map(
+        (response.bundleReport?.typeReportMap?.EVENT?.objectReports ?? []).map(
             (r) => r.uid,
         ),
     );
 
     let realFailures = 0;
     for (const err of response.validationReport.errorReports) {
-        if (ALREADY_DELETED_CODES.has(err.errorCode)) {
+        if (ABSENT_RECORD_CODES[err.trackerType]?.has(err.errorCode)) {
             if (err.trackerType === "TRACKED_ENTITY")
                 cleanupTeUids.add(err.uid);
             else if (err.trackerType === "ENROLLMENT")
@@ -563,7 +587,9 @@ export async function processBatchSync(input: {
     const pendingEnrollments = pendingEnrollmentsRaw.filter(
         (e) => !!e.enrolledAt,
     );
-    const pendingEvents = pendingEventsRaw.filter((e) => !!e.occurredAt);
+    const pendingEvents = pendingEventsRaw.filter((e) =>
+        e.status === "SCHEDULE" ? !!e.scheduledAt : !!e.occurredAt,
+    );
 
     if (
         pendingTEs.length === 0 &&

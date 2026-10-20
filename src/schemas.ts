@@ -240,6 +240,8 @@ const ProgramRuleActionSchema = z.object({
         "SHOWOPTIONGROUP",
         "SHOWERROR",
         "SETMANDATORYFIELD",
+        "DISPLAYKEYVALUEPAIR", "ERRORONCOMPLETE", "WARNINGONCOMPLETE",
+        "CREATEEVENT", "SCHEDULEEVENT", "SENDMESSAGE", "SCHEDULEMESSAGE", "HIDEPROGRAMSTAGE",
     ]),
     dataElement: z.object({ displayName: z.string(), id: UID }).optional(),
     id: UID,
@@ -257,6 +259,7 @@ const ProgramRuleActionSchema = z.object({
     value: z.string().optional(),
     data: z.string().optional(), // Expression for ASSIGN actions
     displayContent: z.string().optional(),
+    location: z.string().optional(),
     content: z.string().optional(),
 });
 
@@ -318,6 +321,8 @@ const DataValueSchema = z.object({
 });
 
 const EventSchema = z.object({
+    scheduledAt: z.string().optional(),
+    ruleActionKey: z.string().optional(),
     event: UID,
     status: z.string(),
     program: UID,
@@ -565,6 +570,8 @@ export type SyncStatus = z.infer<typeof SyncStatusSchema>;
 const MessageSchema = z.object({
     key: z.string(),
     content: z.string(),
+    location: z.string().optional(),
+    value: z.unknown().optional(),
 });
 
 export type Message = z.infer<typeof MessageSchema>;
@@ -572,6 +579,12 @@ export type Message = z.infer<typeof MessageSchema>;
 export type Dhis2Report = z.infer<typeof Dhis2ReportSchema>;
 
 export type ProgramRuleResult = {
+    blockedStages?: string[];
+    completionErrors?: Message[];
+    completionWarnings?: Message[];
+    displayKeyValues?: Message[];
+    eventActions?: Array<{ actionId: string; type: "CREATEEVENT" | "SCHEDULEEVENT"; programStage: string; date?: string; dataValues?: Record<string, any> }>;
+    notificationActions?: Array<{ actionId: string; type: "SENDMESSAGE" | "SCHEDULEMESSAGE"; template: string; date?: string; execution: "server" }>;
     assignments: Record<string, any>;
     hiddenFields: string[];
     shownFields: string[];
@@ -670,6 +683,7 @@ export interface Village {
 
 export type Metadata = {
     organisationUnits: Array<{
+        organisationUnitGroups?: Array<{ id: string; code?: string }>;
         id: string;
         name: string;
         code?: string;
@@ -713,6 +727,9 @@ export type Metadata = {
 };
 
 export type MeUser = {
+    userRoles?: Array<{ id: string }>;
+    userCredentials?: { userRoles?: Array<{ id: string }> };
+    userGroups?: Array<{ id: string }>;
     id: string;
     displayName: string;
     username: string;
@@ -720,6 +737,7 @@ export type MeUser = {
     surname: string;
     authorities: string[];
     organisationUnits: Array<{
+        organisationUnitGroups?: Array<{ id: string; code?: string }>;
         id: string;
         name: string;
         path: string;
@@ -783,6 +801,7 @@ export type DataSet = {
 };
 
 export type OU = {
+    organisationUnitGroups?: Array<{ id: string; code?: string }>;
     id: string;
     name: string;
     code?: string;

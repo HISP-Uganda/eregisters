@@ -1,9 +1,12 @@
+import { eventForCapture } from "@/program-rules/save-actions";
 import { CloseOutlined, SaveOutlined } from "@ant-design/icons";
-import { Button, Flex, Form, message } from "antd";
+import { Button, Flex, Form, message, Modal } from "antd";
 import React, { useState } from "react";
 import ProgramStageForm from "@/components/program-stage-form";
 import { EventContext } from "@/machines";
-import { FlattenedEvent } from "@/schemas";
+import { EventRuleAwareForm } from "@/components/rule-aware-form";
+import { assertRuleSaveAllowed } from "@/program-rules/save-actions";
+import { FlattenedEvent, ProgramRuleResult } from "@/schemas";
 import { cancelDataModal } from "@/utils/record-cascades";
 import { saveStageEvent } from "./actions";
 import { eventFormInput, StageFormContext } from "./stage";
@@ -26,13 +29,29 @@ export function InlineEventEditor({
 }) {
     const [form] = Form.useForm();
     const [saving, setSaving] = useState(false);
+    const [ruleResult, setRuleResult] = useState<ProgramRuleResult>();
+    const [confirmation, confirmationHolder] = Modal.useModal();
     const stageName = context.programStage.name;
+    const captureEvent = eventForCapture(event, visit.dataValues?.occurredAt);
 
     const handleSave = async () => {
         try {
             setSaving(true);
             const values = await form.validateFields();
-            await saveStageEvent(event.event, values, visit.event);
+            assertRuleSaveAllowed(ruleResult, true);
+            if (ruleResult?.completionWarnings?.length) {
+                const accepted = await new Promise<boolean>((resolve) => {
+                    confirmation.confirm({
+                        title: "Complete this event?",
+                        content: ruleResult.completionWarnings!.map(warning => warning.content).join("; "),
+                        okText: "Complete",
+                        onOk: () => { resolve(true); },
+                        onCancel: () => { resolve(false); },
+                    });
+                });
+                if (!accepted) return;
+            }
+            await saveStageEvent(event.event, { occurredAt: captureEvent.dataValues.occurredAt, ...values }, visit.event, ruleResult, true);
             message.success(`Saved ${stageName}`);
             onDone();
         } catch (err) {
@@ -45,7 +64,7 @@ export function InlineEventEditor({
                     "Some required fields are missing — please check the form and try again.",
                 );
             } else {
-                message.error(`Failed to save ${stageName}`);
+                message.error(err instanceof Error ? err.message : `Failed to save ${stageName}`);
             }
         } finally {
             setSaving(false);
@@ -60,10 +79,13 @@ export function InlineEventEditor({
     return (
         <EventContext.Provider
             key={event.event}
-            options={{ input: eventFormInput(context, event, form) }}
+            options={{ input: eventFormInput(context, captureEvent, form) }}
         >
-            <Form form={form} layout="vertical" preserve={false} initialValues={event.dataValues}>
-                <ProgramStageForm form={form} programStage={context.programStage} />
+            <Form form={form} layout="vertical" preserve={false} initialValues={captureEvent.dataValues}>
+                {confirmationHolder}
+                <EventRuleAwareForm onRuleResult={setRuleResult}>
+                    <ProgramStageForm form={form} programStage={context.programStage} />
+                </EventRuleAwareForm>
                 <Flex gap={8} justify="flex-end" style={{ marginTop: 12 }}>
                     <Button icon={<CloseOutlined />} onClick={handleCancel}>
                         Cancel
@@ -72,7 +94,8 @@ export function InlineEventEditor({
                         type="primary"
                         icon={<SaveOutlined />}
                         loading={saving}
-                        onClick={handleSave}
+                        disabled={!ruleResult || !!ruleResult.errors.length}
+                        onClick={() => handleSave()}
                         style={{ background: "#7c3aed", borderColor: "#7c3aed" }}
                     >
                         Save

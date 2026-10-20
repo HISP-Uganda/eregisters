@@ -1,3 +1,5 @@
+import { captureEventStatus } from "@/program-rules/save-actions";
+import type { RuleEnvironment } from "@/program-rules/history";
 import { createActorContext } from "@xstate/react";
 import { FormInstance } from "antd";
 import { assertEvent, assign, fromPromise, setup } from "xstate";
@@ -15,7 +17,7 @@ import { EventForRules, executeProgramRules } from "@/program-rules/execute-prog
 
 import { applyRuleResultsToForm, FormEvent } from "./common";
 import { whileSaving } from "@/app-update/unsaved-work";
-const eventFormMachine = setup({
+export const eventFormMachine = setup({
     types: {
         events: {} as FormEvent,
         context: {} as {
@@ -31,9 +33,11 @@ const eventFormMachine = setup({
             programStage: string;
             validDataElements: Set<string>;
             form: FormInstance;
+            ruleEnvironment?: RuleEnvironment;
             persistenceError: string | null;
             previousAssignments: Record<string, any>;
             allEnrollmentEvents: EventForRules[];
+            hasPendingChanges: boolean;
         },
         input: {} as {
             programRules: ProgramRule[];
@@ -45,6 +49,7 @@ const eventFormMachine = setup({
             validDataElements: Set<string>;
             program: string;
             form: FormInstance;
+            ruleEnvironment?: RuleEnvironment;
             allEnrollmentEvents: EventForRules[];
         },
     },
@@ -70,7 +75,7 @@ const eventFormMachine = setup({
             },
         }),
         applyRuleResults: assign(({ context }) =>
-            applyRuleResultsToForm(context.ruleResult, context.form),
+            applyRuleResultsToForm(context.ruleResult, context.form, context.formData),
         ),
         executeRulesSync: assign(({ context }) => {
             const {
@@ -82,6 +87,8 @@ const eventFormMachine = setup({
             } = context;
 
             const result = executeProgramRules({
+                ruleEnvironment: context.ruleEnvironment,
+                orgUnit: context.event.orgUnit,
                 dataValues: {
                     ...formData,
                     ...ruleResult.assignments,
@@ -93,6 +100,8 @@ const eventFormMachine = setup({
                 programStage: context.programStage,
                 allEnrollmentEvents: context.allEnrollmentEvents,
                 currentEventId: context.event.event,
+                currentEventCreatedAt: context.event.createdAt,
+                enrollment: context.event.enrollment,
             });
 
             return {
@@ -112,11 +121,14 @@ const eventFormMachine = setup({
                     formData: Record<string, any>;
                 };
             }) => {
+                const latest = getEventsCollection().get(event.event) ?? event;
                 await whileSaving("saving an event", () =>
                     getEventsCollection().utils.insertLocally({
-                        ...event,
+                        ...latest,
+                        status: captureEventStatus(latest.status, formData),
+                        ...(formData.occurredAt ? { occurredAt: formData.occurredAt } : {}),
                         dataValues: {
-                            ...event.dataValues,
+                            ...latest.dataValues,
                             ...formData,
                         },
                     }),
@@ -138,6 +150,7 @@ const eventFormMachine = setup({
             programStage,
             program,
             form,
+            ruleEnvironment,
             allEnrollmentEvents,
         },
     }) => {
@@ -153,10 +166,12 @@ const eventFormMachine = setup({
             trackedEntity,
             validDataElements,
             form,
+            ruleEnvironment,
             allEnrollmentEvents,
             ruleResult: createEmptyProgramRuleResult(),
             persistenceError: null,
             previousAssignments: {},
+            hasPendingChanges: false,
         };
     },
     states: {
@@ -171,18 +186,36 @@ const eventFormMachine = setup({
             on: {
                 FIELD_CHANGED: {
                     target: "persisting",
-                    actions: "updateField",
+                    actions: ["updateField", "executeRulesSync", "applyRuleResults"],
                 },
             },
         },
         persisting: {
+            entry: assign({ hasPendingChanges: false }),
+            on: {
+                FIELD_CHANGED: {
+                    actions: [
+                        "updateField",
+                        "executeRulesSync",
+                        "applyRuleResults",
+                        assign({ hasPendingChanges: true }),
+                    ],
+                },
+            },
             invoke: {
                 src: "persist",
                 input: ({ context }) => ({
-                    formData: context.form.getFieldsValue(),
+                    formData: { ...context.formData, ...context.form.getFieldsValue() },
                     event: context.event,
                 }),
-                onDone: "editing",
+                onDone: [
+                    {
+                        guard: ({ context }) => context.hasPendingChanges,
+                        target: "persisting",
+                        reenter: true,
+                    },
+                    { target: "editing" },
+                ],
                 onError: {
                     target: "editing",
                     actions: assign({

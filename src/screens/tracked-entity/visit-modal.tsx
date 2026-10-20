@@ -37,7 +37,7 @@ export function VisitModal({
     enrollment: FlattenedEnrollment;
     allEnrollmentEvents: FlattenedEvent[];
 }) {
-    const { orgUnit, programRules, programRuleVariables } = useMetadata();
+    const { ruleEnvironment, orgUnit, programRules, programRuleVariables } = useMetadata();
     const { mainStageDataElements, eventMandatoryIds, dataElementLabels } =
         useFormMetadata();
     const [ruleResult, setRuleResult] = useState<ProgramRuleResult | null>(null);
@@ -66,13 +66,14 @@ export function VisitModal({
             onClose={onClose}
             onCancel={() => cancelDataModal(visit!)}
             enrollment={enrollment}
-            onSave={async ({ values }) => {
+            onSave={async ({ values, complete }) => {
                 if (values && visit) {
-                    await saveVisit(visit, values, trackedEntity);
+                    await saveVisit(visit, values, trackedEntity, ruleResult, complete, { programRules, programRuleVariables, ruleEnvironment });
                 }
             }}
             title={isNew ? "New Visit" : "Edit Visit"}
             submitButtonText="Save Visit"
+            completionFeedback={{ errors: (ruleResult?.completionErrors ?? []).map((m) => m.content), warnings: (ruleResult?.completionWarnings ?? []).map((m) => m.content) }}
             saveBlockFor={(values) =>
                 computeSaveBlock({
                     metadataMandatoryIds: ["occurredAt", "mrKZWf2WMIC", ...eventMandatoryIds],
@@ -89,6 +90,7 @@ export function VisitModal({
                     <EventContext.Provider
                         options={{
                             input: {
+                            ruleEnvironment,
                                 programRules,
                                 programRuleVariables,
                                 enrollment,
@@ -100,6 +102,9 @@ export function VisitModal({
                                 form,
                                 allEnrollmentEvents: allEnrollmentEvents.map((e) => ({
                                     event: e.event,
+                        ...(e.enrollment ? { enrollment: e.enrollment } : {}),
+                        ...(e.createdAt ? { createdAt: e.createdAt } : {}),
+                        ...(e.status ? { status: e.status } : {}),
                                     programStage: e.programStage,
                                     occurredAt: e.occurredAt,
                                     dataValues: e.dataValues,

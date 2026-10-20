@@ -13,6 +13,8 @@ type EventParentRow = {
     org_unit: string;
     parent_event: string | null;
     occurred_at: string;
+    scheduled_at: string | null;
+    rule_action_key: string | null;
     follow_up: number;
     deleted: number;
     created_at: string;
@@ -50,7 +52,7 @@ function toInt(b: boolean): number {
 }
 
 const PARENT_COLUMNS = `event, status, program, program_stage, enrollment,
-                    tracked_entity, org_unit, parent_event, occurred_at,
+                    tracked_entity, org_unit, parent_event, occurred_at, scheduled_at, rule_action_key,
                     follow_up, deleted, created_at, updated_at,
                     attribute_option_combo, attribute_category_options,
                     completed_by, completed_at, created_by_uid,
@@ -89,6 +91,8 @@ function reassemble(
         orgUnit: parent.org_unit,
         parentEvent: parent.parent_event ?? undefined,
         occurredAt: parent.occurred_at,
+        scheduledAt: parent.scheduled_at ?? undefined,
+        ruleActionKey: parent.rule_action_key ?? undefined,
         followUp: toBool(parent.follow_up),
         deleted: toBool(parent.deleted),
         createdAt: parent.created_at,
@@ -285,13 +289,13 @@ export const eventsRowAdapter: RowAdapter<FlattenedEvent, string> = {
             await tx.execute(
                 `INSERT INTO events (
                     event, status, program, program_stage, enrollment,
-                    tracked_entity, org_unit, parent_event, occurred_at,
+                    tracked_entity, org_unit, parent_event, occurred_at, scheduled_at, rule_action_key,
                     follow_up, deleted, created_at, updated_at,
                     attribute_option_combo, attribute_category_options,
                     completed_by, completed_at, created_by_uid,
                     updated_by_uid, notes, last_synced, sync_error, version,
                     sync_status
-                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                 [
                     row.event,
                     row.status,
@@ -302,6 +306,8 @@ export const eventsRowAdapter: RowAdapter<FlattenedEvent, string> = {
                     row.orgUnit,
                     row.parentEvent ?? null,
                     row.occurredAt,
+                    row.scheduledAt ?? null,
+                    row.ruleActionKey ?? null,
                     toInt(row.followUp),
                     toInt(row.deleted),
                     row.createdAt,
@@ -336,7 +342,7 @@ export const eventsRowAdapter: RowAdapter<FlattenedEvent, string> = {
                 `UPDATE events SET
                     status = ?, program = ?, program_stage = ?, enrollment = ?,
                     tracked_entity = ?, org_unit = ?, parent_event = ?,
-                    occurred_at = ?, follow_up = ?, deleted = ?,
+                    occurred_at = ?, scheduled_at = ?, rule_action_key = ?, follow_up = ?, deleted = ?,
                     created_at = ?, updated_at = ?, attribute_option_combo = ?,
                     attribute_category_options = ?, completed_by = ?,
                     completed_at = ?, created_by_uid = ?, updated_by_uid = ?,
@@ -352,6 +358,8 @@ export const eventsRowAdapter: RowAdapter<FlattenedEvent, string> = {
                     row.orgUnit,
                     row.parentEvent ?? null,
                     row.occurredAt,
+                    row.scheduledAt ?? null,
+                    row.ruleActionKey ?? null,
                     toInt(row.followUp),
                     toInt(row.deleted),
                     row.createdAt,

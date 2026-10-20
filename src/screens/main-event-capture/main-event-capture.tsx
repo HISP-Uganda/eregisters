@@ -69,7 +69,10 @@ export function MainEventCapture({
 
     const { openModal: openNewborn } = newborn;
     const createChild = useCallback(async () => {
-        const { client, enrollment } = await startNewborn(trackedEntity, form.getFieldsValue());
+        const values = form.getFieldsValue();
+        const occurredAt = values.occurredAt;
+        if (!occurredAt) return;
+        const { client, enrollment } = await startNewborn(trackedEntity, { ...values, occurredAt });
         openNewborn(client, enrollment);
     }, [trackedEntity, form, openNewborn]);
 

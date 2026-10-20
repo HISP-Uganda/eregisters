@@ -80,7 +80,7 @@ export const METADATA_RESOURCES: Partial<Record<Resource, ResourceDefinition>> =
             organisationUnits: {
                 resource: `organisationUnits/${userOrgUnit}.json`,
                 params: {
-                    fields: "id,name,code,path,parent",
+                    fields: "id,name,code,path,parent,organisationUnitGroups[id,code]",
                     paging: false,
                     includeDescendants: true,
                 },

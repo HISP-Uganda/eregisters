@@ -40,5 +40,5 @@ export function useTrackedEntitySaveBlock(
         [metadataMandatoryIds, ruleResult, labels, seedValues],
     );
 
-    return { saveBlockFor, onRuleResult: setRuleResult };
+    return { saveBlockFor, ruleResult, onRuleResult: setRuleResult };
 }

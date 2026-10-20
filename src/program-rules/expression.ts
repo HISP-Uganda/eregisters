@@ -1,147 +1,96 @@
-import { isEmpty } from "lodash";
 import { D2Functions, TAKES_VARIABLE_NAME } from "./d2-functions";
 import { VariableValues } from "./variables";
 
-/**
- * Turns a DHIS2 rule expression into JavaScript and runs it: `d2:fn(…)`
- * calls become `d2Functions.fn(…)` and `#{…}`, `A{…}` and `V{…}` become
- * literal values. Conditions and ASSIGN expressions share this, with two
- * differences kept from when they were separate copies: a missing variable
- * is `''` in a condition but `null` in an expression, and only conditions
- * rewrite DHIS2's `=`/`==`/`!=` to `===`/`!==`.
- */
-
-const VARIABLE = /[#AV]\{([^}]+)\}/g;
-const WHOLE_VARIABLE = /^[#AV]\{([^}]+)\}$/;
-
-/** A value as a JavaScript literal; `missing` stands in for null/undefined. */
-function literal(val: unknown, missing: string): string {
-    if (val === null || val === undefined) return missing;
-    if (typeof val === "number" || typeof val === "boolean") return String(val);
-    const escaped = String(val).replace(/\\/g, "\\\\").replace(/'/g, "\\'");
-    return `'${escaped}'`;
+/** Translate DHIS2 syntax while keeping quoted strings and variable names intact. */
+function translate(text: string, values: VariableValues, missing: null | "", strict: boolean): string {
+	let pos = 0;
+	const literal = (value: unknown) => JSON.stringify(value ?? missing);
+	const quoted = () => {
+		const quote = text[pos++];
+		let value = "";
+		while (pos < text.length) {
+			const char = text[pos++];
+			if (char === quote) return JSON.stringify(value);
+			if (char === "\\" && pos < text.length) {
+				const next = text[pos];
+				// DHIS2 regexes use plain backslashes; also accept legacy doubled ones.
+				if (next === quote || next === "\\") { value += next; pos++; }
+				else value += char;
+			} else value += char;
+		}
+		throw new Error("Unclosed string");
+	};
+	const sequence = (argument = false): string => {
+		let code = "";
+		while (pos < text.length) {
+			const char = text[pos];
+			if (argument && (char === "," || char === ")")) break;
+			if (char === "'" || char === '"') { code += quoted(); continue; }
+			const variable = text.slice(pos).match(/^[#AV]\{([^}]+)\}/);
+			if (variable) { code += literal(values[variable[1]]); pos += variable[0].length; continue; }
+			const call = text.slice(pos).match(/^d2:(\w+)\s*\(/);
+			if (call) {
+				pos += call[0].length;
+				const args: string[] = [];
+				while (pos < text.length && text[pos] !== ")") {
+					const start = pos;
+					let value = sequence(true);
+					const raw = text.slice(start, pos).trim();
+					const name = raw.match(/^[#AV]\{([^}]+)\}$/);
+					if (name && args.length === 0 && TAKES_VARIABLE_NAME.includes(call[1])) value = JSON.stringify(name[1]);
+					args.push(value);
+					if (text[pos] !== ",") break;
+					pos++;
+				}
+				if (text[pos++] !== ")") throw new Error("Unclosed function call");
+				code += `d2Functions.${call[1]}(${args.join(",")})`;
+				continue;
+			}
+			if (char === "(") {
+				pos++;
+				code += `(${sequence()}`;
+				continue;
+			}
+			if (char === ")") {
+				code += char; pos++;
+				return code;
+			}
+			if (strict) {
+				const comparison = text.slice(pos).match(/^(===|!==|==|!=|<=|>=|=)/);
+				if (comparison) {
+					const op = comparison[1];
+					code += op === "=" || op === "==" ? "===" : op === "!=" ? "!==" : op;
+					pos += op.length;
+					continue;
+				}
+			}
+			code += char; pos++;
+		}
+		return code;
+	};
+	const result = sequence();
+	if (pos !== text.length) throw new Error("Unexpected expression suffix");
+	return result;
 }
 
-function findClosingParen(str: string, startPos: number): number {
-    let depth = 1;
-    for (let i = startPos; i < str.length; i++) {
-        if (str[i] === "(") depth++;
-        else if (str[i] === ")") {
-            depth--;
-            if (depth === 0) return i;
-        }
-    }
-    return -1;
-}
-
-function translateArgument(
-    arg: string,
-    funcName: string,
-    variableValues: VariableValues,
-): string {
-    arg = arg.trim();
-    const variable = arg.match(WHOLE_VARIABLE);
-    if (!variable) return arg; // a literal, or an expression left for later
-    return TAKES_VARIABLE_NAME.includes(funcName)
-        ? `'${variable[1]}'`
-        : literal(variableValues[variable[1]], "null");
-}
-
-/**
- * Rewrites up to ten `d2:` calls, outermost first; an inner call is left in
- * its outer call's arguments and rewritten on a later pass.
- */
-function translateD2Calls(
-    text: string,
-    variableValues: VariableValues,
-    warnUnclosed: boolean,
-): string {
-    let maxIterations = 10;
-    while (text.includes("d2:") && maxIterations-- > 0) {
-        const d2Match = text.match(/d2:(\w+)\s*\(/);
-        if (!d2Match) break;
-
-        const funcName = d2Match[1];
-        const startPos = d2Match.index!;
-        const openParenPos = startPos + d2Match[0].length - 1;
-        const closeParenPos = findClosingParen(text, openParenPos + 1);
-        if (closeParenPos === -1) {
-            if (warnUnclosed) {
-                console.warn("Could not find closing parenthesis for", d2Match[0]);
-            }
-            break;
-        }
-
-        const args = text
-            .substring(openParenPos + 1, closeParenPos)
-            .split(",")
-            .map((arg) => translateArgument(arg, funcName, variableValues))
-            .join(", ");
-        text =
-            text.substring(0, startPos) +
-            `d2Functions.${funcName}(${args})` +
-            text.substring(closeParenPos + 1);
-    }
-    return text;
-}
-
-/** DHIS2's `=`, `==` and `!=` as strict JavaScript comparisons, outside quotes. */
-function strictComparisons(code: string): string {
-    const parts = code.split("'");
-    for (let i = 0; i < parts.length; i += 2) {
-        parts[i] = parts[i]
-            .replace(/!=/g, "!==")
-            .replace(/([^!<>=])={2}(?!=)/g, "$1===")
-            .replace(/([^!<>=])=(?!=)/g, "$1===");
-    }
-    return parts.join("'");
-}
-
-function run(code: string, d2Functions: D2Functions, variableValues: VariableValues) {
-    const func = new Function(
-        "d2Functions",
-        "variableValues",
-        `return (${code})`,
-    );
-    return func(d2Functions, variableValues);
-}
-
-export function createEvaluator(
-    variableValues: VariableValues,
-    d2Functions: D2Functions,
-) {
-    const substitute = (text: string, missing: string) =>
-        text.replace(VARIABLE, (_, name) => literal(variableValues[name], missing));
-
-    /** An ASSIGN expression's value; null when it's empty or invalid. */
-    const evaluateExpression = (expression: string): any => {
-        if (!expression) return null;
-        const code = substitute(
-            translateD2Calls(expression, variableValues, true),
-            "null",
-        );
-        try {
-            return run(code, d2Functions, variableValues);
-        } catch (err) {
-            console.warn(`Invalid expression: ${expression}`, code, err);
-            return null;
-        }
-    };
-
-    /** A rule condition's value (truthy fires the rule); false when empty or invalid. */
-    const evaluateCondition = (condition: string): any => {
-        const code = substitute(
-            translateD2Calls(condition ?? "", variableValues, false),
-            "''",
-        );
-        try {
-            if (isEmpty(code)) return false;
-            return run(strictComparisons(code), d2Functions, variableValues);
-        } catch (err) {
-            console.warn(`Invalid condition: ${condition}`, code, err);
-            return false;
-        }
-    };
-
-    return { evaluateExpression, evaluateCondition };
+export function createEvaluator(variableValues: VariableValues, d2Functions: D2Functions) {
+	const evaluate = (text: string, condition: boolean): any => {
+		if (!text?.trim()) return condition ? false : null;
+		try {
+			const code = translate(text, variableValues, condition ? "" : null, condition);
+			const functions = {
+				...d2Functions,
+				condition: (test: boolean | string, yes: unknown, no: unknown) =>
+					(typeof test === "string" ? evaluate(test, true) : test) ? yes : no,
+			};
+			return new Function("d2Functions", `return (${code})`)(functions);
+		} catch (error) {
+			console.warn(`Invalid ${condition ? "condition" : "expression"}: ${text}`, error);
+			return condition ? false : null;
+		}
+	};
+	return {
+		evaluateExpression: (expression: string) => evaluate(expression, false),
+		evaluateCondition: (condition: string) => evaluate(condition, true),
+	};
 }
