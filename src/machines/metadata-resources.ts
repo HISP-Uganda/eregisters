@@ -163,26 +163,54 @@ export const METADATA_RESOURCES: Partial<Record<Resource, ResourceDefinition>> =
     },
     programRules: {
         timeoutMs: SYNC_TIMEOUTS_MS.bulkMetadata,
-        query: ({ since }) => ({
+        query: () => ({
             programRules: {
                 resource: "programRules.json",
                 params: {
-                    filter: programFilters(since),
-                    fields: "*,programRuleActions[*]",
+                    filter: [`program.id:eq:${PROGRAM}`],
+                    fields: "id,condition,priority,program[id],programStage[id]",
+                    paging: false,
+                },
+            },
+            programRuleActions: {
+                resource: "programRuleActions.json",
+                params: {
+                    fields: "id,programRuleActionType,programRule[id],dataElement[id],trackedEntityAttribute[id],programStage[id],programStageSection[id],option[id],optionGroup[id],data,content,location,templateUid",
                     paging: false,
                 },
             },
         }),
-        read: (r: { programRules: { programRules: ProgramRule[] } }) => ({
-            programRules: r.programRules.programRules,
-        }),
+        read: (r: {
+            programRules: { programRules: ProgramRule[] };
+            programRuleActions: { programRuleActions: (ProgramRule["programRuleActions"][number] & { programRule: { id: string } })[] };
+        }) => {
+            const rules = r.programRules.programRules;
+            const actions = r.programRuleActions.programRuleActions;
+            if (!Array.isArray(rules) || !Array.isArray(actions)) throw new Error("Incomplete program rule metadata");
+            const byRule = new Map(rules.map((rule) => [rule.id, [] as ProgramRule["programRuleActions"]]));
+            for (const action of actions) {
+                if (!action.programRule?.id) throw new Error("Program rule action has no parent");
+                const bucket = byRule.get(action.programRule.id);
+                if (bucket) bucket.push(action);
+            }
+            return {
+                programRules: rules.map((rule) => ({
+                    ...rule,
+                    programRuleActions: byRule.get(rule.id) ?? [],
+                }))
+            };
+        },
     },
     programRuleVariables: {
         timeoutMs: SYNC_TIMEOUTS_MS.bulkMetadata,
         query: ({ since }) => ({
             programRuleVariables: {
                 resource: "programRuleVariables.json",
-                params: { filter: programFilters(since), fields: "*", paging: false },
+                params: {
+                    filter: programFilters(since),
+                    fields: "id,name,programRuleVariableSourceType,dataElement[id],trackedEntityAttribute[id],programStage[id]",
+                    paging: false,
+                },
             },
         }),
         read: (r: { programRuleVariables: { programRuleVariables: ProgramRuleVariable[] } }) => ({
@@ -191,40 +219,61 @@ export const METADATA_RESOURCES: Partial<Record<Resource, ResourceDefinition>> =
     },
     optionSets: {
         timeoutMs: SYNC_TIMEOUTS_MS.bulkMetadata,
-        query: ({ since }) => ({
+        query: () => ({
+            options: {
+                resource: "options",
+                params: {
+                    fields: "id,name,code,sortOrder,optionSet[id]",
+                    paging: false,
+                },
+            },
             optionSets: {
                 resource: "optionSets",
                 params: {
-                    fields: "id,name,options[id,name,code,sortOrder]",
+                    fields: "id,name",
                     paging: false,
-                    ...changedSince(since),
                 },
             },
         }),
-        // Stored one row per option, carrying its set.
-        read: (r: { optionSets: { optionSets: { id: string; name: string; options: Option[] }[] } }) => ({
-            optionSets: r.optionSets.optionSets.flatMap((os) =>
-                os.options.map((o) => ({ ...o, optionSet: os.id, optionSetName: os.name })),
-            ),
-        }),
+        read: (r: {
+            options: { options: (Option & { optionSet?: { id: string } })[] };
+            optionSets: { optionSets: { id: string; name: string }[] };
+        }) => {
+            const options = r.options?.options;
+            const optionSets = r.optionSets?.optionSets;
+            if (!Array.isArray(options) || !Array.isArray(optionSets)) throw new Error("Incomplete option metadata");
+            const optionSetNames = new Map(optionSets.map((set) => [set.id, set.name]));
+            return {
+                optionSets: options.flatMap(({ optionSet, ...option }) => {
+                    if (!optionSet) return [];
+                    const optionSetName = optionSetNames.get(optionSet.id);
+                    if (!optionSetName) throw new Error(`Option ${option.id} references missing set ${optionSet.id}`);
+                    return [{ ...option, optionSet: optionSet.id, optionSetName }];
+                }),
+            };
+        },
     },
     optionGroups: {
         timeoutMs: SYNC_TIMEOUTS_MS.bulkMetadata,
-        query: ({ since }) => ({
+        query: () => ({
             optionGroups: {
                 resource: "optionGroups",
                 params: {
-                    fields: "id,options[id,name,code,sortOrder]",
+                    fields: "id,options[id]",
                     paging: false,
-                    ...changedSince(since),
                 },
             },
         }),
-        // Stored one row per option, carrying its group.
-        read: (r: { optionGroups: { optionGroups: { id: string; options: Option[] }[] } }) => ({
-            optionGroups: r.optionGroups.optionGroups.flatMap((og) =>
-                og.options.map((o) => ({ ...o, optionGroup: og.id })),
-            ),
-        }),
+        read: (r: { optionGroups: { optionGroups: { id: string; options: { id: string }[] }[] } }) => {
+            const groups = r.optionGroups.optionGroups;
+            if (!Array.isArray(groups) || groups.some((group) => !Array.isArray(group.options))) {
+                throw new Error("Incomplete option group metadata");
+            }
+            return {
+                optionGroups: groups.flatMap((group) =>
+                    group.options.map((option) => ({ id: option.id, name: "", code: "", sortOrder: 0, optionGroup: group.id })),
+                )
+            };
+        },
     },
 };

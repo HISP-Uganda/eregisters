@@ -239,6 +239,34 @@ describe("sync machine — data checkpoint (Phase 1)", () => {
     });
 });
 
+describe("sync machine — metadata checkpoint", () => {
+    it("retains the old checkpoint when an incremental metadata save fails", async () => {
+        const old = "2026-09-01T00:00:00.000";
+        const next = "2026-09-02T00:00:00.000";
+        const { actor, close } = await setUp({
+            checkIndexDB: async () => checkResult({ metadataVersion: {
+                id: "metadata-version", lastSync: old, versions: {},
+            } }),
+            actors: {
+                queryIndexDB: fromPromise(async () => ({ program: undefined })),
+                pullResource: fromPromise(async () => ({ metadataVersion: [
+                    { id: "metadata-version", lastSync: next, versions: {} },
+                ] })),
+                saveMetadata: fromPromise(async () => { throw new Error("disk full"); }),
+            },
+        });
+        try {
+            await waitFor(actor, (snapshot) => snapshot.matches({ metadataSync: "waiting" }), TIMEOUT);
+            actor.send({ type: "START_METADATA_SYNC" });
+            const failed = await waitFor(actor, (snapshot) => snapshot.matches({ metadataSync: "failure" }), TIMEOUT);
+            expect(failed.context.lastMetadataPull).toBe(old);
+        } finally {
+            actor.stop();
+            close();
+        }
+    });
+});
+
 describe("sync.pullData log line (Phase 2)", () => {
     let cleanup: (() => void) | undefined;
     afterEach(() => {

@@ -45,22 +45,16 @@ const responses: Record<string, unknown> = {
     programIndicators: { programIndicators: [{ id: "pi1" }] },
     trackedEntityAttributes: { trackedEntityAttributes: [{ id: "tea1" }] },
     programRules: { programRules: [{ id: "pr1" }] },
+    programRuleActions: { programRuleActions: [{ id: "a1", programRule: { id: "pr1" }, programRuleActionType: "HIDEFIELD" }] },
     programRuleVariables: { programRuleVariables: [{ id: "prv1" }] },
-    optionSets: {
-        optionSets: [
-            {
-                id: "os1",
-                name: "Yes/No",
-                options: [
-                    { id: "o1", name: "Yes", code: "1", sortOrder: 1 },
-                    { id: "o2", name: "No", code: "0", sortOrder: 2 },
-                ],
-            },
-        ],
-    },
+    options: { options: [
+        { id: "o1", name: "Yes", code: "1", sortOrder: 1, optionSet: { id: "os1", name: "Yes/No" } },
+        { id: "o2", name: "No", code: "0", sortOrder: 2, optionSet: { id: "os1", name: "Yes/No" } },
+    ] },
+    optionSets: { optionSets: [{ id: "os1", name: "Yes/No" }] },
     optionGroups: {
         optionGroups: [
-            { id: "og1", options: [{ id: "o1", name: "Yes", code: "1", sortOrder: 1 }] },
+            { id: "og1", options: [{ id: "o1" }] },
         ],
     },
 };
@@ -71,8 +65,8 @@ function recordingEngine(failing: string[] = []) {
         query: vi.fn(async (query: Record<string, unknown>, options?: { timeoutMs?: number }) => {
             const [key] = Object.keys(query);
             requests.push({ ...query, timeoutMs: options?.timeoutMs });
-            if (failing.includes(key)) throw new Error(`${key} failed`);
-            return { [key]: responses[key] };
+            if (Object.keys(query).some((name) => failing.includes(name))) throw new Error(`${key} failed`);
+            return Object.fromEntries(Object.keys(query).map((name) => [name, responses[name]]));
         }),
     } as unknown as Engine;
     return { engine, requests };
@@ -130,6 +124,20 @@ describe("the metadata pull", () => {
         expect(sorted(requests)).toMatchSnapshot();
     });
 
+    it("requests only fields used by program rule evaluation and action assembly", async () => {
+        const { engine, requests } = recordingEngine();
+        await pull(engine, { resources: ["programRules", "programRuleVariables"] });
+        const rules = requests.find((request) => "programRules" in (request as object)) as any;
+        const variables = requests.find((request) => "programRuleVariables" in (request as object)) as any;
+        expect(rules.programRules.params.fields).toBe("id,condition,priority,program[id],programStage[id]");
+        expect(rules.programRuleActions.params.fields).toBe(
+            "id,programRuleActionType,programRule[id],dataElement[id],trackedEntityAttribute[id],programStage[id],programStageSection[id],option[id],optionGroup[id],data,content,location,templateUid",
+        );
+        expect(variables.programRuleVariables.params.fields).toBe(
+            "id,name,programRuleVariableSourceType,dataElement[id],trackedEntityAttribute[id],programStage[id]",
+        );
+    });
+
     it("pulls in full when incremental has no previous pull", async () => {
         const full = recordingEngine();
         await pull(full.engine);
@@ -144,10 +152,82 @@ describe("the metadata pull", () => {
         expect(metadata).toMatchSnapshot();
     });
 
+    it("uses independently changed options and actions when parents are unchanged", async () => {
+        const { engine, requests } = recordingEngine();
+        const queryMock = engine.query as ReturnType<typeof vi.fn>;
+        const recordQuery = queryMock.getMockImplementation() as
+            (query: Record<string, unknown>) => Promise<unknown>;
+        queryMock.mockImplementation(async (query: Record<string, unknown>) => {
+            await recordQuery(query);
+            return Object.fromEntries(Object.keys(query).map((name) => [name,
+                name === "options" ? { options: [
+                    { id: "o1", name: "Updated yes", code: "YES", sortOrder: 5, optionSet: { id: "os1", name: "Yes/No" } },
+                    { id: "o2", name: "No", code: "0", sortOrder: 2, optionSet: { id: "os1", name: "Yes/No" } },
+                ] } : name === "programRuleActions" ? { programRuleActions: [
+                    { id: "a2", programRule: { id: "pr1" }, programRuleActionType: "SHOWFIELD" },
+                ] } : responses[name],
+            ]));
+        });
+        const metadata = await pull(engine, {
+            mode: "incremental",
+            lastMetadataPull: "2026-09-01T00:00:00.000",
+        });
+        expect(requests.some((request) => "optionSets" in (request as object))).toBe(true);
+        const optionsRequest = requests.find((request) => "options" in (request as object)) as any;
+        expect(optionsRequest.options.params).toEqual({
+            fields: "id,name,code,sortOrder,optionSet[id]", paging: false,
+        });
+        expect(requests.some((request) => "programRuleActions" in (request as object))).toBe(true);
+        expect(metadata.optionSets).toContainEqual({
+            id: "o1", name: "Updated yes", code: "YES", sortOrder: 5,
+            optionSet: "os1", optionSetName: "Yes/No",
+        });
+        expect(metadata.optionGroups).toContainEqual({
+            id: "o1", name: "Updated yes", code: "YES", sortOrder: 5, optionGroup: "og1",
+        });
+        expect(metadata.programRules[0]?.programRuleActions.map((action) => action.id)).toEqual(["a2"]);
+    });
+
+    it("omits options without a set", async () => {
+        const { engine } = recordingEngine();
+        (engine.query as ReturnType<typeof vi.fn>).mockImplementation(async (query: Record<string, unknown>) =>
+            Object.fromEntries(Object.keys(query).map((name) => [name,
+                name === "options" ? { options: [
+                    { id: "o1", name: "Yes", code: "YES", sortOrder: 1, optionSet: { id: "os1", name: "Yes/No" } },
+                    { id: "MnBMMHlUbSw", name: "Orphan", code: "ORPHAN", sortOrder: 2 },
+                ] } : responses[name],
+            ])),
+        );
+        const metadata = await pull(engine);
+        expect(metadata.optionSets).toEqual([{
+            id: "o1", name: "Yes", code: "YES", sortOrder: 1,
+            optionSet: "os1", optionSetName: "Yes/No",
+        }]);
+        expect(metadata.optionGroups[0]?.name).toBe("Yes");
+    });
+
+    it("refreshes option-set names even when the option references are unchanged", async () => {
+        const { engine } = recordingEngine();
+        (engine.query as ReturnType<typeof vi.fn>).mockImplementation(async (query: Record<string, unknown>) =>
+            Object.fromEntries(Object.keys(query).map((name) => [name,
+                name === "optionSets" ? { optionSets: [{ id: "os1", name: "Updated set name" }] }
+                    : responses[name],
+            ])),
+        );
+        const metadata = await pull(engine, {
+            mode: "incremental",
+            lastMetadataPull: "2026-09-01T00:00:00.000",
+        });
+        expect(metadata.optionSets.map(({ optionSetName }) => optionSetName)).toEqual([
+            "Updated set name", "Updated set name",
+        ]);
+    });
+
     it("stamps every succeeded resource with the server date", async () => {
         const { engine } = recordingEngine();
+        const previous = { id: "metadata-version", lastSync: "old", versions: { me: "old" } };
         const metadata = await pull(engine, {
-            previous: { id: "metadata-version", lastSync: "old", versions: { me: "old" } },
+            previous,
         });
         const [version] = metadata.metadataVersion;
         expect(version.lastSync).toBe(SERVER_DATE);
@@ -155,23 +235,17 @@ describe("the metadata pull", () => {
             me: "old",
             ...Object.fromEntries(ALL_RESOURCES.map((r) => [r, SERVER_DATE])),
         });
+        expect(previous).toEqual({ id: "metadata-version", lastSync: "old", versions: { me: "old" } });
     });
 
-    it("skips a failed resource and doesn't stamp it", async () => {
-        vi.spyOn(console, "warn").mockImplementation(() => {});
+    it("fails the whole pull when a resource fails", async () => {
         const { engine } = recordingEngine(["dataElements"]);
-        const metadata = await pull(engine);
-        expect(metadata.dataElements).toEqual([]);
-        expect(metadata.succeededResources!.has("dataElements")).toBe(false);
-        expect(metadata.succeededResources!.has("programs")).toBe(true);
-        expect(metadata.metadataVersion[0].versions.dataElements).toBeUndefined();
+        await expect(pull(engine)).rejects.toThrow("dataElements failed");
     });
 
-    it("records no version when nothing succeeds", async () => {
-        vi.spyOn(console, "warn").mockImplementation(() => {});
+    it("does not record a version when the only resource fails", async () => {
         const { engine } = recordingEngine(["dataElements"]);
-        const metadata = await pull(engine, { resources: ["dataElements"] });
-        expect(metadata.metadataVersion).toEqual([]);
+        await expect(pull(engine, { resources: ["dataElements"] })).rejects.toThrow();
     });
 
     it("falls back to the last pull when the server gives no date", async () => {
@@ -179,5 +253,25 @@ describe("the metadata pull", () => {
         (engine.query as ReturnType<typeof vi.fn>).mockImplementationOnce(async () => ({ info: {} }));
         const metadata = await pull(engine, { lastMetadataPull: "2026-09-01T00:00:00.000" });
         expect(metadata.metadataVersion[0].lastSync).toBe("2026-09-01T00:00:00.000");
+    });
+
+    it("rejects a first pull with no trusted server time", async () => {
+        const { engine } = recordingEngine();
+        (engine.query as ReturnType<typeof vi.fn>).mockImplementationOnce(async () => ({ info: {} }));
+        await expect(pull(engine)).rejects.toThrow("requires server time");
+    });
+
+    it("keeps valid group members and omits options outside current option sets", async () => {
+        const { engine } = recordingEngine();
+        (engine.query as ReturnType<typeof vi.fn>).mockImplementation(async (query: Record<string, unknown>) =>
+            Object.fromEntries(Object.keys(query).map((name) => [name,
+                name === "optionGroups" ? { optionGroups: [{ id: "og", options: [{ id: "o1" }, { id: "JoENQbYnBNz" }] }] }
+                    : responses[name],
+            ])),
+        );
+        const metadata = await pull(engine);
+        expect(metadata.optionGroups).toEqual([{
+            id: "o1", name: "Yes", code: "1", sortOrder: 1, optionGroup: "og",
+        }]);
     });
 });

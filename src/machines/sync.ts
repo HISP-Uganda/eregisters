@@ -805,9 +805,6 @@ export const syncMachine = setup({
 										},
 
 										actions: assign(({ event }) => ({
-											lastMetadataPull:
-												event.output.metadataVersion[0]
-													.lastSync,
 											rawMetadata: event.output,
 										})),
 										target: "savingMetadata",
@@ -818,9 +815,6 @@ export const syncMachine = setup({
 										},
 
 										actions: assign(({ event }) => ({
-											lastMetadataPull:
-												event.output.metadataVersion[0]
-													.lastSync,
 											rawMetadata: event.output,
 										})),
 										target: "replacingMetadata",
@@ -851,7 +845,12 @@ export const syncMachine = setup({
 									metadataStore,
 									metadata: rawMetadata,
 								}),
-								onDone: "pullingUIConfig",
+									onDone: {
+										target: "pullingUIConfig",
+										actions: assign(({ context }) => ({
+											lastMetadataPull: context.rawMetadata.metadataVersion[0]?.lastSync,
+										})),
+									},
 								onError: {
 									target: "#metadataSync.failure",
 									actions: ({ event }) => {
@@ -873,9 +872,12 @@ export const syncMachine = setup({
 								},
 								onDone: {
 									target: "pullingUIConfig",
+										actions: assign(({ context }) => ({
+											lastMetadataPull: context.rawMetadata.metadataVersion[0]?.lastSync,
+										})),
 								},
 								onError: {
-									target: "resetIndexDB",
+										target: "#metadataSync.failure",
 								},
 							},
 						},

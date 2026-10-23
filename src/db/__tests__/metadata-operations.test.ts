@@ -13,6 +13,7 @@ import {
     replaceMetadataTables,
     resetMetadataDatabaseGeneric,
     saveMetadataGeneric,
+    saveMetadataIncrementalGeneric,
 } from "@/db/metadata-operations";
 
 /**
@@ -189,6 +190,39 @@ describe.each([
         expect(result.needsSyncing).toBe(false);
     });
 
+    it("accepts verified empty option tables at startup", async () => {
+        const store = await makeStore();
+        await saveMetadataGeneric(store, makeMetadata({
+            dataElements: [{ id: "de-1" } as any],
+            trackedEntityAttributes: [{ id: "tea-1" } as any],
+            programRules: [{ id: "pr-1" } as any],
+            programRuleVariables: [{ id: "prv-1" } as any],
+            dataSets: [{ id: "ds-1" } as any],
+            categoryOptionCombos: [{ id: "coc-1" } as any],
+            metadataVersion: [{ id: "metadata-version", lastSync: "2026-01-01", versions: {
+                optionSets: "2026-01-01", optionGroups: "2026-01-01",
+            } }],
+        }));
+        expect((await checkMetadataInfoGeneric(store)).needsSyncing).toBe(false);
+    });
+
+    it("accepts a verified empty rule table after the last rule is removed", async () => {
+        const store = await makeStore();
+        await saveMetadataGeneric(store, makeMetadata({
+            dataElements: [{ id: "de-1" } as any],
+            trackedEntityAttributes: [{ id: "tea-1" } as any],
+            programRuleVariables: [{ id: "prv-1" } as any],
+            optionSets: [{ id: "opt-1", optionSet: "os-1" } as any],
+            optionGroups: [{ id: "opt-1", optionGroup: "og-1" } as any],
+            dataSets: [{ id: "ds-1" } as any],
+            categoryOptionCombos: [{ id: "coc-1" } as any],
+            metadataVersion: [{ id: "metadata-version", lastSync: "2026-01-01", versions: {
+                programRules: "2026-01-01",
+            } }],
+        }));
+        expect((await checkMetadataInfoGeneric(store)).needsSyncing).toBe(false);
+    });
+
     it("round-trips two option-set rows sharing the same option id under different option sets", async () => {
         const store = await makeStore();
         const rowA = { id: "opt-shared", optionSet: "set-A", name: "A" } as any;
@@ -207,6 +241,40 @@ describe.each([
         await store.deleteRow("option_sets", optionSetKey(rowA));
         const remaining = await store.listRows("option_sets");
         expect(remaining).toEqual([rowB]);
+    });
+
+    it("replaces stale child rows and rolls back rows and version if save fails", async () => {
+        const store = await makeStore();
+        const old = makeMetadata({
+            programRules: [{ id: "old-rule" } as any],
+            optionSets: [{ id: "old-option", optionSet: "old-set" } as any],
+            optionGroups: [{ id: "old-option", optionGroup: "old-group" } as any],
+        });
+        await saveMetadataGeneric(store, old);
+
+        const next = makeMetadata({
+            programRules: [{ id: "new-rule" } as any],
+            optionSets: [{ id: "old-option", optionSet: "new-set" } as any],
+            optionGroups: [],
+            metadataVersion: [{ id: "metadata-version", lastSync: "2026-02-01", versions: {} }],
+        });
+        const failing = { ...store, transaction: (fn: any) => store.transaction((tx) => fn({
+            ...tx,
+            putRows: async (table: string, rows: any[], keyOf?: any) => {
+                if (table === "metadata_versions") throw new Error("save failed");
+                return tx.putRows(table, rows, keyOf);
+            },
+        })) } as MetadataStore;
+        await expect(saveMetadataIncrementalGeneric(failing, next)).rejects.toThrow("save failed");
+        expect(await store.listRows("program_rules")).toEqual(old.programRules);
+        expect(await store.listRows("option_sets")).toEqual(old.optionSets);
+        expect(await store.getRow<any>("metadata_versions", "metadata-version")).toEqual(old.metadataVersion[0]);
+
+        await saveMetadataIncrementalGeneric(store, next);
+        expect(await store.listRows("program_rules")).toEqual(next.programRules);
+        expect(await store.listRows("option_sets")).toEqual(next.optionSets);
+        expect(await store.listRows("option_groups")).toEqual([]);
+        expect(await store.getRow<any>("metadata_versions", "metadata-version")).toEqual(next.metadataVersion[0]);
     });
 
     it("round-trips two option-group rows sharing the same option id under different option groups", async () => {

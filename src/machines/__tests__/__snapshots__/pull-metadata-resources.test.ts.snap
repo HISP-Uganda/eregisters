@@ -41,8 +41,7 @@ exports[`the metadata pull > adds a lastUpdated filter to the incremental resour
   {
     "optionGroups": {
       "params": {
-        "fields": "id,options[id,name,code,sortOrder]",
-        "filter": "lastUpdated:gt:2026-09-01T00:00:00.000",
+        "fields": "id,options[id]",
         "paging": false,
       },
       "resource": "optionGroups",
@@ -52,11 +51,17 @@ exports[`the metadata pull > adds a lastUpdated filter to the incremental resour
   {
     "optionSets": {
       "params": {
-        "fields": "id,name,options[id,name,code,sortOrder]",
-        "filter": "lastUpdated:gt:2026-09-01T00:00:00.000",
+        "fields": "id,name",
         "paging": false,
       },
       "resource": "optionSets",
+    },
+    "options": {
+      "params": {
+        "fields": "id,name,code,sortOrder,optionSet[id]",
+        "paging": false,
+      },
+      "resource": "options",
     },
     "timeoutMs": 180000,
   },
@@ -93,12 +98,18 @@ exports[`the metadata pull > adds a lastUpdated filter to the incremental resour
     "timeoutMs": 180000,
   },
   {
+    "programRuleActions": {
+      "params": {
+        "fields": "id,programRuleActionType,programRule[id],dataElement[id],trackedEntityAttribute[id],programStage[id],programStageSection[id],option[id],optionGroup[id],data,content,location,templateUid",
+        "paging": false,
+      },
+      "resource": "programRuleActions.json",
+    },
     "programRules": {
       "params": {
-        "fields": "*,programRuleActions[*]",
+        "fields": "id,condition,priority,program[id],programStage[id]",
         "filter": [
           "program.id:eq:ueBhWkWll5v",
-          "lastUpdated:gt:2026-09-01T00:00:00.000",
         ],
         "paging": false,
       },
@@ -109,7 +120,7 @@ exports[`the metadata pull > adds a lastUpdated filter to the incremental resour
   {
     "programRuleVariables": {
       "params": {
-        "fields": "*",
+        "fields": "id,name,programRuleVariableSourceType,dataElement[id],trackedEntityAttribute[id],programStage[id]",
         "filter": [
           "program.id:eq:ueBhWkWll5v",
           "lastUpdated:gt:2026-09-01T00:00:00.000",
@@ -174,7 +185,7 @@ exports[`the metadata pull > requests every resource in full 1`] = `
   {
     "optionGroups": {
       "params": {
-        "fields": "id,options[id,name,code,sortOrder]",
+        "fields": "id,options[id]",
         "paging": false,
       },
       "resource": "optionGroups",
@@ -184,10 +195,17 @@ exports[`the metadata pull > requests every resource in full 1`] = `
   {
     "optionSets": {
       "params": {
-        "fields": "id,name,options[id,name,code,sortOrder]",
+        "fields": "id,name",
         "paging": false,
       },
       "resource": "optionSets",
+    },
+    "options": {
+      "params": {
+        "fields": "id,name,code,sortOrder,optionSet[id]",
+        "paging": false,
+      },
+      "resource": "options",
     },
     "timeoutMs": 180000,
   },
@@ -223,9 +241,16 @@ exports[`the metadata pull > requests every resource in full 1`] = `
     "timeoutMs": 180000,
   },
   {
+    "programRuleActions": {
+      "params": {
+        "fields": "id,programRuleActionType,programRule[id],dataElement[id],trackedEntityAttribute[id],programStage[id],programStageSection[id],option[id],optionGroup[id],data,content,location,templateUid",
+        "paging": false,
+      },
+      "resource": "programRuleActions.json",
+    },
     "programRules": {
       "params": {
-        "fields": "*,programRuleActions[*]",
+        "fields": "id,condition,priority,program[id],programStage[id]",
         "filter": [
           "program.id:eq:ueBhWkWll5v",
         ],
@@ -238,7 +263,7 @@ exports[`the metadata pull > requests every resource in full 1`] = `
   {
     "programRuleVariables": {
       "params": {
-        "fields": "*",
+        "fields": "id,name,programRuleVariableSourceType,dataElement[id],trackedEntityAttribute[id],programStage[id]",
         "filter": [
           "program.id:eq:ueBhWkWll5v",
         ],
@@ -346,6 +371,15 @@ exports[`the metadata pull > returns each resource's records, options flattened 
   "programRules": [
     {
       "id": "pr1",
+      "programRuleActions": [
+        {
+          "id": "a1",
+          "programRule": {
+            "id": "pr1",
+          },
+          "programRuleActionType": "HIDEFIELD",
+        },
+      ],
     },
   ],
   "programs": [

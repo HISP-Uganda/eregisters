@@ -5,6 +5,7 @@ import {
     queryMetadataGeneric,
     resetMetadataDatabaseGeneric,
     saveMetadataGeneric,
+    saveMetadataIncrementalGeneric,
     type CheckMetadataInfoResult,
     type QueryMetadataInfoResult,
 } from "@/db/metadata-operations";
@@ -106,7 +107,7 @@ export function saveMetadataToSqlite(
     store: MetadataStore,
     input: Metadata,
 ): Promise<void> {
-    return saveMetadataGeneric(store, input);
+    return saveMetadataIncrementalGeneric(store, input);
 }
 
 /**
@@ -230,11 +231,9 @@ function stampMetadataVersions(
     succeeded: Iterable<Resource>,
     timestamp: string,
 ): MetadataVersion {
-    const version = previous ?? {
-        id: "metadata-version",
-        lastSync: timestamp,
-        versions: {},
-    };
+    const version: MetadataVersion = previous
+        ? { ...previous, versions: { ...previous.versions } }
+        : { id: "metadata-version", lastSync: timestamp, versions: {} };
     for (const resource of succeeded) {
         version.versions[resource] = timestamp;
     }
@@ -244,8 +243,8 @@ function stampMetadataVersions(
 
 /**
  * `pullResource`'s body: pulls every resource in parallel (see
- * `METADATA_RESOURCES`), skipping any that fail, and stamps the ones that
- * succeeded in the metadata version.
+ * `METADATA_RESOURCES`) and returns a coherent snapshot only if every
+ * required request and cross-resource assembly succeeds.
  */
 export async function pullMetadataResources({
     resources,
@@ -297,33 +296,39 @@ export async function pullMetadataResources({
             : undefined,
     };
 
-    const outcomes = await Promise.allSettled(
+    const outcomes = await Promise.all(
         resources.map(async (resource) => {
             const definition = METADATA_RESOURCES[resource];
-            if (!definition) return;
+            if (!definition) return {};
             const response = await queryWithTimeout(
                 engine,
                 definition.query(context) as never,
                 definition.timeoutMs,
             );
-            Object.assign(results, definition.read(response));
+            return definition.read(response);
         }),
     );
     outcomes.forEach((outcome, index) => {
-        const resource = resources[index];
-        if (outcome.status === "fulfilled") {
-            results.succeededResources!.add(resource);
-        } else {
-            console.warn(`[metadata-sync] Skipping ${resource}:`, outcome.reason);
-        }
+        Object.assign(results, outcome);
+        results.succeededResources!.add(resources[index]);
     });
 
+    if (resources.includes("optionGroups")) {
+        if (!resources.includes("optionSets")) throw new Error("Option groups require current options");
+        const byId = new Map(results.optionSets.map((option) => [option.id, option]));
+        results.optionGroups = results.optionGroups.flatMap((membership) => {
+            const option = byId.get(membership.id);
+            if (!option) return [];
+            return [{ id: option.id, name: option.name, code: option.code,
+                sortOrder: option.sortOrder, optionGroup: membership.optionGroup }];
+        });
+    }
+
     if (results.succeededResources!.size > 0) {
-        // Prefer the server clock captured above; fall back to the previous
-        // boundary (don't advance with an untrusted timestamp — same rule as
-        // resolveNextDataPull) and only to the device clock as a last
-        // resort, since MetadataVersion.lastSync requires a string.
-        const timestamp = serverDate ?? lastMetadataPull ?? new Date().toISOString();
+        // Keep the previous boundary if the server omits its clock. A first
+        // sync cannot invent a safe checkpoint from the device clock.
+        if (!serverDate && !lastMetadataPull) throw new Error("Metadata sync requires server time");
+        const timestamp = serverDate ?? lastMetadataPull!;
         results.metadataVersion = [
             stampMetadataVersions(
                 await getMetadataVersionRecord(metadataStore),

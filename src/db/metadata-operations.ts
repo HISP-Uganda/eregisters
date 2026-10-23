@@ -133,7 +133,14 @@ export async function checkMetadataInfoGeneric(
             store.getRow("sync_state", "current"),
             readMetadataTables<[Program]>(store, ["programs"], 1).then(([rows]) => rows),
         ]);
-        const hasEmptyTables = tablesHaveRows.some((has) => !has);
+        const hasEmptyTables = tablesHaveRows.some((has, index) => {
+            if (has) return false;
+            const table = CHECKED_TABLES[index];
+            if (table === "program_rules") return !metadataVersion?.versions.programRules;
+            if (table === "option_sets") return !metadataVersion?.versions.optionSets;
+            if (table === "option_groups") return !metadataVersion?.versions.optionGroups;
+            return true;
+        });
         const wasDatabaseDeleted = !metadataVersion?.lastSync;
 
         return {
@@ -300,6 +307,19 @@ export async function saveMetadataGeneric(
     }
     // Always writes, matching today's unconditional bookkeeping write.
     await putAll("metadata_versions", input.metadataVersion);
+}
+
+/** Atomically reconciles the complete child snapshots and the shared checkpoint. */
+export async function saveMetadataIncrementalGeneric(
+    store: MetadataStore,
+    input: Metadata,
+): Promise<void> {
+    await store.transaction(async (tx) => {
+        await tx.clearTable("program_rules");
+        await tx.clearTable("option_sets");
+        await tx.clearTable("option_groups");
+        await saveMetadataGeneric(tx, input);
+    });
 }
 
 /** Generic equivalent of `src/db/sqlite/delete-metadata.ts`'s `deleteAllMetadata`. */

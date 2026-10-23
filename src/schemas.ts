@@ -243,53 +243,36 @@ const ProgramRuleActionSchema = z.object({
         "DISPLAYKEYVALUEPAIR", "ERRORONCOMPLETE", "WARNINGONCOMPLETE",
         "CREATEEVENT", "SCHEDULEEVENT", "SENDMESSAGE", "SCHEDULEMESSAGE", "HIDEPROGRAMSTAGE",
     ]),
-    dataElement: z.object({ displayName: z.string(), id: UID }).optional(),
+    dataElement: z.object({ id: UID, displayName: z.string().optional() }).optional(),
     id: UID,
-    attributeValues: z.array(z.unknown()),
     templateUid: z.string().optional(),
-    option: z.object({ id: UID, displayName: z.string() }).optional(),
-    optionGroup: z.object({ id: UID, displayName: z.string() }).optional(),
-    trackedEntityAttribute: z
-        .object({ id: UID, displayName: z.string() })
-        .optional(),
-    programStage: z.object({ id: UID, displayName: z.string() }).optional(),
-    programStageSection: z
-        .object({ id: UID, displayName: z.string() })
-        .optional(),
-    value: z.string().optional(),
+    option: z.object({ id: UID, displayName: z.string().optional() }).optional(),
+    optionGroup: z.object({ id: UID, displayName: z.string().optional() }).optional(),
+    trackedEntityAttribute: z.object({ id: UID, displayName: z.string().optional() }).optional(),
+    programStage: z.object({ id: UID, displayName: z.string().optional() }).optional(),
+    programStageSection: z.object({ id: UID, displayName: z.string().optional() }).optional(),
     data: z.string().optional(), // Expression for ASSIGN actions
-    displayContent: z.string().optional(),
     location: z.string().optional(),
     content: z.string().optional(),
 });
 
 const ProgramRuleSchema = z.object({
-    name: z.string(),
-    translations: z.array(z.unknown()),
-    description: z.string(),
     programRuleActions: z.array(ProgramRuleActionSchema),
     condition: z.string(),
-    priority: z.number(),
-    displayName: z.string(),
+    priority: z.number().nullish(),
     id: UID,
-    attributeValues: z.array(z.unknown()),
     programStage: z.object({ id: UID }).optional(),
     program: z.object({ id: UID }).optional(),
 });
 
 const ProgramRuleVariableSchema = z.object({
     name: z.string(),
-    program: z.object({ id: UID }).optional(),
     dataElement: z.object({ id: UID }).optional(),
-    useCodeForOptionSet: z.boolean(),
-    displayName: z.string(),
     id: UID,
-    attributeValues: z.array(z.unknown()),
     trackedEntityAttribute: z.object({ id: UID }).optional(),
     /** The stage a `DATAELEMENT_NEWEST_EVENT_PROGRAM_STAGE` variable reads. */
     programStage: z.object({ id: UID }).optional(),
     programRuleVariableSourceType: z.string(),
-    valueType: z.enum(["TEXT", "NUMBER", "BOOLEAN", "DATE"]),
 });
 
 const OrgUnitSchema = z.object({
@@ -704,6 +687,7 @@ export type Metadata = {
     }>;
     optionSets: Array<{
         optionSet: string;
+        optionSetName?: string;
         id: string;
         name: string;
         code: string;
@@ -718,10 +702,8 @@ export type Metadata = {
     }>;
     metadataVersion: MetadataVersion[];
     /**
-     * Set of resources that the last pull attempt actually fetched
-     * successfully. NOT persisted — used only in-flight between
-     * `pullResource` and `saveMetadata` / `replaceAllMetadata` so those actors
-     * skip failed resources instead of wiping local tables.
+     * Set of resources in the complete successful pull. NOT persisted —
+     * used in-flight between `pullResource` and the save actors.
      */
     succeededResources?: Set<Resource>;
 };
