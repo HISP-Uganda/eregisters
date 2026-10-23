@@ -86,6 +86,14 @@ export function dexieMetadataStore(): MetadataStore {
             const rows = await db.rows.where("table").equals(table).toArray();
             return rows.map((row) => row.data as T);
         },
+        async listRowsMany(tables, limit) {
+            return db.transaction("r", db.rows, () => Promise.all(tables.map(async (table) => {
+                const query = db.rows.where("table").equals(table);
+                const tableLimit = typeof limit === "number" ? limit : limit?.[table];
+                const rows = await (tableLimit === undefined ? query : query.limit(tableLimit)).toArray();
+                return rows.map((row) => row.data as object);
+            })));
+        },
         async hasRows(table: string) {
             return (await db.rows.where("table").equals(table).first()) !== undefined;
         },

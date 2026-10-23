@@ -2,7 +2,7 @@ import { optionGroupKey } from "./sqlite/row-adapters/option-groups";
 import { optionSetKey } from "./sqlite/row-adapters/option-sets";
 import type { OrgUnitRow } from "./sqlite/row-adapters/organisation-units";
 import { UNIFORM_METADATA_TABLES } from "./sqlite/schema";
-import type { MetadataStore } from "./metadata-store";
+import type { MetadataReadLimit, MetadataStore } from "./metadata-store";
 import type {
     CategoryOptionCombo,
     DataElement,
@@ -126,10 +126,12 @@ export async function checkMetadataInfoGeneric(
         // Only whether each table has a row — the full metadata is read
         // once, afterwards, by `queryMetadataGeneric`.
         const [tablesHaveRows, metadataVersion, syncState, programs] = await Promise.all([
-            Promise.all(CHECKED_TABLES.map((table) => store.hasRows(table))),
+            store.hasRowsMany
+                ? store.hasRowsMany(CHECKED_TABLES)
+                : Promise.all(CHECKED_TABLES.map((table) => store.hasRows(table))),
             store.getRow<MetadataVersion>("metadata_versions", "metadata-version"),
             store.getRow("sync_state", "current"),
-            store.listRows<Program>("programs"),
+            readMetadataTables<[Program]>(store, ["programs"], 1).then(([rows]) => rows),
         ]);
         const hasEmptyTables = tablesHaveRows.some((has) => !has);
         const wasDatabaseDeleted = !metadataVersion?.lastSync;
@@ -145,6 +147,22 @@ export async function checkMetadataInfoGeneric(
     } catch {
         return SAFE_FALLBACK_RESULT;
     }
+}
+
+/** Keep legacy/test stores compatible while production backends batch reads. */
+async function readMetadataTables<T extends object[]>(
+    store: MetadataStore,
+    tables: { [K in keyof T]: string },
+    limit?: MetadataReadLimit,
+): Promise<{ [K in keyof T]: T[K][] }> {
+    const rows = store.listRowsMany
+        ? await store.listRowsMany(tables, limit)
+        : await Promise.all(tables.map(async (table) => {
+            const rows = await store.listRows(table);
+            const tableLimit = typeof limit === "number" ? limit : limit?.[table];
+            return tableLimit === undefined ? rows : rows.slice(0, tableLimit);
+        }));
+    return rows as { [K in keyof T]: T[K][] };
 }
 
 function groupByKey<T extends object>(
@@ -197,20 +215,15 @@ export async function queryMetadataGeneric(
         dataSets,
         categoryOptionCombos,
         organisationUnitsAll,
-    ] = await Promise.all([
-        store.listRows<DataElement>("data_elements"),
-        store.listRows<TrackedEntityAttribute>(
-            "tracked_entity_attribute_definitions",
-        ),
-        store.listRows<ProgramRule>("program_rules"),
-        store.listRows<ProgramRuleVariable>("program_rule_variables"),
-        store.listRows<FlattenedOptionGroup>("option_groups"),
-        store.listRows<FlattenedOptionSet>("option_sets"),
-        store.listRows<Program>("programs"),
-        store.listRows<DataSet>("data_sets"),
-        store.listRows<CategoryOptionCombo>("category_option_combos"),
-        store.listRows<OrgUnitRow>("organisation_units"),
-    ]);
+    ] = await readMetadataTables<[
+        DataElement, TrackedEntityAttribute, ProgramRule, ProgramRuleVariable,
+        FlattenedOptionGroup, FlattenedOptionSet, Program, DataSet,
+        CategoryOptionCombo, OrgUnitRow,
+    ]>(store, [
+        "data_elements", "tracked_entity_attribute_definitions", "program_rules",
+        "program_rule_variables", "option_groups", "option_sets", "programs",
+        "data_sets", "category_option_combos", "organisation_units",
+    ], { programs: 1 });
 
     const organisationUnits = organisationUnitsAll
         .filter((row) => row.path.startsWith(userOrgUnitPath))

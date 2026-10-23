@@ -16,6 +16,7 @@ interface PeriodPickerProps {
     disabled?: boolean;
     allowFuture?: boolean;
     placeholder?: string;
+    fullWidth?: boolean;
 }
 
 export default function PeriodPicker({
@@ -25,6 +26,7 @@ export default function PeriodPicker({
     disabled = false,
     allowFuture = false,
     placeholder,
+    fullWidth = false,
 }: PeriodPickerProps) {
     const normalizedType = useMemo(
         () => normalizePeriodType(periodType),
@@ -67,7 +69,8 @@ export default function PeriodPicker({
             <Input
                 disabled
                 placeholder={ph}
-                style={{ width: `${Math.max(ph.length + 6, 20)}ch` }}
+                title={ph}
+                style={{ width: fullWidth ? "100%" : `${Math.max(ph.length + 6, 20)}ch`, maxWidth: "100%", minWidth: 0 }}
             />
         );
     }
@@ -177,6 +180,7 @@ export default function PeriodPicker({
                 readOnly
                 disabled={disabled}
                 value={selectedLabel}
+                title={triggerText}
                 placeholder={placeholder ?? "Select period"}
                 suffix={
                     <DownOutlined
@@ -188,7 +192,10 @@ export default function PeriodPicker({
                     />
                 }
                 style={{
-                    width: triggerWidth,
+                    width: fullWidth ? "100%" : triggerWidth,
+                    maxWidth: "100%",
+                    minWidth: 0,
+                    textOverflow: "ellipsis",
                     cursor: disabled ? "not-allowed" : "pointer",
                 }}
             />

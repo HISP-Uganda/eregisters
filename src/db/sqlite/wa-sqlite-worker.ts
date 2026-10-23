@@ -39,11 +39,15 @@ self.addEventListener(
                         `wa-sqlite worker already opened for "${openedFor}", got a request for "${name}"`,
                     );
                 }
+                const startedAt = request.trace ? performance.now() : undefined;
                 const outcome = await handleWaSqliteRequest(
                     adapter,
                     request,
                     inTransaction,
                 );
+                if (startedAt !== undefined) {
+                    outcome.response.workerMs = performance.now() - startedAt;
+                }
                 inTransaction = outcome.inTransaction;
                 self.postMessage(outcome.response);
             } catch (error) {

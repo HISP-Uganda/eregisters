@@ -172,6 +172,42 @@ export function sqliteMetadataStore(db: SqlDriver): MetadataStore {
             }
             return getAllRows<T>(db, table);
         },
+        async listRowsMany(tables, limit) {
+            if (tables.length === 0) return [];
+            // UNION ALL transports all tables in one worker round trip without
+            // building an extra JSON aggregate of potentially large metadata.
+            const result = await db.execute<OrganisationUnitSqlRow & { table_index: number }>(
+                tables.map((table, index) => {
+                    const tableLimit = typeof limit === "number" ? limit : limit?.[table];
+                    if (tableLimit !== undefined && (!Number.isSafeInteger(tableLimit) || tableLimit < 0)) {
+                        throw new Error("Invalid metadata row limit");
+                    }
+                    const columns = table === "organisation_units"
+                        ? "id, name, path"
+                        : "NULL AS id, NULL AS name, NULL AS path";
+                    const source = tableLimit === undefined
+                        ? table
+                        : `(SELECT * FROM ${table} LIMIT ${tableLimit})`;
+                    return `SELECT ${index} AS table_index, data, ${columns} FROM ${source}`;
+                }).join(" UNION ALL "),
+            );
+            const groups: object[][] = tables.map(() => []);
+            for (const row of result.rows) {
+                groups[row.table_index].push(tables[row.table_index] === "organisation_units"
+                    ? toOrganisationUnit(row)
+                    : JSON.parse(row.data));
+            }
+            return groups;
+        },
+        async hasRowsMany(tables) {
+            if (tables.length === 0) return [];
+            const result = await db.execute<Record<string, number>>(
+                `SELECT ${tables.map((table, index) =>
+                    `EXISTS(SELECT 1 FROM ${table} LIMIT 1) AS t${index}`,
+                ).join(", ")}`,
+            );
+            return tables.map((_, index) => Boolean(result.rows[0][`t${index}`]));
+        },
         async hasRows(table: string) {
             const result = await db.execute(`SELECT 1 FROM ${table} LIMIT 1`);
             return result.rows.length > 0;

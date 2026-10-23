@@ -13,6 +13,7 @@ export const RootRoute = createRootRouteWithContext<{
     engine: DataEngine;
 }>()({
     component: RootLayout,
+    pendingMinMs: 0,
     pendingComponent: () => (
         <Spinner component={<Typography.Text>Loading Metadata</Typography.Text>} />
     ),

@@ -1,3 +1,5 @@
+export type MetadataReadLimit = number | Readonly<Record<string, number>>;
+
 /**
  * The dual-backend contract for metadata/config tables (programs,
  * dataElements, optionSets, orgUnits, uiConfig, stageHierarchy,
@@ -70,8 +72,12 @@ export interface MetadataStore {
         keyOf?: (row: T) => string,
     ) => Promise<void>;
     listRows: <T extends object>(table: string) => Promise<T[]>;
+    /** Bulk read in table order; limit all tables or only named tables. */
+    listRowsMany?: (tables: readonly string[], limit?: MetadataReadLimit) => Promise<object[][]>;
     /** Whether `table` has any row — without reading the rows. */
     hasRows: (table: string) => Promise<boolean>;
+    /** Optional bounded existence checks in one backend request. */
+    hasRowsMany?: (tables: readonly string[]) => Promise<boolean[]>;
     deleteRow: (table: string, key: string) => Promise<void>;
     /** Deletes every row of `table` in one operation. */
     clearTable: (table: string) => Promise<void>;

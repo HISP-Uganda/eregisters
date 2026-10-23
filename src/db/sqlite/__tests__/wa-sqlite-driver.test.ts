@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
     createWaSqliteDriver,
     wrapWaSqliteWorker,
@@ -55,6 +55,33 @@ class FakeWorker implements WaSqliteWorkerLike {
 async function tick(): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, 0));
 }
+
+it("records opt-in SQL timing without including SQL text or parameters", async () => {
+    vi.stubGlobal("localStorage", { getItem: () => "1" });
+    const measure = vi.spyOn(performance, "measure");
+    try {
+        const worker = new FakeWorker();
+        const driver = wrapWaSqliteWorker("timing-test", worker);
+        const result = driver.execute("SELECT data FROM programs WHERE id = ?", ["private-value"]);
+        const request = worker.sent[0].request;
+        expect(request.trace).toBe(true);
+        worker.respond({
+            id: request.id, ok: true,
+            result: { rows: [], rowsAffected: 0, insertId: undefined },
+            workerMs: 7,
+        });
+        await result;
+        expect(measure).toHaveBeenCalledWith("eregisters:sqlite:execute", expect.objectContaining({
+            detail: expect.objectContaining({ workerMs: 7, rows: 0, requestId: request.id }),
+        }));
+        expect(JSON.stringify(measure.mock.calls)).not.toContain("private-value");
+        expect(JSON.stringify(measure.mock.calls)).not.toContain("SELECT data");
+    } finally {
+        measure.mockRestore();
+        performance.clearMeasures("eregisters:sqlite:execute");
+        vi.unstubAllGlobals();
+    }
+});
 
 /**
  * Answers every request on its own, asynchronously, with the real

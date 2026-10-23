@@ -62,13 +62,23 @@ function Reports() {
     }, [orgUnit, organisationUnits]);
 
     return (
-        <Flex vertical style={{ padding: 5 }}>
-            <Flex gap={10}>
-                <Form.Item label="Dataset">
+        <Flex vertical style={{ padding: 5, minWidth: 0 }}>
+            <Form
+                component="div"
+                layout="vertical"
+                style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 260px), 1fr))",
+                    gap: "12px 16px",
+                    minWidth: 0,
+                    marginBottom: 16,
+                }}
+            >
+                <Form.Item label="Dataset" style={{ minWidth: 0, marginBottom: 0 }}>
                     <Select<string, DataSet>
                         options={dataSets}
                         fieldNames={{ label: "name", value: "id" }}
-                        style={{ width: 400 }}
+                        style={{ width: "100%", minWidth: 0 }}
                         value={dataSet}
                         onChange={(value, option) => {
                             const periodType = isArray(option)
@@ -87,7 +97,7 @@ function Reports() {
                         }}
                     />
                 </Form.Item>
-                <Form.Item label="Organisation">
+                <Form.Item label="Organisation" style={{ minWidth: 0, marginBottom: 0 }}>
                     <TreeSelect
                         treeDataSimpleMode
                         showSearch
@@ -95,7 +105,7 @@ function Reports() {
                         placeholder="Search organisation…"
                         treeNodeFilterProp="title"
                         treeData={orgUnitTreeData}
-                        style={{ width: 400 }}
+                        style={{ width: "100%", minWidth: 0 }}
                         filterTreeNode={(input, node) =>
                             matchOrgUnit(
                                 orgUnitSearchIndex,
@@ -124,8 +134,9 @@ function Reports() {
                     />
                 </Form.Item>
 
-                <Form.Item label="Period">
+                <Form.Item label="Period" style={{ minWidth: 0, marginBottom: 0 }}>
                     <PeriodPicker
+                        fullWidth
                         periodType={periodType}
                         value={period}
                         onChange={(value) => {
@@ -141,11 +152,11 @@ function Reports() {
                 </Form.Item>
 
                 {dataSet !== "C4oUitImBPK" && (
-                    <Form.Item label="Nationality">
+                    <Form.Item label="Nationality" style={{ minWidth: 0, marginBottom: 0 }}>
                         <Select
                             options={attributionOptions(categoryOptionCombos)}
                             fieldNames={{ label: "name", value: "id" }}
-                            style={{ width: 400 }}
+                            style={{ width: "100%", minWidth: 0 }}
                             value={attribution}
                             onChange={(value) => {
                                 navigate({
@@ -159,7 +170,7 @@ function Reports() {
                         />
                     </Form.Item>
                 )}
-            </Flex>
+            </Form>
             <Outlet />
         </Flex>
     );

@@ -54,6 +54,7 @@ class WaSqliteWorkerClient {
         {
             resolve: (result: SqlExecuteResult) => void;
             reject: (error: Error) => void;
+            timing?: { queuedAt: number; sentAt: number; operation: string };
         }
     >();
 
@@ -66,6 +67,25 @@ class WaSqliteWorkerClient {
             const entry = this.pending.get(response.id);
             if (!entry) return;
             this.pending.delete(response.id);
+            if (entry.timing) {
+                const { queuedAt, sentAt, operation } = entry.timing;
+                const finishedAt = performance.now();
+                const name = `eregisters:sqlite:${operation}`;
+                // Bounded, local diagnostics; never capture SQL, parameters or rows.
+                if (performance.getEntriesByName(name).length >= 200) performance.clearMeasures(name);
+                performance.measure(name, {
+                    start: queuedAt,
+                    end: finishedAt,
+                    detail: {
+                        requestId: response.id,
+                        queuedMs: sentAt - queuedAt,
+                        roundTripMs: finishedAt - sentAt,
+                        workerMs: response.workerMs,
+                        rows: response.ok ? response.result.rows.length : undefined,
+                        ok: response.ok,
+                    },
+                });
+            }
             if (response.ok) {
                 entry.resolve({
                     rows: response.result.rows as never,
@@ -90,13 +110,23 @@ class WaSqliteWorkerClient {
         this.worker.terminate?.();
     }
 
-    request(request: WaSqliteRequestBody): Promise<SqlExecuteResult> {
+    request(request: WaSqliteRequestBody, queuedAt?: number): Promise<SqlExecuteResult> {
         const id = this.nextId++;
+        let trace = false;
+        try {
+            trace = globalThis.localStorage?.getItem("eregisters:sqlite-timing") === "1";
+        } catch { /* Diagnostics must not require localStorage access. */ }
+        const sentAt = trace ? performance.now() : undefined;
         return new Promise<SqlExecuteResult>((resolve, reject) => {
-            this.pending.set(id, { resolve, reject });
+            this.pending.set(id, {
+                resolve, reject,
+                timing: sentAt === undefined ? undefined : {
+                    queuedAt: queuedAt ?? sentAt, sentAt, operation: request.type,
+                },
+            });
             this.worker.postMessage({
                 name: this.name,
-                request: { ...request, id } as WaSqliteRequest,
+                request: { ...request, id, ...(trace ? { trace: true } : {}) } as WaSqliteRequest,
             });
         });
     }
@@ -162,13 +192,15 @@ export function wrapWaSqliteWorker(
         execute: <TRow = Record<string, unknown>>(
             sql: string,
             params?: ReadonlyArray<unknown>,
-        ) =>
-            exclusive(
+        ) => {
+            const queuedAt = performance.now();
+            return exclusive(
                 () =>
-                    client.request({ type: "execute", sql, params }) as Promise<
+                    client.request({ type: "execute", sql, params }, queuedAt) as Promise<
                         SqlExecuteResult<TRow>
                     >,
-            ),
+            );
+        },
         transaction: (fn) =>
             exclusive(async () => {
                 await client.request({ type: "begin" });

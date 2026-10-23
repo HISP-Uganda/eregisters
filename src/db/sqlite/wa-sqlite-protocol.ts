@@ -21,11 +21,12 @@ import type { WaSqliteParams, WaSqliteStatementResult } from "./wa-sqlite-adapte
  * (`wa-sqlite-worker.ts`) already serializes one request at a time per
  * tab, so no request can interleave inside an open transaction.
  */
-export type WaSqliteRequest =
+export type WaSqliteRequest = (
     | { id: number; type: "execute"; sql: string; params?: WaSqliteParams }
     | { id: number; type: "begin" }
     | { id: number; type: "commit" }
-    | { id: number; type: "rollback" };
+    | { id: number; type: "rollback" }
+) & { trace?: boolean };
 
 /** `Omit<WaSqliteRequest, "id">`, distributed over the union — a plain
  * `Omit` collapses to the shared-fields-only shape instead. */
@@ -35,6 +36,7 @@ export type WaSqliteRequestBody =
     | { type: "commit" }
     | { type: "rollback" };
 
-export type WaSqliteResponse =
+export type WaSqliteResponse = (
     | { id: number; ok: true; result: WaSqliteStatementResult }
-    | { id: number; ok: false; error: string };
+    | { id: number; ok: false; error: string }
+) & { workerMs?: number };

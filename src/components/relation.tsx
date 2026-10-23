@@ -2,8 +2,8 @@ import { and, eq, not, useLiveSuspenseQuery } from "@tanstack/react-db";
 import { Form } from "antd";
 import React, { useMemo } from "react";
 import {
-    getEnrollmentsCollection,
-    getEventsCollection,
+	getEnrollmentsCollection,
+	getEventsCollection,
 } from "@/db/collections";
 import { useMetadata } from "@/hooks/useMetadata";
 import { EventContext } from "@/machines";
@@ -11,101 +11,101 @@ import { FlattenedEvent, FlattenedTrackedEntity } from "@/schemas";
 import BasicForm from "./basic-form";
 
 export default function Relation({
-    section,
-    mainEvent,
-    trackedEntity,
+	section,
+	mainEvent,
+	trackedEntity,
 }: {
-    section: string;
-    mainEvent: FlattenedEvent;
-    trackedEntity: FlattenedTrackedEntity;
+	section: string;
+	mainEvent: FlattenedEvent;
+	trackedEntity: FlattenedTrackedEntity;
 }) {
-    const { ruleEnvironment, program, programRuleVariables, programRules } = useMetadata();
-    const eventsCollection = getEventsCollection();
-    const enrollmentsCollection = getEnrollmentsCollection();
+	const { ruleEnvironment, program, programRuleVariables, programRules } = useMetadata();
+	const eventsCollection = getEventsCollection();
+	const enrollmentsCollection = getEnrollmentsCollection();
 
-    const [form] = Form.useForm();
-    const [stage] = program.programStages.filter(
-        ({ id }) => id === "K2nxbE9ubSs",
-    );
+	const [form] = Form.useForm();
+	const [stage] = program.programStages.filter(
+		({ id }) => id === "K2nxbE9ubSs",
+	);
 
-    const mainStageDataElements = useMemo(
-        () =>
-            new Set(
-                stage?.programStageDataElements.map(
-                    (psde) => psde.dataElement.id,
-                ) ?? [],
-            ),
-        [stage],
-    );
+	const mainStageDataElements = useMemo(
+		() =>
+			new Set(
+				stage?.programStageDataElements.map(
+					(psde) => psde.dataElement.id,
+				) ?? [],
+			),
+		[stage],
+	);
 
-    const { data: childEvent } = useLiveSuspenseQuery(
-        (q) =>
-            q
-                .from({ events: eventsCollection })
-                .where(({ events }) =>
-                    and(
-                        eq(events.parentEvent, mainEvent.event),
-                        eq(events.trackedEntity, trackedEntity.trackedEntity),
-                        not(eq(events.syncStatus, "deleted")),
-                    ),
-                )
-                .findOne(),
-        [trackedEntity.trackedEntity, mainEvent.event],
-    );
+	const { data: childEvent } = useLiveSuspenseQuery(
+		(q) =>
+			q
+				.from({ events: eventsCollection })
+				.where(({ events }) =>
+					and(
+						eq(events.parentEvent, mainEvent.event),
+						eq(events.trackedEntity, trackedEntity.trackedEntity),
+						not(eq(events.syncStatus, "deleted")),
+					),
+				)
+				.findOne(),
+		[trackedEntity.trackedEntity, mainEvent.event],
+	);
 
-    const { data: enrollment } = useLiveSuspenseQuery(
-        (q) =>
-            q
-                .from({ enrollment: enrollmentsCollection })
-                .where(({ enrollment }) =>
-                    eq(enrollment.trackedEntity, trackedEntity.trackedEntity),
-                )
-                .findOne(),
-        [trackedEntity.trackedEntity],
-    );
+	const { data: enrollment } = useLiveSuspenseQuery(
+		(q) =>
+			q
+				.from({ enrollment: enrollmentsCollection })
+				.where(({ enrollment }) =>
+					eq(enrollment.trackedEntity, trackedEntity.trackedEntity),
+				)
+				.findOne(),
+		[trackedEntity.trackedEntity],
+	);
 
-    const { data: allEnrollmentEventsRaw } = useLiveSuspenseQuery(
-        (q) =>
-            q
-                .from({ events: eventsCollection })
-                .where(({ events }) =>
-                    and(
-                        eq(events.trackedEntity, trackedEntity.trackedEntity),
-                        not(eq(events.syncStatus, "deleted")),
-                    ),
-                )
-                .orderBy(({ events }) => events.occurredAt, "asc"),
-        [trackedEntity.trackedEntity],
-    );
+	const { data: allEnrollmentEventsRaw } = useLiveSuspenseQuery(
+		(q) =>
+			q
+				.from({ events: eventsCollection })
+				.where(({ events }) =>
+					and(
+						eq(events.trackedEntity, trackedEntity.trackedEntity),
+						not(eq(events.syncStatus, "deleted")),
+					),
+				)
+				.orderBy(({ events }) => events.occurredAt, "asc"),
+		[trackedEntity.trackedEntity],
+	);
 
-    if (!childEvent || !enrollment) return null;
-    return (
-        <EventContext.Provider
-            options={{
-                input: {
-                            ruleEnvironment,
-                    programRules,
-                    programRuleVariables,
-                    enrollment: enrollment,
-                    event: childEvent,
-                    program: "ueBhWkWll5v",
-                    programStage: "K2nxbE9ubSs",
-                    trackedEntity,
-                    validDataElements: mainStageDataElements,
-                    form,
-                    allEnrollmentEvents: allEnrollmentEventsRaw.map((e) => ({
-                        event: e.event,
-                        ...(e.enrollment ? { enrollment: e.enrollment } : {}),
-                        ...(e.createdAt ? { createdAt: e.createdAt } : {}),
-                        ...(e.status ? { status: e.status } : {}),
-                        programStage: e.programStage,
-                        occurredAt: e.occurredAt,
-                        dataValues: e.dataValues,
-                    })),
-                },
-            }}
-        >
-            <BasicForm form={form} section={section} />
-        </EventContext.Provider>
-    );
+	if (!childEvent || !enrollment) return null;
+	return (
+		<EventContext.Provider
+			options={{
+				input: {
+					ruleEnvironment,
+					programRules,
+					programRuleVariables,
+					enrollment: enrollment,
+					event: childEvent,
+					program: "ueBhWkWll5v",
+					programStage: "K2nxbE9ubSs",
+					trackedEntity,
+					validDataElements: mainStageDataElements,
+					form,
+					allEnrollmentEvents: allEnrollmentEventsRaw.map((e) => ({
+						event: e.event,
+						...(e.enrollment ? { enrollment: e.enrollment } : {}),
+						...(e.createdAt ? { createdAt: e.createdAt } : {}),
+						...(e.status ? { status: e.status } : {}),
+						programStage: e.programStage,
+						occurredAt: e.occurredAt,
+						dataValues: e.dataValues,
+					})),
+				},
+			}}
+		>
+			<BasicForm form={form} section={section} />
+		</EventContext.Provider>
+	);
 }
