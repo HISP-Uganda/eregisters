@@ -2,8 +2,10 @@ import {
     getSqliteEnrollmentsCollection,
     getSqliteEventsCollection,
     getSqliteTrackedEntitiesCollection,
+    getSqliteTrackerDriver,
     initTrackerCollections,
 } from "./sqlite/tracker-collections-instance";
+import { readVisitSummaries, type VisitSummary } from "./sqlite/visit-summaries";
 import type { SqlDriver } from "./sqlite/driver-types";
 import {
     getEnrollmentsDexieCollection,
@@ -69,6 +71,20 @@ export function getEventsCollection() {
     return requireBackend() === "sqlite"
         ? getSqliteEventsCollection()
         : getEventsDexieCollection();
+}
+
+/**
+ * A quick read of the live visits on `programStage` by `orgUnit`'s live
+ * clients (a few fields each), for screens that shouldn't wait for the
+ * collections. `undefined` where the backend has no such read (Dexie).
+ */
+export function readQuickVisitSummaries(
+    programStage: string,
+    orgUnit: string,
+): Promise<VisitSummary[]> | undefined {
+    return requireBackend() === "sqlite"
+        ? readVisitSummaries(getSqliteTrackerDriver(), programStage, orgUnit)
+        : undefined;
 }
 
 /** Test-only escape hatch, mirroring both underlying instance modules'. */

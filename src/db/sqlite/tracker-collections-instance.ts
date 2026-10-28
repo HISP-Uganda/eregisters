@@ -32,9 +32,11 @@ type EventsCollection = ReturnType<typeof createEventsSqliteCollection>;
 let trackedEntitiesCollection: TrackedEntitiesCollection | null = null;
 let enrollmentsCollection: EnrollmentsCollection | null = null;
 let eventsCollection: EventsCollection | null = null;
+let trackerDriver: SqlDriver | null = null;
 
 export function initTrackerCollections(driver: SqlDriver): void {
     if (trackedEntitiesCollection) return;
+    trackerDriver = driver;
     trackedEntitiesCollection = createTrackedEntitiesSqliteCollection(driver);
     enrollmentsCollection = createEnrollmentsSqliteCollection(driver);
     eventsCollection = createEventsSqliteCollection(driver);
@@ -60,6 +62,11 @@ export function getSqliteEnrollmentsCollection(): EnrollmentsCollection {
     return requireInitialized(enrollmentsCollection, "enrollmentsCollection");
 }
 
+/** The driver the tracker collections read from, for direct summary reads. */
+export function getSqliteTrackerDriver(): SqlDriver {
+    return requireInitialized(trackerDriver, "trackerDriver");
+}
+
 export function getSqliteEventsCollection(): EventsCollection {
     return requireInitialized(eventsCollection, "eventsCollection");
 }
@@ -76,4 +83,5 @@ export function resetTrackerCollectionsForTests(): void {
     trackedEntitiesCollection = null;
     enrollmentsCollection = null;
     eventsCollection = null;
+    trackerDriver = null;
 }

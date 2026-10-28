@@ -28,10 +28,11 @@ describe("clientColumns", () => {
         trackedEntityAttributes,
         orgUnit: "ou1",
         orgUnitName: "Kisugu HC III",
-    } as never) as Array<{ key: string; title: string; render?: (...args: any[]) => unknown }>;
+    } as never, new Map([["seen", { at: 0, date: "2026-10-27T09:30:00.000" }]])) as Array<{ key: string; title: string; render?: (...args: any[]) => unknown }>;
 
-    it("lists the program's list attributes, then the registering facility", () => {
+    it("lists Last Visit, the program's list attributes, then the registering facility", () => {
         expect(columns.map((c) => [c.key, c.title])).toEqual([
+            ["lastVisit", "Last Visit"],
             ["first", "First name"],
             ["oTI0DLitzFY", "Village"],
             ["registeringFacility", "Registering Facility"],
@@ -39,9 +40,27 @@ describe("clientColumns", () => {
     });
 
     it("shows the village's bracketed part and whether this facility registered the client", () => {
-        expect(columns[1].render!("Kisugu (Kisugu A)")).toBe("Kisugu A");
-        const facility = columns[2].render!;
+        expect(columns[2].render!("Kisugu (Kisugu A)")).toBe("Kisugu A");
+        const facility = columns[3].render!;
         expect(facility({ orgUnit: "ou1" } as FlattenedTrackedEntity)).toBe("Kisugu HC III");
         expect(facility({ orgUnit: "other" } as FlattenedTrackedEntity)).toBe("N/A");
+    });
+
+    it("shows the Last Visit date and time, or a dash for a client never visited", () => {
+        const lastVisit = columns[0].render!;
+        expect(lastVisit({ trackedEntity: "seen" } as FlattenedTrackedEntity)).toBe("2026-10-27 09:30");
+        expect(lastVisit({ trackedEntity: "never" } as FlattenedTrackedEntity)).toBe("—");
+    });
+
+    it("colours Last Visit only when it is today", () => {
+        const today = { at: Date.now(), date: new Date().toISOString() };
+        const old = { at: Date.parse("2020-01-01T10:00:00"), date: "2020-01-01T10:00:00" };
+        const [lastVisit] = clientColumns(
+            { program, trackedEntityAttributes, orgUnit: "ou1", orgUnitName: "x" } as never,
+            new Map([["today", today], ["old", old]]),
+        ) as Array<{ onCell: (r: FlattenedTrackedEntity) => { style?: { color?: string } } }>;
+        expect(lastVisit.onCell({ trackedEntity: "today" } as FlattenedTrackedEntity).style?.color).toBeDefined();
+        expect(lastVisit.onCell({ trackedEntity: "old" } as FlattenedTrackedEntity).style).toBeUndefined();
+        expect(lastVisit.onCell({ trackedEntity: "never" } as FlattenedTrackedEntity).style).toBeUndefined();
     });
 });

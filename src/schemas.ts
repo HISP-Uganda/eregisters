@@ -82,6 +82,8 @@ const UserSchema = z.object({
 
 export const ClientSchema = z.object({
     search: z.record(z.string(), z.string()).optional(),
+    /** A stats card's client list, shown in place of the search results. */
+    list: z.enum(["all", "registeredToday", "visitsToday"]).optional(),
 });
 export const ReportSchema = z.object({
     period: z.string().optional(),

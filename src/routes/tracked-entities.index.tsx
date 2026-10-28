@@ -9,13 +9,14 @@ export const TrackedEntitiesIndexRoute = createRoute({
     component: ClientSearchPage,
 });
 
-/** Binds the search results to the URL: the search terms, and opening a client. */
+/** Binds the search results to the URL: the search terms or card list, and opening a client. */
 function ClientSearchPage() {
-    const { search } = TrackedEntitiesRoute.useSearch();
+    const { search, list } = TrackedEntitiesRoute.useSearch();
     const navigate = TrackedEntitiesIndexRoute.useNavigate();
     return (
         <ClientSearchScreen
             search={search}
+            list={list}
             onOpenClient={(trackedEntity) =>
                 navigate({ to: "/tracked-entity/$trackedEntity", params: { trackedEntity } })
             }
