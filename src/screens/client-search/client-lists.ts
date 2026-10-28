@@ -2,6 +2,7 @@ import { and, eq, not, useLiveQuery } from "@tanstack/react-db";
 import dayjs from "dayjs";
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { getEventsCollection, getTrackedEntitiesCollection, readQuickVisitSummaries } from "@/db/collections";
+import { useCollectionReady } from "@/hooks/useCollectionReady";
 import { useMetadata } from "@/hooks/useMetadata";
 import type { FlattenedTrackedEntity } from "@/schemas";
 import { MAIN_STAGE } from "@/screens/tracked-entity/client";
@@ -113,11 +114,7 @@ export function useClientListsSource(): ClientLists {
     const { orgUnit } = useMetadata();
     const trackedEntities = getTrackedEntitiesCollection();
     const events = getEventsCollection();
-    const [clientsReady, setClientsReady] = useState(() => trackedEntities.isReady());
-    useEffect(() => {
-        if (clientsReady) return;
-        return trackedEntities.onFirstReady(() => setClientsReady(true));
-    }, [trackedEntities, clientsReady]);
+    const clientsReady = useCollectionReady(trackedEntities);
 
     const { data: clients = [], isLoading: loading } = useLiveQuery(
         (q) =>
@@ -147,11 +144,7 @@ export function useClientListsSource(): ClientLists {
             active = false;
         };
     }, [orgUnit]);
-    const [eventsReady, setEventsReady] = useState(() => events.isReady());
-    useEffect(() => {
-        if (eventsReady) return;
-        return events.onFirstReady(() => setEventsReady(true));
-    }, [events, eventsReady]);
+    const eventsReady = useCollectionReady(events);
 
     const { data: liveVisits = [], isLoading: visitsQueryLoading } = useLiveQuery(
         (q) =>

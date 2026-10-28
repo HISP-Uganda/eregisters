@@ -53,86 +53,97 @@ export function parseDateSelection(value: React.Key | boolean): [string, string]
 	return [parts[0], parts[1]];
 }
 
+/** What a column filter's selected menu values ask for, parsed once for any number of rows. */
+export interface ColumnSelection {
+	includeEmpty: boolean;
+	dateRanges: Array<[string, string]>;
+	numberRanges: Array<[number | null, number | null]>;
+	/** Ids and codes of the selected options, for option-set columns. */
+	optionTokens: Set<string>;
+	/** Lower-cased text searches. */
+	queries: string[];
+	/** Values matched exactly against a cell's display: plain menu values and legacy exact filters. */
+	exact: Set<React.Key | boolean>;
+}
+
+function isTextSearch(value: React.Key | boolean): value is string {
+	return typeof value === "string" && value.startsWith(TEXT_SEARCH_PREFIX);
+}
+
+export function parseColumnSelection(
+	column: AnalyticsColumn,
+	optionSets: OptionSets,
+	selected: FilterValue,
+): ColumnSelection {
+	const optionTokens = new Set<string>();
+	if (column.optionSetId) {
+		const selectedIds = new Set(selected.filter((value) => value !== EMPTY_FILTER_VALUE));
+		for (const option of optionSets.get(column.optionSetId) ?? []) {
+			if (selectedIds.has(option.id)) {
+				optionTokens.add(option.id);
+				optionTokens.add(option.code);
+			}
+		}
+	}
+	return {
+		includeEmpty: selected.includes(EMPTY_FILTER_VALUE),
+		dateRanges: selected.flatMap((value) => {
+			const range = parseDateSelection(value);
+			return range ? [range] : [];
+		}),
+		numberRanges: selected.flatMap((value) => {
+			const range = parseNumberSelection(value);
+			return range ? [range] : [];
+		}),
+		optionTokens,
+		queries: selected.flatMap((value) =>
+			isTextSearch(value) ? [value.slice(TEXT_SEARCH_PREFIX.length).trim().toLowerCase()] : [],
+		).filter(Boolean),
+		exact: new Set(selected.filter((value) =>
+			value !== EMPTY_FILTER_VALUE && !isTextSearch(value) && !parseNumberSelection(value))),
+	};
+}
+
 /** Compiles selected values once, before testing any rows. */
 function compileColumnFilter(
 	column: AnalyticsColumn,
 	optionSets: OptionSets,
 	selected: FilterValue,
 ): (record: AnalyticsRow) => boolean {
-	const includeEmpty = selected.includes(EMPTY_FILTER_VALUE);
+	const { includeEmpty, dateRanges, numberRanges, optionTokens: tokens, queries, exact } =
+		parseColumnSelection(column, optionSets, selected);
+	const isEmpty = (record: AnalyticsRow) => includeEmpty && isEmptyCell(record.values[column.key]);
 	if (column.valueKind === "date") {
-		const ranges = selected.flatMap((value) => {
-			const range = parseDateSelection(value);
-			return range ? [range] : [];
-		});
 		return (record) => {
+			if (isEmpty(record)) return true;
 			const cell = record.values[column.key];
-			if (includeEmpty && isEmptyCell(cell)) return true;
-			if (typeof cell?.raw !== "string" || ranges.length === 0) return false;
+			if (typeof cell?.raw !== "string" || dateRanges.length === 0) return false;
 			const rawDate = cell.raw.slice(0, 10);
-			return isCalendarDate(rawDate) && ranges.some(([start, end]) => rawDate >= start && rawDate <= end);
+			return isCalendarDate(rawDate) && dateRanges.some(([start, end]) => rawDate >= start && rawDate <= end);
 		};
 	}
 	if (column.optionSetId) {
-		const selectedIds = new Set(selected.filter((value) => value !== EMPTY_FILTER_VALUE));
-		const selectedTokens = new Set<string>();
-		for (const option of optionSets.get(column.optionSetId) ?? []) {
-			if (selectedIds.has(option.id)) {
-				selectedTokens.add(option.id);
-				selectedTokens.add(option.code);
-			}
-		}
-		return (record) => {
-			const cell = record.values[column.key];
-			if (includeEmpty && isEmptyCell(cell)) return true;
-			return selectedTokens.size > 0 && optionTokens(cell?.raw).some((token) => selectedTokens.has(token));
-		};
+		return (record) =>
+			isEmpty(record) ||
+			(tokens.size > 0 && optionTokens(record.values[column.key]?.raw).some((token) => tokens.has(token)));
 	}
 	if (column.valueKind === "number" && !column.isComputed) {
-		const ranges = selected.flatMap((value) => {
-			const range = parseNumberSelection(value);
-			return range ? [range] : [];
-		});
-		const queries = selected.flatMap((value) =>
-			typeof value === "string" && value.startsWith(TEXT_SEARCH_PREFIX)
-				? [value.slice(TEXT_SEARCH_PREFIX.length).trim().toLowerCase()] : [],
-		).filter(Boolean);
-		const exact = new Set(selected.filter((value) =>
-			value !== EMPTY_FILTER_VALUE && !parseNumberSelection(value) &&
-			!(typeof value === "string" && value.startsWith(TEXT_SEARCH_PREFIX)),
-		));
 		return (record) => {
+			if (isEmpty(record)) return true;
 			const cell = record.values[column.key];
-			if (includeEmpty && isEmptyCell(cell)) return true;
 			const number = numericValue(cell?.raw);
-			return (number !== undefined && ranges.some(([min, max]) =>
-				(min === null || number >= min) && (max === null || number <= max))) ||
-				exact.has(cell?.display ?? "") ||
-				queries.some((query) => (cell?.display ?? "").toLowerCase().includes(query));
-		};
-	}
-	if (usesTextSearch(column)) {
-		const queries = selected.flatMap((value) =>
-			typeof value === "string" && value.startsWith(TEXT_SEARCH_PREFIX)
-				? [value.slice(TEXT_SEARCH_PREFIX.length).trim().toLowerCase()]
-				: [],
-		).filter(Boolean);
-		const legacyExactValues = new Set(selected.filter((value) =>
-			value !== EMPTY_FILTER_VALUE &&
-			!(typeof value === "string" && value.startsWith(TEXT_SEARCH_PREFIX)),
-		));
-		return (record) => {
-			const cell = record.values[column.key];
-			if (includeEmpty && isEmptyCell(cell)) return true;
 			const display = cell?.display ?? "";
-			return legacyExactValues.has(display) ||
-				(queries.length > 0 && queries.some((query) => display.toLowerCase().includes(query)));
+			return (number !== undefined && numberRanges.some(([min, max]) =>
+				(min === null || number >= min) && (max === null || number <= max))) ||
+				exact.has(display) ||
+				queries.some((query) => display.toLowerCase().includes(query));
 		};
 	}
-	const selectedDisplays = new Set(selected.filter((value) => value !== EMPTY_FILTER_VALUE));
 	return (record) => {
-		const cell = record.values[column.key];
-		return (includeEmpty && isEmptyCell(cell)) || selectedDisplays.has(cell?.display ?? "");
+		if (isEmpty(record)) return true;
+		const display = record.values[column.key]?.display ?? "";
+		return exact.has(display) ||
+			(usesTextSearch(column) && queries.some((query) => display.toLowerCase().includes(query)));
 	};
 }
 

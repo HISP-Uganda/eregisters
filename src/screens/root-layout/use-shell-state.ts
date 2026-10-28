@@ -5,6 +5,8 @@ import {
     getEventsCollection,
     getTrackedEntitiesCollection,
 } from "@/db/collections";
+import { useCanVerifyReports } from "@/hooks/useCanVerifyReports";
+import { useCollectionReady } from "@/hooks/useCollectionReady";
 import { useUIConfig } from "@/hooks/useUIConfig";
 import { SyncContext } from "@/machines/sync";
 import {
@@ -39,6 +41,7 @@ export function useSyncStatus() {
     const lastMetadataPull = SyncContext.useSelector((a) => a.context.lastMetadataPull);
     const storageBackend = SyncContext.useSelector((snapshot) => snapshot.context.backend);
     const isAdmin = SyncContext.useSelector((a) => a.context.userInfo?.authorities?.includes("ALL"));
+    const canVerifyReports = useCanVerifyReports();
     const hasProgram = SyncContext.useSelector(
         (a) => a.context.userInfo.organisationUnits.flatMap((a) => a.programs).length > 0,
     );
@@ -51,6 +54,7 @@ export function useSyncStatus() {
         lastMetadataPull,
         storageBackend,
         isAdmin,
+        canVerifyReports,
         hasProgram,
     };
 }
@@ -67,11 +71,7 @@ export function useRecordsToSync() {
     const trackedEntities = getTrackedEntitiesCollection();
     const enrollments = getEnrollmentsCollection();
     const events = getEventsCollection();
-    const [clientsReady, setClientsReady] = useState(() => trackedEntities.isReady());
-    useEffect(() => {
-        if (clientsReady) return;
-        return trackedEntities.onFirstReady(() => setClientsReady(true));
-    }, [trackedEntities, clientsReady]);
+    const clientsReady = useCollectionReady(trackedEntities);
 
     const { data: pendingTrackedEntities = [] } = useLiveQuery((q) =>
         q

@@ -1,5 +1,5 @@
 import type { FilterValue } from "antd/es/table/interface";
-import { EMPTY_FILTER_VALUE, TEXT_SEARCH_PREFIX, parseDateSelection, parseNumberSelection, usesTextSearch } from "./line-list-filters";
+import { parseColumnSelection, parseDateSelection, usesTextSearch } from "./line-list-filters";
 import type { AnalyticsColumn, AnalyticsRow } from "./types";
 import { numericValue, optionTokens, type OptionSets } from "./value-format";
 
@@ -133,67 +133,35 @@ export async function buildLineListIndex(
                 const selected = selection.filteredInfo[column.key];
                 if (!selected?.length) return [];
                 const values = cache.get(column.key)!;
-                const includeEmpty = selected.includes(EMPTY_FILTER_VALUE);
+                const { includeEmpty, dateRanges, numberRanges, optionTokens: selectedTokens, queries, exact } =
+                    parseColumnSelection(column, optionSets, selected);
+                const isEmpty = (i: number) => includeEmpty && values.empty[i] === 1;
                 if (column.valueKind === "date") {
-                    const ranges = selected.flatMap((value) => {
-                        const range = parseDateSelection(value);
-                        return range ? [range] : [];
-                    });
-                    return [(i: number) => Boolean(includeEmpty && values.empty[i]) ||
-                        Boolean(values.dates?.[i] && ranges.some(([start, end]) =>
+                    return [(i: number) => isEmpty(i) ||
+                        Boolean(values.dates?.[i] && dateRanges.some(([start, end]) =>
                             values.dates![i] >= start && values.dates![i] <= end))];
                 }
                 if (column.optionSetId) {
-                    const selectedIds = new Set(selected.filter((value) => value !== EMPTY_FILTER_VALUE));
-                    const selectedTokens = new Set<string>();
-                    for (const option of optionSets.get(column.optionSetId) ?? []) {
-                        if (selectedIds.has(option.id)) {
-                            selectedTokens.add(option.id);
-                            selectedTokens.add(option.code);
-                        }
-                    }
-                    return [(i: number) => Boolean(includeEmpty && values.empty[i]) ||
+                    return [(i: number) => isEmpty(i) ||
                         (selectedTokens.size > 0 && values.tokens![i].some((token) => selectedTokens.has(token)))];
                 }
                 if (column.valueKind === "number" && !column.isComputed) {
-                    const ranges = selected.flatMap((value) => {
-                        const range = parseNumberSelection(value);
-                        return range ? [range] : [];
-                    });
-                    const queries = selected.flatMap((value) =>
-                        typeof value === "string" && value.startsWith(TEXT_SEARCH_PREFIX)
-                            ? [value.slice(TEXT_SEARCH_PREFIX.length).trim().toLowerCase()] : [],
-                    ).filter(Boolean);
-                    const exact = new Set(selected.filter((value) =>
-                        value !== EMPTY_FILTER_VALUE && !parseNumberSelection(value) &&
-                        !(typeof value === "string" && value.startsWith(TEXT_SEARCH_PREFIX)),
-                    ));
-                    return [(i: number) => Boolean(includeEmpty && values.empty[i]) ||
-                        (Number.isFinite(values.numeric![i]) && ranges.some(([min, max]) =>
+                    return [(i: number) => isEmpty(i) ||
+                        (Number.isFinite(values.numeric![i]) && numberRanges.some(([min, max]) =>
                             (min === null || values.numeric![i] >= min) &&
                             (max === null || values.numeric![i] <= max))) ||
                         exact.has(values.displays[i]) ||
                         queries.some((query) => values.lower![i].includes(query))];
                 }
                 if (!usesTextSearch(column)) {
-                    const displays = new Set(selected.filter((value) => value !== EMPTY_FILTER_VALUE));
-                    return [(i: number) => Boolean(includeEmpty && values.empty[i]) || displays.has(values.displays[i])];
+                    return [(i: number) => isEmpty(i) || exact.has(values.displays[i])];
                 }
-                const queries = selected.flatMap((value) =>
-                    typeof value === "string" && value.startsWith(TEXT_SEARCH_PREFIX)
-                        ? [value.slice(TEXT_SEARCH_PREFIX.length).trim().toLowerCase()]
-                        : [],
-                ).filter(Boolean);
-                const exact = new Set(selected.filter((value) =>
-                    value !== EMPTY_FILTER_VALUE &&
-                    !(typeof value === "string" && value.startsWith(TEXT_SEARCH_PREFIX)),
-                ));
                 if (!includeEmpty && exact.size === 0 && queries.length === 1) {
                     const lower = values.lower!;
                     const query = queries[0];
                     return [(i: number) => lower[i].includes(query)];
                 }
-                return [(i: number) => Boolean(includeEmpty && values.empty[i]) ||
+                return [(i: number) => isEmpty(i) ||
                     exact.has(values.displays[i]) || queries.some((query) => values.lower![i].includes(query))];
             });
             // A small, spread-out sample puts the most selective predicate

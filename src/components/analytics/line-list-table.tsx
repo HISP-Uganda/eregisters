@@ -474,6 +474,28 @@ function buildColumnFilter(
     };
 }
 
+/**
+ * A filter dropdown's shared foot: "Empty" (kept alongside the dropdown's
+ * own criterion key), Apply and Reset.
+ */
+function FilterDropdownFooter({
+    keys, criterion, applyDisabled, setSelectedKeys, confirm, clearFilters,
+}: Pick<FilterDropdownProps, "setSelectedKeys" | "confirm" | "clearFilters"> & {
+    keys: string[];
+    criterion: string | undefined;
+    applyDisabled?: boolean;
+}) {
+    return <>
+        <Checkbox checked={keys.includes(EMPTY_FILTER_VALUE)} onChange={(event) => {
+            setSelectedKeys([...(criterion ? [criterion] : []), ...(event.target.checked ? [EMPTY_FILTER_VALUE] : [])]);
+        }}>Empty</Checkbox>
+        <Space>
+            <Button size="small" type="primary" disabled={applyDisabled} onClick={() => confirm({ closeDropdown: true })}>Apply</Button>
+            <Button size="small" onClick={() => clearFilters?.({ confirm: true, closeDropdown: true })}>Reset</Button>
+        </Space>
+    </>;
+}
+
 function TextFilterDropdown({ selectedKeys, setSelectedKeys, confirm, clearFilters }: FilterDropdownProps) {
     const keys = selectedKeys.map(String);
     const searchKey = keys.find((key) => key !== EMPTY_FILTER_VALUE);
@@ -494,16 +516,8 @@ function TextFilterDropdown({ selectedKeys, setSelectedKeys, confirm, clearFilte
             }}
             onPressEnter={() => confirm({ closeDropdown: true })}
         />
-        <Checkbox checked={keys.includes(EMPTY_FILTER_VALUE)} onChange={(event) => {
-            setSelectedKeys([
-                ...(searchKey ? [searchKey] : []),
-                ...(event.target.checked ? [EMPTY_FILTER_VALUE] : []),
-            ]);
-        }}>Empty</Checkbox>
-        <Space>
-            <Button size="small" type="primary" onClick={() => confirm({ closeDropdown: true })}>Apply</Button>
-            <Button size="small" onClick={() => clearFilters?.({ confirm: true, closeDropdown: true })}>Reset</Button>
-        </Space>
+        <FilterDropdownFooter keys={keys} criterion={searchKey} setSelectedKeys={setSelectedKeys}
+            confirm={confirm} clearFilters={clearFilters} />
     </Flex>;
 }
 
@@ -532,14 +546,8 @@ function NumberRangeFilterDropdown({ selectedKeys, setSelectedKeys, confirm, cle
         </Space>
         {invalid && <span role="alert" style={{ color: "#cf1322" }}>Minimum cannot exceed maximum.</span>}
         {legacy && <span>Saved text filter active; enter a bound to replace it.</span>}
-        <Checkbox checked={keys.includes(EMPTY_FILTER_VALUE)} onChange={(event) => {
-            const criterion = keys.find((key) => key !== EMPTY_FILTER_VALUE);
-            setSelectedKeys([...(criterion ? [criterion] : []), ...(event.target.checked ? [EMPTY_FILTER_VALUE] : [])]);
-        }}>Empty</Checkbox>
-        <Space>
-            <Button size="small" type="primary" disabled={invalid} onClick={() => confirm({ closeDropdown: true })}>Apply</Button>
-            <Button size="small" onClick={() => clearFilters?.({ confirm: true, closeDropdown: true })}>Reset</Button>
-        </Space>
+        <FilterDropdownFooter keys={keys} criterion={keys.find((key) => key !== EMPTY_FILTER_VALUE)}
+            applyDisabled={invalid} setSelectedKeys={setSelectedKeys} confirm={confirm} clearFilters={clearFilters} />
     </Flex>;
 }
 
@@ -557,16 +565,7 @@ function DateRangeFilterDropdown({ selectedKeys, setSelectedKeys, confirm, clear
                     : empty);
             }}
         />
-        <Checkbox checked={keys.includes(EMPTY_FILTER_VALUE)} onChange={(event) => {
-            const rangeKey = keys.find((key) => parseDateSelection(key));
-            setSelectedKeys([
-                ...(rangeKey ? [rangeKey] : []),
-                ...(event.target.checked ? [EMPTY_FILTER_VALUE] : []),
-            ]);
-        }}>Empty</Checkbox>
-        <Space>
-            <Button size="small" type="primary" onClick={() => confirm({ closeDropdown: true })}>Apply</Button>
-            <Button size="small" onClick={() => clearFilters?.({ confirm: true, closeDropdown: true })}>Reset</Button>
-        </Space>
+        <FilterDropdownFooter keys={keys} criterion={keys.find((key) => parseDateSelection(key))}
+            setSelectedKeys={setSelectedKeys} confirm={confirm} clearFilters={clearFilters} />
     </Flex>;
 }
