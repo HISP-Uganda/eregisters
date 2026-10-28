@@ -42,6 +42,16 @@ describe("event action effects", () => {
         expect(materializeEventActions([command], source, [created], options)).toEqual([]);
         expect(materializeEventActions([command], { ...source, event: "later" }, [created], options)).toHaveLength(1);
     });
+    it("stamps each event from one save with its own creation time, in action order", () => {
+        const events = materializeEventActions([
+            { actionId: "a", type: "CREATEEVENT", programStage: "child" },
+            { actionId: "b", type: "CREATEEVENT", programStage: "other" },
+        ], source, [], options);
+        expect(events.map((event) => [event.createdAt, event.updatedAt])).toEqual([
+            ["2026-03-01T10:00:00.000Z", "2026-03-01T10:00:00.000Z"],
+            ["2026-03-01T10:00:00.001Z", "2026-03-01T10:00:00.001Z"],
+        ]);
+    });
     it("does not mutate source values or existing rows", () => {
         const original = JSON.stringify(source);
         materializeEventActions([{ actionId: "a", type: "CREATEEVENT", programStage: "child" }], source, [], options);

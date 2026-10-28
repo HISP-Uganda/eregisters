@@ -1,7 +1,9 @@
 import type { FlattenedTrackedEntity } from "@/schemas";
 import type { SqlDriver } from "@/db/sqlite/driver-types";
 import type { RowAdapter } from "@/db/sqlite/row-adapter";
-import { loadUsersByUid, upsertUser, type SqlUser } from "./users";
+import { makeRelatedRowsLoader, relatedRowReads, sqlIn, toBool, toInt } from "./load-related-rows";
+import { type SqlUser } from "./users";
+import { writeRelatedRow } from "./write-related-row";
 
 type TrackedEntityParentRow = {
     tracked_entity: string;
@@ -30,13 +32,6 @@ type AttributeRow = {
     created_at: string | null;
     updated_at: string | null;
 };
-
-function toBool(n: number): boolean {
-    return n === 1;
-}
-function toInt(b: boolean): number {
-    return b ? 1 : 0;
-}
 
 const PARENT_COLUMNS = `tracked_entity, tracked_entity_type, org_unit, created_at,
                     updated_at, created_by_uid, updated_by_uid, inactive,
@@ -78,6 +73,16 @@ function reassemble(
     };
 }
 
+const loadRows = makeRelatedRowsLoader<TrackedEntityParentRow, AttributeRow, FlattenedTrackedEntity>({
+    parentTable: "tracked_entities",
+    parentColumns: PARENT_COLUMNS,
+    childTable: "tracked_entity_attributes",
+    childColumns: ATTRIBUTE_COLUMNS,
+    parentKey: (parent) => parent.tracked_entity,
+    childKey: (child) => child.tracked_entity,
+    reassemble,
+});
+
 /**
  * Single-row lookup, scoped for the pull-loop merge step
  * (`mergeBulkTrackedEntities`'s `getLocalEntity` callback,
@@ -89,19 +94,7 @@ export async function getTrackedEntityById(
     db: SqlDriver,
     trackedEntity: string,
 ): Promise<FlattenedTrackedEntity | undefined> {
-    const [parent, attributeRows, usersByUid] = await Promise.all([
-        db.execute<TrackedEntityParentRow>(
-            `SELECT ${PARENT_COLUMNS} FROM tracked_entities WHERE tracked_entity = ?`,
-            [trackedEntity],
-        ),
-        db.execute<AttributeRow>(
-            `SELECT ${ATTRIBUTE_COLUMNS} FROM tracked_entity_attributes WHERE tracked_entity = ?`,
-            [trackedEntity],
-        ),
-        loadUsersByUid(db),
-    ]);
-    if (!parent.rows[0]) return undefined;
-    return reassemble(parent.rows[0], attributeRows.rows, usersByUid);
+    return (await loadRows(db, { clause: "tracked_entity = ?", params: [trackedEntity], scopeChildren: true }))[0];
 }
 
 async function loadMany(
@@ -109,29 +102,7 @@ async function loadMany(
     whereClause: string,
     params: ReadonlyArray<unknown>,
 ): Promise<FlattenedTrackedEntity[]> {
-    const [parents, attributeRows, usersByUid] = await Promise.all([
-        db.execute<TrackedEntityParentRow>(
-            `SELECT ${PARENT_COLUMNS} FROM tracked_entities WHERE ${whereClause}`,
-            params,
-        ),
-        db.execute<AttributeRow>(
-            `SELECT ${ATTRIBUTE_COLUMNS} FROM tracked_entity_attributes`,
-        ),
-        loadUsersByUid(db),
-    ]);
-    const attributesByEntity = new Map<string, AttributeRow[]>();
-    for (const attr of attributeRows.rows) {
-        const bucket = attributesByEntity.get(attr.tracked_entity) ?? [];
-        bucket.push(attr);
-        attributesByEntity.set(attr.tracked_entity, bucket);
-    }
-    return parents.rows.map((parent) =>
-        reassemble(
-            parent,
-            attributesByEntity.get(parent.tracked_entity) ?? [],
-            usersByUid,
-        ),
-    );
+    return loadRows(db, { clause: whereClause, params });
 }
 
 /**
@@ -153,163 +124,52 @@ export function findTrackedEntitiesBySyncStatusIn(
     db: SqlDriver,
     statuses: ReadonlyArray<string>,
 ): Promise<FlattenedTrackedEntity[]> {
-    const placeholders = statuses.map(() => "?").join(", ");
-    return loadMany(db, `sync_status IN (${placeholders})`, statuses);
+    return loadMany(db, sqlIn("sync_status", statuses), statuses);
 }
 
-/**
- * Backs `collection-adapter.ts`'s scoped reloadAndDiff — unlike `loadMany`
- * (whose attribute-table read is always unfiltered), this filters BOTH
- * tables by the given keys, so a single-row write reloads O(1) rows
- * instead of the whole collection.
- */
-async function loadByKeys(
-    db: SqlDriver,
-    keys: readonly string[],
-): Promise<FlattenedTrackedEntity[]> {
-    if (keys.length === 0) return [];
-    const placeholders = keys.map(() => "?").join(", ");
-    const [parents, attributeRows, usersByUid] = await Promise.all([
-        db.execute<TrackedEntityParentRow>(
-            `SELECT ${PARENT_COLUMNS} FROM tracked_entities WHERE tracked_entity IN (${placeholders})`,
-            keys,
-        ),
-        db.execute<AttributeRow>(
-            `SELECT ${ATTRIBUTE_COLUMNS} FROM tracked_entity_attributes WHERE tracked_entity IN (${placeholders})`,
-            keys,
-        ),
-        loadUsersByUid(db),
-    ]);
-    const attributesByEntity = new Map<string, AttributeRow[]>();
-    for (const attr of attributeRows.rows) {
-        const bucket = attributesByEntity.get(attr.tracked_entity) ?? [];
-        bucket.push(attr);
-        attributesByEntity.set(attr.tracked_entity, bucket);
-    }
-    return parents.rows.map((parent) =>
-        reassemble(
-            parent,
-            attributesByEntity.get(parent.tracked_entity) ?? [],
-            usersByUid,
-        ),
-    );
+function parentValues(row: FlattenedTrackedEntity): unknown[] {
+    return [
+        row.trackedEntityType, row.orgUnit, row.createdAt, row.updatedAt,
+        row.createdBy?.uid ?? null, row.updatedBy?.uid ?? null,
+        toInt(row.inactive), toInt(row.deleted), toInt(row.potentialDuplicate),
+        row.parentEntity ?? null, row.lastSynced, row.syncError ?? null,
+        row.version, row.syncStatus,
+    ];
 }
 
 export const trackedEntitiesRowAdapter: RowAdapter<
     FlattenedTrackedEntity,
     string
 > = {
-    rowVersion: (row) => row.updatedAt,
+    ...relatedRowReads(loadRows, "tracked_entity"),
 
-    loadByKeys,
-
-    loadAll: async (db) => {
-        const [parents, attributeRows, usersByUid] = await Promise.all([
-            db.execute<TrackedEntityParentRow>(
-                `SELECT ${PARENT_COLUMNS} FROM tracked_entities`,
-            ),
-            db.execute<AttributeRow>(
-                `SELECT ${ATTRIBUTE_COLUMNS} FROM tracked_entity_attributes`,
-            ),
-            loadUsersByUid(db),
-        ]);
-
-        const attributesByEntity = new Map<string, AttributeRow[]>();
-        for (const attr of attributeRows.rows) {
-            const bucket = attributesByEntity.get(attr.tracked_entity) ?? [];
-            bucket.push(attr);
-            attributesByEntity.set(attr.tracked_entity, bucket);
-        }
-
-        return parents.rows.map((parent) =>
-            reassemble(
-                parent,
-                attributesByEntity.get(parent.tracked_entity) ?? [],
-                usersByUid,
-            ),
-        );
-    },
-
-    insertRow: async (db, row, options) => {
-        await db.transaction(async (tx) => {
-            await upsertUser(tx, row.createdBy);
-            await upsertUser(tx, row.updatedBy);
-            await tx.execute(
-                `INSERT INTO tracked_entities (
+    insertRow: (db, row, options) =>
+        writeRelatedRow(db, row,
+            `INSERT INTO tracked_entities (
                     tracked_entity, tracked_entity_type, org_unit, created_at,
                     updated_at, created_by_uid, updated_by_uid, inactive,
                     deleted, potential_duplicate, parent_entity, last_synced,
                     sync_error, version, sync_status
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                [
-                    row.trackedEntity,
-                    row.trackedEntityType,
-                    row.orgUnit,
-                    row.createdAt,
-                    row.updatedAt,
-                    row.createdBy?.uid ?? null,
-                    row.updatedBy?.uid ?? null,
-                    toInt(row.inactive),
-                    toInt(row.deleted),
-                    toInt(row.potentialDuplicate),
-                    row.parentEntity ?? null,
-                    row.lastSynced,
-                    row.syncError ?? null,
-                    row.version,
-                    row.syncStatus,
-                ],
-            );
-            await insertAttributes(
-                tx,
-                row.trackedEntity,
-                row.attributes,
-                options?.source ?? "local",
-            );
-        });
-    },
+            [row.trackedEntity, ...parentValues(row)],
+            (tx) => insertAttributes(tx, row.trackedEntity, row.attributes, options?.source ?? "local"),
+        ),
 
-    updateRow: async (db, row, options) => {
-        await db.transaction(async (tx) => {
-            await upsertUser(tx, row.createdBy);
-            await upsertUser(tx, row.updatedBy);
-            await tx.execute(
-                `UPDATE tracked_entities SET
+    updateRow: (db, row, options) =>
+        writeRelatedRow(db, row,
+            `UPDATE tracked_entities SET
                     tracked_entity_type = ?, org_unit = ?, created_at = ?,
                     updated_at = ?, created_by_uid = ?, updated_by_uid = ?,
                     inactive = ?, deleted = ?, potential_duplicate = ?,
                     parent_entity = ?, last_synced = ?, sync_error = ?,
                     version = ?, sync_status = ?
                  WHERE tracked_entity = ?`,
-                [
-                    row.trackedEntityType,
-                    row.orgUnit,
-                    row.createdAt,
-                    row.updatedAt,
-                    row.createdBy?.uid ?? null,
-                    row.updatedBy?.uid ?? null,
-                    toInt(row.inactive),
-                    toInt(row.deleted),
-                    toInt(row.potentialDuplicate),
-                    row.parentEntity ?? null,
-                    row.lastSynced,
-                    row.syncError ?? null,
-                    row.version,
-                    row.syncStatus,
-                    row.trackedEntity,
-                ],
-            );
-            await tx.execute(
-                "DELETE FROM tracked_entity_attributes WHERE tracked_entity = ?",
-                [row.trackedEntity],
-            );
-            await insertAttributes(
-                tx,
-                row.trackedEntity,
-                row.attributes,
-                options?.source ?? "local",
-            );
-        });
-    },
+            [...parentValues(row), row.trackedEntity],
+            async (tx) => {
+                await tx.execute("DELETE FROM tracked_entity_attributes WHERE tracked_entity = ?", [row.trackedEntity]);
+                await insertAttributes(tx, row.trackedEntity, row.attributes, options?.source ?? "local");
+            },
+        ),
 
     deleteRow: async (db, key) => {
         await db.transaction(async (tx) => {

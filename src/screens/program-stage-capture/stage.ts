@@ -9,6 +9,7 @@ import type {
     FlattenedTrackedEntity,
     ProgramStage,
 } from "@/schemas";
+export { toRuleEvents } from "@/program-rules/to-rule-events";
 
 const PROGRAM = "ueBhWkWll5v";
 
@@ -55,19 +56,6 @@ export function eventFormInput(
 /** An event's date: the form's `occurredAt` when set, else the stored one. */
 export function eventDate(event: Pick<FlattenedEvent, "dataValues" | "occurredAt">): string {
     return (event.dataValues?.["occurredAt"] as string | undefined) || event.occurredAt;
-}
-
-/** The enrollment's events as program rules read them. */
-export function toRuleEvents(events: FlattenedEvent[]): EventForRules[] {
-    return events.map((e) => ({
-        event: e.event,
-                        ...(e.enrollment ? { enrollment: e.enrollment } : {}),
-                        ...(e.createdAt ? { createdAt: e.createdAt } : {}),
-                        ...(e.status ? { status: e.status } : {}),
-        programStage: e.programStage,
-        occurredAt: e.occurredAt,
-        dataValues: e.dataValues,
-    }));
 }
 
 export function stageDataElementIds(stage: ProgramStage): Set<string> {

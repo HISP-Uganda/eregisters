@@ -1,7 +1,8 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useState } from "react";
 import type { ProgramRuleResult } from "@/schemas";
 import { computeSaveBlock, type SaveBlock } from "@/utils/save-block";
 import { useMetadata } from "./useMetadata";
+import { useTrackedEntityFieldMetadata } from "./useTrackedEntityFieldMetadata";
 
 export function useTrackedEntitySaveBlock(
     seedValues?: Record<string, unknown>,
@@ -11,21 +12,9 @@ export function useTrackedEntitySaveBlock(
         null,
     );
 
-    const metadataMandatoryIds = useMemo(
-        () =>
-            (program?.programTrackedEntityAttributes ?? [])
-                .filter((ptea) => ptea.mandatory)
-                .map((ptea) => ptea.trackedEntityAttribute.id),
-        [program],
+    const { mandatoryIds: metadataMandatoryIds, labels } = useTrackedEntityFieldMetadata(
+        program, trackedEntityAttributes,
     );
-
-    const labels = useMemo(() => {
-        const m = new Map<string, string>();
-        for (const tea of trackedEntityAttributes.values()) {
-            m.set(tea.id, tea.displayFormName || tea.name);
-        }
-        return m;
-    }, [trackedEntityAttributes]);
 
     const saveBlockFor = useCallback(
         (values: Record<string, unknown>): SaveBlock =>

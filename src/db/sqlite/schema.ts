@@ -103,6 +103,7 @@ const TRACKER_SCHEMA_STATEMENTS: readonly string[] = [
         occurred_at TEXT NOT NULL,
         scheduled_at TEXT,
         rule_action_key TEXT,
+        created_at_client TEXT,
         follow_up INTEGER NOT NULL DEFAULT 0,
         deleted INTEGER NOT NULL DEFAULT 0,
         created_at TEXT NOT NULL,
@@ -215,22 +216,23 @@ export async function createSchema(driver: SqlDriver): Promise<void> {
     for (const statement of ALL_SCHEMA_STATEMENTS) {
         await driver.execute(statement);
     }
-    // Existing OPFS databases predate scheduled events. Inspect columns so
-    // reopening or upgrading an unversioned database remains idempotent.
+    // Existing OPFS databases predate later events columns: version 1 added
+    // scheduled events, version 2 the device's own creation time. Inspect
+    // columns so reopening or upgrading any older database stays idempotent.
     await driver.transaction(async (tx) => {
         const version = await tx.execute<{ user_version: number }>(
             "PRAGMA user_version",
         );
-        if ((version.rows[0]?.user_version ?? 0) >= 1) return;
+        if ((version.rows[0]?.user_version ?? 0) >= 2) return;
         const columns = await tx.execute<{ name: string }>(
             "PRAGMA table_info(events)",
         );
         const names = new Set(columns.rows.map((column) => column.name));
-        for (const column of ["scheduled_at", "rule_action_key"]) {
+        for (const column of ["scheduled_at", "rule_action_key", "created_at_client"]) {
             if (!names.has(column)) {
                 await tx.execute(`ALTER TABLE events ADD COLUMN ${column} TEXT`);
             }
         }
-        await tx.execute("PRAGMA user_version = 1");
+        await tx.execute("PRAGMA user_version = 2");
     });
 }

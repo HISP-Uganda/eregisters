@@ -2,7 +2,8 @@ import { createRoute } from "@tanstack/react-router";
 import React, { useLayoutEffect, useState } from "react";
 import { z } from "zod";
 import { AnalyticsScreen } from "@/screens/analytics/analytics-screen";
-import { decodeReturnSearch } from "@/screens/analytics/return-search";
+import { consumeReturnSearch, decodeReturnSearchResult } from "@/screens/analytics/return-search";
+import { Alert } from "antd";
 import { RootRoute } from "./__root";
 
 export const AnalyticsRoute = createRoute({
@@ -20,7 +21,7 @@ export const AnalyticsRoute = createRoute({
 function AnalyticsPage() {
     const search = AnalyticsRoute.useSearch();
     const navigate = AnalyticsRoute.useNavigate();
-    const [restored] = useState(() => decodeReturnSearch(search.restore));
+    const [restored] = useState(() => decodeReturnSearchResult(search.restore));
 
     // The snapshot is needed once, on arrival — drop it from the URL so a
     // reload or a shared link doesn't stick to a stale selection. A layout
@@ -28,9 +29,10 @@ function AnalyticsPage() {
     // slow device a refresh in that gap used to land on the stale snapshot.
     useLayoutEffect(() => {
         if (!search.restore) return;
+        consumeReturnSearch(search.restore);
         navigate({ search: (prev) => ({ ...prev, restore: undefined }), replace: true });
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    return <AnalyticsScreen restored={restored} />;
+    return <>{restored.error && <Alert type="error" showIcon title={restored.error} />}<AnalyticsScreen restored={restored.snapshot} /></>;
 }

@@ -19,6 +19,8 @@ function mergeEvent(
         // last stored, or missing entirely.
         createdBy: serverEvent.createdBy ?? localEvent.createdBy,
         updatedBy: serverEvent.updatedBy ?? localEvent.updatedBy,
+        // Events stored before this field was kept have none locally.
+        createdAtClient: localEvent.createdAtClient ?? serverEvent.createdAtClient,
         dataValues: {
             ...serverEvent.dataValues,
             ...localEvent.dataValues,

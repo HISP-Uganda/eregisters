@@ -2,7 +2,7 @@ import { commitEnrollmentRuleActions } from "@/program-rules/commit-actions";
 import { assertRuleSaveAllowed } from "@/program-rules/save-actions";
 import type { ProgramRuleResult } from "@/schemas";
 import { Form } from "antd";
-import React, { useMemo } from "react";
+import React from "react";
 import { DataModal } from "@/components/data-modal";
 import { TrackedEntityRuleAwareForm } from "@/components/rule-aware-form";
 import { TrackerRegistration } from "@/components/tracker-registration";
@@ -12,6 +12,7 @@ import {
     getTrackedEntitiesCollection,
 } from "@/db/collections";
 import { useMetadata } from "@/hooks/useMetadata";
+import { useProgramAttributeIds } from "@/hooks/useProgramAttributeIds";
 import { useTrackedEntitySaveBlock } from "@/hooks/useTrackedEntitySaveBlock";
 import { TrackedEntityContext } from "@/machines";
 import {
@@ -20,6 +21,7 @@ import {
     FlattenedTrackedEntity,
 } from "@/schemas";
 import { cancelDataModal } from "@/utils/record-cascades";
+import { recordTimestamp } from "@/utils/record-factories";
 import { newbornFirstVisit, newbornFromMother } from "./newborn";
 
 /** Stores a new child and enrollment (from `newbornFromMother`) locally. */
@@ -46,9 +48,11 @@ async function saveNewborn(
     await getTrackedEntitiesCollection().update(child.trackedEntity, (draft) => {
         draft.parentEntity = mother.trackedEntity;
         draft.attributes = { ...draft.attributes, ...values };
+        draft.updatedAt = recordTimestamp();
     }).isPersisted.promise;
     await getEnrollmentsCollection().update(enrollment.enrollment, (draft) => {
         draft.attributes = { ...child.attributes, ...values };
+        draft.updatedAt = recordTimestamp();
     }).isPersisted.promise;
     await getEventsCollection().insert(newbornFirstVisit(enrollment, values, motherVisit.event))
         .isPersisted.promise;
@@ -79,15 +83,7 @@ export function NewbornModal({
         ...(child?.attributes ?? {}),
         ...(enrollment?.attributes ?? {}),
     });
-    const programAttributes = useMemo(
-        () =>
-            new Set(
-                program.programTrackedEntityAttributes.map(
-                    ({ trackedEntityAttribute }) => trackedEntityAttribute.id,
-                ),
-            ),
-        [],
-    );
+    const programAttributes = useProgramAttributeIds(program);
 
     return (
         <DataModal<FlattenedTrackedEntity>

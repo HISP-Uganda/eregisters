@@ -53,6 +53,12 @@ describe("buildParentEventDataset", () => {
             .toBe("lab00000001");
         expect(dataset.rows[0].values["childEvent.labstage001.2.event"].raw)
             .toBe("lab00000002");
+        expect(dataset.rows[0].values["childEvent.labstage001.count"].raw).toBe(2);
+        expect(
+            dataset.columns.findIndex((column) => column.key === "childEvent.labstage001.count"),
+        ).toBe(
+            dataset.columns.findIndex((column) => column.key.startsWith("childEvent.labstage001.")),
+        );
         expect(
             dataset.columns.some(
                 (column) =>
@@ -142,6 +148,109 @@ describe("buildParentEventDataset", () => {
         });
 
         expect(dataset.rows).toEqual([]);
+    });
+
+    it("numbers same-day child events in the order they were created", () => {
+        const lab = (id: string, createdAt: string) =>
+            event(id, "labstage001", "teuid000001", {
+                enrollment: "enroll00001",
+                parentEvent: "visit000001",
+                createdAt,
+            });
+        const dataset = buildParentEventDataset({
+            metadata,
+            orgUnit: "ouuid000001",
+            programId: "programuid1",
+            selectedStageId: "visit000001",
+            legalParentStageIds: [],
+            selectedServiceTypes: [],
+            childStageIds: ["labstage001"],
+            startDate: "2026-08-01",
+            endDate: "2026-08-31",
+            trackedEntities: [trackedEntity("teuid000001", {})],
+            enrollments: [enrollment("enroll00001", "teuid000001")],
+            events: [
+                event("visit000001", "visit000001", "teuid000001", { enrollment: "enroll00001" }),
+                lab("aaaaaaaaaaa", "2026-08-26T10:30:00"),
+                lab("bbbbbbbbbbb", ""),
+                lab("ccccccccccc", "2026-08-26T09:15:00"),
+            ],
+        });
+
+        expect([1, 2, 3].map((slot) =>
+            dataset.rows[0].values[`childEvent.labstage001.${slot}.event`].raw))
+            .toEqual(["ccccccccccc", "aaaaaaaaaaa", "bbbbbbbbbbb"]);
+        expect(dataset.rows[0].values["childEvent.labstage001.1.createdAt"].raw)
+            .toBe("2026-08-26T09:15:00");
+        expect(dataset.rows[0].values["childEvent.labstage001.1.updatedAt"].raw)
+            .toBe("2026-08-01");
+    });
+
+    it("numbers pulled child events by their device creation time over the server's", () => {
+        // Synced together: the server stamped both at import, in the wrong order.
+        const lab = (id: string, createdAtClient: string) =>
+            event(id, "labstage001", "teuid000001", {
+                enrollment: "enroll00001",
+                parentEvent: "visit000001",
+                createdAt: "2026-08-27T07:00:00.000Z",
+                createdAtClient,
+            });
+        const dataset = buildParentEventDataset({
+            metadata,
+            orgUnit: "ouuid000001",
+            programId: "programuid1",
+            selectedStageId: "visit000001",
+            legalParentStageIds: [],
+            selectedServiceTypes: [],
+            childStageIds: ["labstage001"],
+            startDate: "2026-08-01",
+            endDate: "2026-08-31",
+            trackedEntities: [trackedEntity("teuid000001", {})],
+            enrollments: [enrollment("enroll00001", "teuid000001")],
+            events: [
+                event("visit000001", "visit000001", "teuid000001", { enrollment: "enroll00001" }),
+                lab("aaaaaaaaaaa", "2026-08-26T10:30:00.000Z"),
+                lab("bbbbbbbbbbb", "2026-08-26T09:15:00.000Z"),
+            ],
+        });
+
+        expect([1, 2].map((slot) =>
+            dataset.rows[0].values[`childEvent.labstage001.${slot}.event`].raw))
+            .toEqual(["bbbbbbbbbbb", "aaaaaaaaaaa"]);
+    });
+
+    it("sizes child slots from the visits inside the period only", () => {
+        const lab = (id: string, parent: string) =>
+            event(id, "labstage001", "teuid000001", { enrollment: "enroll00001", parentEvent: parent });
+        const dataset = buildParentEventDataset({
+            metadata,
+            orgUnit: "ouuid000001",
+            programId: "programuid1",
+            selectedStageId: "visit000001",
+            legalParentStageIds: [],
+            selectedServiceTypes: [],
+            childStageIds: ["labstage001"],
+            startDate: "2026-08-01",
+            endDate: "2026-08-31",
+            trackedEntities: [trackedEntity("teuid000001", {})],
+            enrollments: [enrollment("enroll00001", "teuid000001")],
+            events: [
+                event("augustvisit", "visit000001", "teuid000001", { enrollment: "enroll00001" }),
+                lab("auglab00001", "augustvisit"),
+                lab("auglab00002", "augustvisit"),
+                event("septemvisit", "visit000001", "teuid000001", {
+                    enrollment: "enroll00001",
+                    occurredAt: "2026-09-01",
+                }),
+                lab("septlab0001", "septemvisit"),
+                lab("septlab0002", "septemvisit"),
+                lab("septlab0003", "septemvisit"),
+            ],
+        });
+
+        expect(dataset.columns.map((column) => column.key)
+            .filter((key) => /^childEvent\.labstage001\.\d+\.event$/.test(key)))
+            .toEqual(["childEvent.labstage001.1.event", "childEvent.labstage001.2.event"]);
     });
 
     it("keeps parent event rows when the referenced tracked entity is missing locally", () => {

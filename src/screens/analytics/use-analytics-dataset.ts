@@ -59,24 +59,28 @@ export function useAnalyticsDataset(filters: AnalyticsFilters) {
     );
 
     const hasRequiredFilters = Boolean(filters.selectedStageId && filters.startDate && filters.endDate);
+    const sources: unknown[] = [trackedEntities, enrollments, events, program, trackedEntityAttributes,
+        dataElements, optionSets, orgUnit, uiConfig, legalParentStageIds, stageHierarchyPairs];
     const emptyDataset: AnalyticsDataset = useMemo(
         () => ({ columns: [], rows: [], mainStage: program.programStages[0] }),
         [program],
     );
-    const [state, setState] = useState<{ status: DatasetStatus; dataset: AnalyticsDataset }>({
+    const [state, setState] = useState<{ status: DatasetStatus; dataset: AnalyticsDataset; filters: AnalyticsFilters; sources: unknown[] }>({
         status: "idle",
         dataset: emptyDataset,
+        filters,
+        sources,
     });
     // Guards a build superseded by a newer filter change from overwriting it.
     const computeTokenRef = useRef(0);
 
     useEffect(() => {
         if (!hasRequiredFilters) {
-            setState({ status: "idle", dataset: emptyDataset });
+            setState({ status: "idle", dataset: emptyDataset, filters, sources });
             return;
         }
         const token = ++computeTokenRef.current;
-        setState((prev) => ({ status: "loading", dataset: prev.dataset }));
+        setState((prev) => ({ status: "loading", dataset: prev.dataset, filters, sources }));
         // The build is synchronous and can be heavy; deferring it a tick
         // lets the "loading" spinner paint before the main thread blocks.
         const timer = setTimeout(() => {
@@ -96,7 +100,7 @@ export function useAnalyticsDataset(filters: AnalyticsFilters) {
                 uiConfig,
             });
             if (computeTokenRef.current !== token) return;
-            setState({ status: "ready", dataset: built });
+            setState({ status: "ready", dataset: built, filters, sources });
         }, 0);
         return () => clearTimeout(timer);
     }, [
@@ -115,5 +119,6 @@ export function useAnalyticsDataset(filters: AnalyticsFilters) {
         uiConfig,
     ]);
 
-    return state;
+    const current = state.filters === filters && state.sources.every((source, index) => source === sources[index]);
+    return { dataset: state.dataset, status: current ? state.status : hasRequiredFilters ? "loading" as const : "idle" as const };
 }

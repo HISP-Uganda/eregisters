@@ -77,11 +77,15 @@ function filterValidOptionCodes(
 function authorFields(row: {
     createdBy?: { username?: string };
     createdAt?: string;
+    createdAtClient?: string;
     updatedAt?: string;
 }): { storedBy?: string; createdAtClient?: string; updatedAtClient?: string } {
+    // A pulled record's `createdAt` is the server's; the device's own time
+    // came back as `createdAtClient` and must not be overwritten with it.
+    const createdAtClient = row.createdAtClient || row.createdAt;
     return {
         ...(row.createdBy?.username ? { storedBy: row.createdBy.username } : {}),
-        ...(row.createdAt ? { createdAtClient: row.createdAt } : {}),
+        ...(createdAtClient ? { createdAtClient } : {}),
         ...(row.updatedAt ? { updatedAtClient: row.updatedAt } : {}),
     };
 }

@@ -3,6 +3,11 @@ import { FlattenedEnrollment, FlattenedEvent, FlattenedTrackedEntity } from "@/s
 import { generateUid } from "./id";
 import { getLocalAuthor } from "@/db/local-author";
 
+/** Now, in the format records store `createdAt`/`updatedAt` in. */
+export function recordTimestamp() {
+    return dayjs().format("YYYY-MM-DDTHH:mm:ss.SSSZ");
+}
+
 /**
  * The signed-in user as the new record's author — kept locally and sent as
  * `storedBy` (see `db/local-author.ts`). Omitted when unknown.

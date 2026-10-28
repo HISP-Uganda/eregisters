@@ -1,7 +1,7 @@
 import { BarChartOutlined } from "@ant-design/icons";
 import { Button, Flex, Select, Table } from "antd";
 import type { ColumnsType } from "antd/es/table";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { buildPivot } from "@/analytics/pivot-engine";
 import type {
     AnalyticsColumn,
@@ -98,9 +98,13 @@ export function PivotBuilder({
         () => buildPivot({ rows, columns, config }),
         [rows, columns, config],
     );
+    // Read through a ref: callers pass a fresh callback each render, and
+    // reporting on every one would loop (the report re-renders the caller).
+    const onResultChangeRef = useRef(onResultChange);
+    onResultChangeRef.current = onResultChange;
     useEffect(() => {
-        onResultChange?.({ result, measures: config.measures });
-    }, [result, config.measures, onResultChange]);
+        onResultChangeRef.current?.({ result, measures: config.measures });
+    }, [result, config.measures]);
     const tableRows = result.rowKeys.map((rowKey) => {
         const record: Record<string, string | number> = {
             key: rowKey.join("||"),

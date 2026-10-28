@@ -86,6 +86,24 @@ describe("eventsRowAdapter", () => {
         }
     });
 
+    it("round-trips the device's own creation time through insert and update", async () => {
+        const { driver, close } = createNodeSqliteDriver();
+        try {
+            await createSchema(driver);
+            await seedParents(driver);
+            await eventsRowAdapter.insertRow(driver, makeEvent({ createdAtClient: "2025-12-31T08:00:00.000Z" }));
+            expect((await getEventById(driver, "evt-1"))?.createdAtClient).toBe("2025-12-31T08:00:00.000Z");
+
+            await eventsRowAdapter.updateRow(driver, makeEvent({ createdAtClient: "2025-12-31T09:00:00.000Z" }));
+            expect((await getEventById(driver, "evt-1"))?.createdAtClient).toBe("2025-12-31T09:00:00.000Z");
+
+            await eventsRowAdapter.updateRow(driver, makeEvent());
+            expect((await getEventById(driver, "evt-1"))?.createdAtClient).toBeUndefined();
+        } finally {
+            close();
+        }
+    });
+
     it("updateRow replaces all data values (delete-then-batched-insert) without leaving stale rows", async () => {
         const { driver, close } = createNodeSqliteDriver();
         try {

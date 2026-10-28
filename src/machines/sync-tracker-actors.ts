@@ -78,6 +78,17 @@ type SyncSubResult = {
 };
 type SyncUpsertResult = SyncSubResult & { processed: number };
 
+type TrackerSyncInput = {
+    engine: Engine;
+    backend: StorageBackend;
+    sqlDriver: SqlDriver | undefined;
+    validAttributeIds: Set<string>;
+    validDataElementsByStage: Map<string, Set<string>>;
+    dataElements: Map<string, DataElement> | undefined;
+    trackedEntityAttributes: Map<string, TrackedEntityAttribute> | undefined;
+    optionSets: Map<string, FlattenedOptionSet[]> | undefined;
+};
+
 async function submitTrackerImportAndWaitForReport({
     engine,
     data,
@@ -109,18 +120,10 @@ export async function syncReportToLocal({
     dataElements,
     trackedEntityAttributes,
     optionSets,
-}: {
+}: TrackerSyncInput & {
     entities: Array<
         FlattenedTrackedEntity | FlattenedEnrollment | FlattenedEvent
     >;
-    engine: Engine;
-    backend: StorageBackend;
-    sqlDriver: SqlDriver | undefined;
-    validAttributeIds: Set<string>;
-    validDataElementsByStage: Map<string, Set<string>>;
-    dataElements: Map<string, DataElement> | undefined;
-    trackedEntityAttributes: Map<string, TrackedEntityAttribute> | undefined;
-    optionSets: Map<string, FlattenedOptionSet[]> | undefined;
 }): Promise<SyncUpsertResult> {
     const reachability = await isDhis2Reachable(engine);
     if (!reachability.reachable) {
@@ -275,17 +278,19 @@ export async function syncReportToLocal({
         }));
     }
 
+    const pushUpdates = {
+        trackedEntities: toUpdate(updatedEntities, (r) => r.trackedEntity),
+        enrollments: toUpdate(updatedEnrolments, (r) => r.enrollment),
+        events: toUpdate(updatedEvents, (r) => r.event),
+    };
+
     if (backend === "sqlite") {
         // ONE atomic transaction across all three tables (push-results.ts)
         // — real correctness improvement over 3 separate writes. Bypasses
         // the collection adapters' own write path, so each touched
         // collection needs an explicit refresh() to pick the change back
         // up.
-        await applyPushResults(sqlDriver!, {
-            trackedEntities: toUpdate(updatedEntities, (r) => r.trackedEntity),
-            enrollments: toUpdate(updatedEnrolments, (r) => r.enrollment),
-            events: toUpdate(updatedEvents, (r) => r.event),
-        });
+        await applyPushResults(sqlDriver!, pushUpdates);
         await Promise.all([
             getTrackedEntitiesCollection().utils.refresh(),
             getEnrollmentsCollection().utils.refresh(),
@@ -300,11 +305,7 @@ export async function syncReportToLocal({
                 enrollments: getEnrollmentsDexieCollection(),
                 events: getEventsDexieCollection(),
             },
-            {
-                trackedEntities: toUpdate(updatedEntities, (r) => r.trackedEntity),
-                enrollments: toUpdate(updatedEnrolments, (r) => r.enrollment),
-                events: toUpdate(updatedEvents, (r) => r.event),
-            },
+            pushUpdates,
         );
     }
 
@@ -514,16 +515,7 @@ export async function syncDeleteToLocal({
     };
 }
 
-export async function processBatchSync(input: {
-    engine: Engine;
-    backend: StorageBackend;
-    sqlDriver: SqlDriver | undefined;
-    validAttributeIds: Set<string>;
-    validDataElementsByStage: Map<string, Set<string>>;
-    dataElements: Map<string, DataElement> | undefined;
-    trackedEntityAttributes: Map<string, TrackedEntityAttribute> | undefined;
-    optionSets: Map<string, FlattenedOptionSet[]> | undefined;
-}): Promise<SyncUpsertResult> {
+export async function processBatchSync(input: TrackerSyncInput): Promise<SyncUpsertResult> {
     const {
         engine,
         backend,

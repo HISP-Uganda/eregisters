@@ -1,7 +1,9 @@
 import type { FlattenedEnrollment } from "@/schemas";
 import type { SqlDriver } from "@/db/sqlite/driver-types";
 import type { RowAdapter } from "@/db/sqlite/row-adapter";
-import { loadUsersByUid, upsertUser, type SqlUser } from "./users";
+import { makeRelatedRowsLoader, relatedRowReads, sqlIn, toBool, toInt } from "./load-related-rows";
+import { type SqlUser } from "./users";
+import { writeRelatedRow } from "./write-related-row";
 
 type EnrollmentParentRow = {
     enrollment: string;
@@ -29,13 +31,6 @@ type AttributeRow = {
     attribute: string;
     value: string | null;
 };
-
-function toBool(n: number): boolean {
-    return n === 1;
-}
-function toInt(b: boolean): number {
-    return b ? 1 : 0;
-}
 
 const PARENT_COLUMNS = `enrollment, tracked_entity, program, org_unit, status,
                     enrolled_at, occurred_at, created_at, updated_at,
@@ -79,24 +74,22 @@ function reassemble(
     };
 }
 
+const loadRows = makeRelatedRowsLoader<EnrollmentParentRow, AttributeRow, FlattenedEnrollment>({
+    parentTable: "enrollments",
+    parentColumns: PARENT_COLUMNS,
+    childTable: "enrollment_attributes",
+    childColumns: ATTRIBUTE_COLUMNS,
+    parentKey: (parent) => parent.enrollment,
+    childKey: (child) => child.enrollment,
+    reassemble,
+});
+
 /** See tracked-entities.ts's getTrackedEntityById for the rationale. */
 export async function getEnrollmentById(
     db: SqlDriver,
     enrollment: string,
 ): Promise<FlattenedEnrollment | undefined> {
-    const [parent, attributeRows, usersByUid] = await Promise.all([
-        db.execute<EnrollmentParentRow>(
-            `SELECT ${PARENT_COLUMNS} FROM enrollments WHERE enrollment = ?`,
-            [enrollment],
-        ),
-        db.execute<AttributeRow>(
-            `SELECT ${ATTRIBUTE_COLUMNS} FROM enrollment_attributes WHERE enrollment = ?`,
-            [enrollment],
-        ),
-        loadUsersByUid(db),
-    ]);
-    if (!parent.rows[0]) return undefined;
-    return reassemble(parent.rows[0], attributeRows.rows, usersByUid);
+    return (await loadRows(db, { clause: "enrollment = ?", params: [enrollment], scopeChildren: true }))[0];
 }
 
 async function loadMany(
@@ -104,29 +97,7 @@ async function loadMany(
     whereClause: string,
     params: ReadonlyArray<unknown>,
 ): Promise<FlattenedEnrollment[]> {
-    const [parents, attributeRows, usersByUid] = await Promise.all([
-        db.execute<EnrollmentParentRow>(
-            `SELECT ${PARENT_COLUMNS} FROM enrollments WHERE ${whereClause}`,
-            params,
-        ),
-        db.execute<AttributeRow>(
-            `SELECT ${ATTRIBUTE_COLUMNS} FROM enrollment_attributes`,
-        ),
-        loadUsersByUid(db),
-    ]);
-    const attributesByEnrollment = new Map<string, AttributeRow[]>();
-    for (const attr of attributeRows.rows) {
-        const bucket = attributesByEnrollment.get(attr.enrollment) ?? [];
-        bucket.push(attr);
-        attributesByEnrollment.set(attr.enrollment, bucket);
-    }
-    return parents.rows.map((parent) =>
-        reassemble(
-            parent,
-            attributesByEnrollment.get(parent.enrollment) ?? [],
-            usersByUid,
-        ),
-    );
+    return loadRows(db, { clause: whereClause, params });
 }
 
 /** Backs the recursive delete walk's "enrollments under this TE" lookup. */
@@ -143,12 +114,7 @@ export function findEnrollmentsByTrackedEntityIn(
     trackedEntityIds: ReadonlyArray<string>,
 ): Promise<FlattenedEnrollment[]> {
     if (trackedEntityIds.length === 0) return Promise.resolve([]);
-    const placeholders = trackedEntityIds.map(() => "?").join(", ");
-    return loadMany(
-        db,
-        `tracked_entity IN (${placeholders})`,
-        trackedEntityIds,
-    );
+    return loadMany(db, sqlIn("tracked_entity", trackedEntityIds), trackedEntityIds);
 }
 
 /** Backs sync.ts's pending/failed/deleted scans (`processBatchSync`). */
@@ -156,166 +122,50 @@ export function findEnrollmentsBySyncStatusIn(
     db: SqlDriver,
     statuses: ReadonlyArray<string>,
 ): Promise<FlattenedEnrollment[]> {
-    const placeholders = statuses.map(() => "?").join(", ");
-    return loadMany(db, `sync_status IN (${placeholders})`, statuses);
+    return loadMany(db, sqlIn("sync_status", statuses), statuses);
 }
 
-/**
- * Backs `collection-adapter.ts`'s scoped reloadAndDiff — unlike `loadMany`
- * (whose attribute-table read is always unfiltered), this filters BOTH
- * tables by the given keys, so a single-row write reloads O(1) rows
- * instead of the whole collection.
- */
-async function loadByKeys(
-    db: SqlDriver,
-    keys: readonly string[],
-): Promise<FlattenedEnrollment[]> {
-    if (keys.length === 0) return [];
-    const placeholders = keys.map(() => "?").join(", ");
-    const [parents, attributeRows, usersByUid] = await Promise.all([
-        db.execute<EnrollmentParentRow>(
-            `SELECT ${PARENT_COLUMNS} FROM enrollments WHERE enrollment IN (${placeholders})`,
-            keys,
-        ),
-        db.execute<AttributeRow>(
-            `SELECT ${ATTRIBUTE_COLUMNS} FROM enrollment_attributes WHERE enrollment IN (${placeholders})`,
-            keys,
-        ),
-        loadUsersByUid(db),
-    ]);
-    const attributesByEnrollment = new Map<string, AttributeRow[]>();
-    for (const attr of attributeRows.rows) {
-        const bucket = attributesByEnrollment.get(attr.enrollment) ?? [];
-        bucket.push(attr);
-        attributesByEnrollment.set(attr.enrollment, bucket);
-    }
-    return parents.rows.map((parent) =>
-        reassemble(
-            parent,
-            attributesByEnrollment.get(parent.enrollment) ?? [],
-            usersByUid,
-        ),
-    );
+function parentValues(row: FlattenedEnrollment): unknown[] {
+    return [
+        row.trackedEntity, row.program, row.orgUnit, row.status,
+        row.enrolledAt, row.occurredAt ?? null, row.createdAt, row.updatedAt,
+        row.createdBy?.uid ?? null, row.updatedBy?.uid ?? null,
+        toInt(row.followUp), toInt(row.deleted),
+        row.notes ? JSON.stringify(row.notes) : null,
+        row.lastSynced, row.syncError ?? null, row.version, row.syncStatus,
+    ];
 }
 
 export const enrollmentsRowAdapter: RowAdapter<FlattenedEnrollment, string> = {
-    rowVersion: (row) => row.updatedAt,
+    ...relatedRowReads(loadRows, "enrollment"),
 
-    loadByKeys,
-
-    loadAll: async (db) => {
-        const [parents, attributeRows, usersByUid] = await Promise.all([
-            db.execute<EnrollmentParentRow>(
-                `SELECT ${PARENT_COLUMNS} FROM enrollments`,
-            ),
-            db.execute<AttributeRow>(
-                `SELECT ${ATTRIBUTE_COLUMNS} FROM enrollment_attributes`,
-            ),
-            loadUsersByUid(db),
-        ]);
-
-        const attributesByEnrollment = new Map<string, AttributeRow[]>();
-        for (const attr of attributeRows.rows) {
-            const bucket = attributesByEnrollment.get(attr.enrollment) ?? [];
-            bucket.push(attr);
-            attributesByEnrollment.set(attr.enrollment, bucket);
-        }
-
-        return parents.rows.map((parent) =>
-            reassemble(
-                parent,
-                attributesByEnrollment.get(parent.enrollment) ?? [],
-                usersByUid,
-            ),
-        );
-    },
-
-    insertRow: async (db, row, options) => {
-        await db.transaction(async (tx) => {
-            await upsertUser(tx, row.createdBy);
-            await upsertUser(tx, row.updatedBy);
-            await tx.execute(
-                `INSERT INTO enrollments (
+    insertRow: (db, row, options) =>
+        writeRelatedRow(db, row,
+            `INSERT INTO enrollments (
                     enrollment, tracked_entity, program, org_unit, status,
                     enrolled_at, occurred_at, created_at, updated_at,
                     created_by_uid, updated_by_uid, follow_up, deleted,
                     notes, last_synced, sync_error, version, sync_status
                  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                [
-                    row.enrollment,
-                    row.trackedEntity,
-                    row.program,
-                    row.orgUnit,
-                    row.status,
-                    row.enrolledAt,
-                    row.occurredAt ?? null,
-                    row.createdAt,
-                    row.updatedAt,
-                    row.createdBy?.uid ?? null,
-                    row.updatedBy?.uid ?? null,
-                    toInt(row.followUp),
-                    toInt(row.deleted),
-                    row.notes ? JSON.stringify(row.notes) : null,
-                    row.lastSynced,
-                    row.syncError ?? null,
-                    row.version,
-                    row.syncStatus,
-                ],
-            );
-            await insertAttributes(
-                tx,
-                row.enrollment,
-                row.attributes,
-                options?.source ?? "local",
-            );
-        });
-    },
+            [row.enrollment, ...parentValues(row)],
+            (tx) => insertAttributes(tx, row.enrollment, row.attributes, options?.source ?? "local"),
+        ),
 
-    updateRow: async (db, row, options) => {
-        await db.transaction(async (tx) => {
-            await upsertUser(tx, row.createdBy);
-            await upsertUser(tx, row.updatedBy);
-            await tx.execute(
-                `UPDATE enrollments SET
+    updateRow: (db, row, options) =>
+        writeRelatedRow(db, row,
+            `UPDATE enrollments SET
                     tracked_entity = ?, program = ?, org_unit = ?, status = ?,
                     enrolled_at = ?, occurred_at = ?, created_at = ?,
                     updated_at = ?, created_by_uid = ?, updated_by_uid = ?,
                     follow_up = ?, deleted = ?, notes = ?, last_synced = ?,
                     sync_error = ?, version = ?, sync_status = ?
                  WHERE enrollment = ?`,
-                [
-                    row.trackedEntity,
-                    row.program,
-                    row.orgUnit,
-                    row.status,
-                    row.enrolledAt,
-                    row.occurredAt ?? null,
-                    row.createdAt,
-                    row.updatedAt,
-                    row.createdBy?.uid ?? null,
-                    row.updatedBy?.uid ?? null,
-                    toInt(row.followUp),
-                    toInt(row.deleted),
-                    row.notes ? JSON.stringify(row.notes) : null,
-                    row.lastSynced,
-                    row.syncError ?? null,
-                    row.version,
-                    row.syncStatus,
-                    row.enrollment,
-                ],
-            );
-            await tx.execute(
-                "DELETE FROM enrollment_attributes WHERE enrollment = ?",
-                [row.enrollment],
-            );
-            await insertAttributes(
-                tx,
-                row.enrollment,
-                row.attributes,
-                options?.source ?? "local",
-            );
-        });
-    },
+            [...parentValues(row), row.enrollment],
+            async (tx) => {
+                await tx.execute("DELETE FROM enrollment_attributes WHERE enrollment = ?", [row.enrollment]);
+                await insertAttributes(tx, row.enrollment, row.attributes, options?.source ?? "local");
+            },
+        ),
 
     deleteRow: async (db, key) => {
         await db.transaction(async (tx) => {

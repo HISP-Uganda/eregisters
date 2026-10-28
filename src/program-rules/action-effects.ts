@@ -83,6 +83,9 @@ export function materializeEventActions(
         // A scheduled event has no actual occurrence date, even if supplied in dataValues.
         delete dataValues.occurredAt;
         if (!scheduled) dataValues.occurredAt = date;
+        // Each event gets its own creation time, a millisecond apart in
+        // action order, so events from one save keep a stable order.
+        const stamp = new Date(Date.parse(options.now) + created.length).toISOString();
         created.push({
             event: options.generateUid(),
             program: source.program,
@@ -98,8 +101,8 @@ export function materializeEventActions(
             dataValues,
             followUp: false,
             deleted: false,
-            createdAt: options.now,
-            updatedAt: options.now,
+            createdAt: stamp,
+            updatedAt: stamp,
             syncStatus: "draft",
             lastSynced: "",
             syncError: "",

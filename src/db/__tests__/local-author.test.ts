@@ -76,6 +76,15 @@ describe("what a push sends", () => {
         }
     });
 
+    it("keeps a pulled event's device creation time instead of sending the server's", () => {
+        const ev = {
+            ...createEmptyEvent({ orgUnit: "ou", program: "p", trackedEntity: "te", enrollment: "en", programStage: "ps" }),
+            createdAt: "2026-08-26T12:00:05.000Z",
+            createdAtClient: "2026-08-26T09:15:00.000Z",
+        };
+        expect(transformEvent(ev, new Set())).toMatchObject({ createdAtClient: "2026-08-26T09:15:00.000Z" });
+    });
+
     it("sends no storedBy for a record without a known author", () => {
         const te = createEmptyTrackedEntity({ orgUnit: "ou" });
         const payload = transformTrackedEntity(te) as Record<string, unknown>;

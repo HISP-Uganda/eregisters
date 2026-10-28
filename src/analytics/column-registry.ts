@@ -376,19 +376,44 @@ export function buildColumnRegistry({
     for (const [stageId, slotCount] of childStageSlotCounts.entries()) {
         const stage = metadata.program.programStages.find((s) => s.id === stageId);
         if (!stage || slotCount <= 0) continue;
+        columns.push(
+            column({
+                key: `childEvent.${stageId}.count`,
+                label: `Number of ${stage.name}`,
+                source: "childEvent",
+                sourceFieldId: "count",
+                valueKind: "number",
+                groupPath: [stage.name, "System"],
+                canMeasure: true,
+            }),
+        );
         for (let slot = 1; slot <= slotCount; slot++) {
             columns.push(
                 column({
                     key: `childEvent.${stageId}.${slot}.event`,
-                    label: `Event ID (${slot})`,
+                    label: `${stage.name} Event ID (${slot})`,
                     source: "childEvent",
                     sourceFieldId: "event",
                     valueKind: "string",
                     groupPath: [stage.name, "System"],
                     chooserKey: `childEvent.${stageId}.event`,
-                    chooserLabel: "Event ID",
+                    chooserLabel: `${stage.name} Event ID`,
                 }),
             );
+            for (const field of ["createdAt", "updatedAt"]) {
+                columns.push(
+                    column({
+                        key: `childEvent.${stageId}.${slot}.${field}`,
+                        label: `${stage.name} ${field} (${slot})`,
+                        source: "childEvent",
+                        sourceFieldId: field,
+                        valueKind: "datetime",
+                        groupPath: [stage.name, "System"],
+                        chooserKey: `childEvent.${stageId}.${field}`,
+                        chooserLabel: `${stage.name} ${field}`,
+                    }),
+                );
+            }
 
             for (const { de, valueKind, label, groupPath, canMeasure } of stageDataElements(
                 stage,

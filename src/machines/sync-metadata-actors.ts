@@ -131,19 +131,20 @@ export function resetMetadataForRecovery(store: MetadataStore): Promise<void> {
     return resetMetadataDatabaseGeneric(store);
 }
 
+async function fetchAndStoreUiConfig(store: MetadataStore, engine: Engine): Promise<UIConfig> {
+    const result = (await queryWithTimeout(engine, {
+        uiConfig: { resource: "dataStore/eregisters/ui-config" },
+    }, SYNC_TIMEOUTS_MS.probe)) as { uiConfig: UIConfig };
+    await store.putRow("ui_config", { id: "main", config: result.uiConfig });
+    return result.uiConfig;
+}
+
 export async function pullUiConfig(
     store: MetadataStore,
     engine: Engine,
 ): Promise<UIConfig> {
     try {
-        const result = (await queryWithTimeout(engine, {
-            uiConfig: { resource: "dataStore/eregisters/ui-config" },
-        }, SYNC_TIMEOUTS_MS.probe)) as { uiConfig: UIConfig };
-        await store.putRow("ui_config", {
-            id: "main",
-            config: result.uiConfig,
-        });
-        return result.uiConfig;
+        return await fetchAndStoreUiConfig(store, engine);
     } catch {
         // Runs on every boot (sync.ts's metadataSync `waiting` state), so
         // offline must not wipe the last config pulled while online.
@@ -195,14 +196,7 @@ export async function getConfiguredPageSize(
     engine: Engine,
 ): Promise<number | undefined> {
     try {
-        const result = (await queryWithTimeout(engine, {
-            uiConfig: { resource: "dataStore/eregisters/ui-config" },
-        }, SYNC_TIMEOUTS_MS.probe)) as { uiConfig: UIConfig };
-        await store.putRow("ui_config", {
-            id: "main",
-            config: result.uiConfig,
-        });
-        return result.uiConfig.dataPullPageSize;
+        return (await fetchAndStoreUiConfig(store, engine)).dataPullPageSize;
     } catch {
         const row = await store.getRow<{ id: string; config: UIConfig }>(
             "ui_config",

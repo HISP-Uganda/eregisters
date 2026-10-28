@@ -7,6 +7,7 @@ import { EventRuleAwareForm } from "@/components/rule-aware-form";
 import { getEventsCollection } from "@/db/collections";
 import { useMetadata } from "@/hooks/useMetadata";
 import { EventContext } from "@/machines";
+import { toRuleEvents } from "@/program-rules/to-rule-events";
 import {
     FlattenedEnrollment,
     FlattenedEvent,
@@ -100,15 +101,7 @@ export function VisitModal({
                                 trackedEntity,
                                 validDataElements: mainStageDataElements,
                                 form,
-                                allEnrollmentEvents: allEnrollmentEvents.map((e) => ({
-                                    event: e.event,
-                        ...(e.enrollment ? { enrollment: e.enrollment } : {}),
-                        ...(e.createdAt ? { createdAt: e.createdAt } : {}),
-                        ...(e.status ? { status: e.status } : {}),
-                                    programStage: e.programStage,
-                                    occurredAt: e.occurredAt,
-                                    dataValues: e.dataValues,
-                                })),
+                                allEnrollmentEvents: toRuleEvents(allEnrollmentEvents),
                             },
                         }}
                     >

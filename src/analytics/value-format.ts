@@ -27,6 +27,7 @@ export function valueKindFromDhis2(
         case "TRUE_ONLY":
             return "boolean";
         case "DATE":
+        case "AGE":
             return "date";
         case "DATETIME":
             return "datetime";

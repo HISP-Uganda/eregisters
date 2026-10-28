@@ -31,6 +31,22 @@ function ageFromDob(now: dayjs.Dayjs, dob: dayjs.Dayjs) {
 
 const { Text } = Typography;
 
+function AgeInput({ label, value, max, disabled, onChange }: {
+    label: string;
+    value: number | null;
+    max?: number;
+    disabled: boolean;
+    onChange: (value: number | null) => void;
+}) {
+    return <Flex gap={5} style={{ flex: 1 }} align="center">
+        <Text style={{ fontSize: 12 }}>{label}</Text>
+        <InputNumber min={0} max={max} placeholder={label}
+            value={value ?? undefined} onChange={onChange}
+            disabled={disabled} size="small"
+            style={{ width: "100%", flex: 1 }} />
+    </Flex>;
+}
+
 export default function DobPicker({
     form,
     dataElement,
@@ -113,62 +129,12 @@ export default function DobPicker({
                 />
             </Form.Item>
             <Flex gap={8} style={{ width: "100%" }}>
-                <Flex gap={5} style={{ flex: 1 }} align="center">
-                    <Text style={{ fontSize: 12 }}>Years</Text>
-                    <InputNumber
-                        min={0}
-                        placeholder="Years"
-                        value={calculatedAge.years ?? undefined}
-                        onChange={(v) =>
-                            handleAgeChange(
-                                v,
-                                calculatedAge.months,
-                                calculatedAge.days,
-                            )
-                        }
-                        disabled={disabled}
-                        size="small"
-                        style={{ width: "100%", flex: 1 }}
-                    />
-                </Flex>
-                <Flex gap={5} style={{ flex: 1 }} align="center">
-                    <Text style={{ fontSize: 12 }}>Months</Text>
-                    <InputNumber
-                        min={0}
-                        max={11}
-                        placeholder="Months"
-                        value={calculatedAge.months ?? undefined}
-                        onChange={(v) =>
-                            handleAgeChange(
-                                calculatedAge.years,
-                                v,
-                                calculatedAge.days,
-                            )
-                        }
-                        disabled={disabled}
-                        size="small"
-                        style={{ width: "100%", flex: 1 }}
-                    />
-                </Flex>
-                <Flex gap={5} style={{ flex: 1 }} align="center">
-                    <Text style={{ fontSize: 12 }}>Days</Text>
-                    <InputNumber
-                        min={0}
-                        max={31}
-                        placeholder="Days"
-                        value={calculatedAge.days ?? undefined}
-                        onChange={(v) =>
-                            handleAgeChange(
-                                calculatedAge.years,
-                                calculatedAge.months,
-                                v,
-                            )
-                        }
-                        disabled={disabled}
-                        size="small"
-                        style={{ width: "100%", flex: 1 }}
-                    />
-                </Flex>
+                <AgeInput label="Years" value={calculatedAge.years} disabled={disabled}
+                    onChange={(v) => handleAgeChange(v, calculatedAge.months, calculatedAge.days)} />
+                <AgeInput label="Months" value={calculatedAge.months} max={11} disabled={disabled}
+                    onChange={(v) => handleAgeChange(calculatedAge.years, v, calculatedAge.days)} />
+                <AgeInput label="Days" value={calculatedAge.days} max={31} disabled={disabled}
+                    onChange={(v) => handleAgeChange(calculatedAge.years, calculatedAge.months, v)} />
             </Flex>
         </Flex>
     );

@@ -1,4 +1,4 @@
-import { assertRuleSaveAllowed, captureEventStatus } from "@/program-rules/save-actions";
+import { assertRuleSaveAllowed, updateEventCompletion } from "@/program-rules/save-actions";
 import { message } from "antd";
 import { getEventsCollection } from "@/db/collections";
 import {
@@ -8,7 +8,7 @@ import {
     ProgramRuleResult,
 } from "@/schemas";
 import { deleteEventWithChildren } from "@/utils/record-cascades";
-import { createEmptyEvent } from "@/utils/record-factories";
+import { createEmptyEvent, recordTimestamp } from "@/utils/record-factories";
 import { commitRuleEventActions } from "@/program-rules/commit-actions";
 
 /** What a visit's stage table writes. `pushData` starts a push to DHIS2. */
@@ -56,13 +56,9 @@ export async function saveStageEvent(
     await getEventsCollection().update(event, (draft) => {
         draft.dataValues = { ...draft.dataValues, ...values };
         draft.syncStatus = "draft";
+        draft.updatedAt = recordTimestamp();
         draft.parentEvent = visit;
-        draft.status = captureEventStatus(draft.status, draft.dataValues, complete);
-        if (draft.dataValues.occurredAt) draft.occurredAt = draft.dataValues.occurredAt;
-        if (complete) {
-            draft.status = "COMPLETED";
-            draft.completedAt = new Date().toISOString();
-        }
+        updateEventCompletion(draft, complete);
     }).isPersisted.promise;
     const saved = getEventsCollection().get(event);
     if (saved) await commitRuleEventActions(saved, ruleResult);
@@ -77,6 +73,7 @@ export async function saveStageEventValue(
     await getEventsCollection().update(event, (draft) => {
         draft.dataValues[dataElement] = value;
         draft.syncStatus = "draft";
+        draft.updatedAt = recordTimestamp();
     }).isPersisted.promise;
 }
 
@@ -86,6 +83,7 @@ export async function saveStageEventDate(event: string, value: unknown) {
         draft.occurredAt = (value as string) ?? draft.occurredAt;
         draft.dataValues.occurredAt = value;
         draft.syncStatus = "draft";
+        draft.updatedAt = recordTimestamp();
     }).isPersisted.promise;
 }
 
@@ -120,6 +118,7 @@ export function moveEventsToVisitDate(
             .update(event.event, (draft) => {
                 draft.occurredAt = visitDate;
                 draft.dataValues.occurredAt = visitDate;
+                draft.updatedAt = recordTimestamp();
                 if (draft.syncStatus === "synced") {
                     draft.syncStatus = "draft";
                 }

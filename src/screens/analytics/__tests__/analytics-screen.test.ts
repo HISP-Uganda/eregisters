@@ -1,7 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { draftError, emptyDraft, toDefinition, type Draft } from "@/screens/analytics/computed-columns/draft";
 import {
     decodeReturnSearch,
+    consumeReturnSearch,
     encodeReturnSearch,
     MAX_RETURN_SEARCH_LENGTH,
     type AnalyticsRestoredState,
@@ -56,6 +57,7 @@ describe("computed column drafts", () => {
 });
 
 describe("the return snapshot", () => {
+    afterEach(() => vi.unstubAllGlobals());
     const snapshot = {
         filters: { programId: "p" },
         visibleColumnKeys: ["a"],
@@ -67,14 +69,23 @@ describe("the return snapshot", () => {
         expect(decodeReturnSearch(encodeReturnSearch(snapshot))).toEqual(snapshot);
     });
 
-    it("drops the table state when the snapshot would be too long", () => {
+    it("stores an oversized snapshot and restores all filters once", () => {
+        const values = new Map<string, string>();
+        vi.stubGlobal("sessionStorage", {
+            setItem: (key: string, value: string) => values.set(key, value),
+            getItem: (key: string) => values.get(key) ?? null,
+            removeItem: (key: string) => values.delete(key),
+        });
         const big = {
             ...snapshot,
             tableState: { filters: { x: ["y".repeat(MAX_RETURN_SEARCH_LENGTH)] } },
         } as unknown as AnalyticsRestoredState;
-        const decoded = decodeReturnSearch(encodeReturnSearch(big))!;
-        expect(decoded.tableState).toBeUndefined();
-        expect(decoded.tab).toBe("pivot");
+        const encoded = encodeReturnSearch(big);
+        expect(encoded.length).toBeLessThan(MAX_RETURN_SEARCH_LENGTH);
+        expect(decodeReturnSearch(encoded)).toEqual(big);
+        expect(decodeReturnSearch(encoded)).toEqual(big);
+        consumeReturnSearch(encoded);
+        expect(decodeReturnSearch(encoded)).toBeNull();
     });
 
     it("ignores a missing or unreadable snapshot", () => {

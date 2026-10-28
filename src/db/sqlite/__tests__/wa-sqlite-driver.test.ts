@@ -323,14 +323,14 @@ describe("wa-sqlite-driver", () => {
             const driverPromise = createWaSqliteDriver("test-db", () => worker);
 
             // createSchema awaits the initial schema, then a versioned migration.
-            // This fake returns no columns, exercising both ALTER statements.
-            for (let i = 0; i < ALL_SCHEMA_STATEMENTS.length + 7; i++) {
+            // This fake returns no columns, exercising all three ALTER statements.
+            for (let i = 0; i < ALL_SCHEMA_STATEMENTS.length + 8; i++) {
                 await tick();
                 worker.respondToLast();
             }
 
             await driverPromise;
-            expect(worker.sent).toHaveLength(ALL_SCHEMA_STATEMENTS.length + 7);
+            expect(worker.sent).toHaveLength(ALL_SCHEMA_STATEMENTS.length + 8);
             expect(
                 worker.sent.slice(0, ALL_SCHEMA_STATEMENTS.length).every((m) => m.request.type === "execute"),
             ).toBe(true);

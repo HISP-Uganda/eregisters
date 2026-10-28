@@ -52,12 +52,14 @@ export function PivotTab({
     columns,
     rows,
     exportInfo,
+    exportDisabled,
     onExportInfoChange,
 }: {
     status: DatasetStatus;
     columns: AnalyticsColumn[];
     rows: AnalyticsRow[];
     exportInfo: PivotExportInfo;
+    exportDisabled?: boolean;
     onExportInfoChange: (info: PivotExportInfo) => void;
 }) {
     if (status !== "ready") return <DatasetPlaceholder status={status} />;
@@ -66,6 +68,7 @@ export function PivotTab({
             <Flex justify="flex-end">
                 <Button
                     icon={<DownloadOutlined />}
+                    disabled={exportDisabled}
                     onClick={() => writeWorkbookFile(exportPivotWorkbook(exportInfo), "analytics-pivot.xlsx")}
                 >
                     Export

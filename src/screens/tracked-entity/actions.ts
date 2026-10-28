@@ -1,4 +1,4 @@
-import { applyRuleValues, assertRuleSaveAllowed, captureEventStatus, evaluateEventForSave, type RuleSaveMetadata } from "@/program-rules/save-actions";
+import { applyRuleValues, assertRuleSaveAllowed, captureEventStatus, evaluateEventForSave, updateEventCompletion, type RuleSaveMetadata } from "@/program-rules/save-actions";
 import {
     getEnrollmentsCollection,
     getEventsCollection,
@@ -15,7 +15,7 @@ import {
     deleteTrackedEntityWithChildren,
     resendEventWithChildren,
 } from "@/utils/record-cascades";
-import { createEmptyEvent } from "@/utils/record-factories";
+import { createEmptyEvent, recordTimestamp } from "@/utils/record-factories";
 import type { ProgramRuleResult } from "@/schemas";
 import { commitEnrollmentRuleActions, commitRuleEventActions } from "@/program-rules/commit-actions";
 import { MAIN_STAGE } from "./client";
@@ -75,12 +75,8 @@ export async function saveVisit(
     }
     await eventsCollection.update(visit.event, (draft) => {
         draft.dataValues = applyRuleValues(currentVisit.dataValues, evaluated.get(visit.event) ?? ruleResult);
-        draft.status = captureEventStatus(draft.status, draft.dataValues, complete);
-        if (draft.dataValues.occurredAt) draft.occurredAt = draft.dataValues.occurredAt;
-        if (complete) {
-            draft.status = "COMPLETED";
-            draft.completedAt = new Date().toISOString();
-        }
+        updateEventCompletion(draft, complete);
+        draft.updatedAt = recordTimestamp();
     }).isPersisted.promise;
     await commitRuleEventActions(currentVisit, evaluated.get(visit.event) ?? ruleResult);
     for (const event of pending.filter((event) => event.event !== visit.event)) {
@@ -89,6 +85,7 @@ export async function saveVisit(
                 draft.dataValues = event.dataValues;
                 draft.status = captureEventStatus(draft.status, draft.dataValues);
                 if (draft.dataValues.occurredAt) draft.occurredAt = draft.dataValues.occurredAt;
+                draft.updatedAt = recordTimestamp();
             }).isPersisted.promise;
         }
         await commitRuleEventActions(event, evaluated.get(event.event));
@@ -179,6 +176,7 @@ export async function saveClient(
     await getTrackedEntitiesCollection().update(client.trackedEntity, (draft) => {
         draft.attributes = attributes;
         draft.syncStatus = "pending";
+        draft.updatedAt = recordTimestamp();
     }).isPersisted.promise;
 
     if (enrolledAt || complete) {
@@ -187,6 +185,7 @@ export async function saveClient(
             if (complete) draft.status = "COMPLETED";
             draft.syncStatus = "pending";
             draft.attributes = attributes;
+            draft.updatedAt = recordTimestamp();
         }).isPersisted.promise;
     }
     await commitEnrollmentRuleActions(enrollment, { enrolledAt: enrollment.attributes.enrolledAt ?? enrollment.enrolledAt, ...values }, ruleResult);

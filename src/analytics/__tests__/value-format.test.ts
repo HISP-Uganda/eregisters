@@ -52,6 +52,7 @@ describe("valueKindFromDhis2", () => {
         expect(valueKindFromDhis2("INTEGER")).toBe("number");
         expect(valueKindFromDhis2("BOOLEAN")).toBe("boolean");
         expect(valueKindFromDhis2("DATE")).toBe("date");
+        expect(valueKindFromDhis2("AGE")).toBe("date");
         expect(valueKindFromDhis2("DATETIME")).toBe("datetime");
         expect(valueKindFromDhis2("TIME")).toBe("time");
         expect(valueKindFromDhis2("TEXT")).toBe("string");

@@ -7,6 +7,7 @@ import {
 } from "@/db/collections";
 import { useMetadata } from "@/hooks/useMetadata";
 import { EventContext } from "@/machines";
+import { toRuleEvents } from "@/program-rules/to-rule-events";
 import { FlattenedEvent, FlattenedTrackedEntity } from "@/schemas";
 import BasicForm from "./basic-form";
 
@@ -93,15 +94,7 @@ export default function Relation({
 					trackedEntity,
 					validDataElements: mainStageDataElements,
 					form,
-					allEnrollmentEvents: allEnrollmentEventsRaw.map((e) => ({
-						event: e.event,
-						...(e.enrollment ? { enrollment: e.enrollment } : {}),
-						...(e.createdAt ? { createdAt: e.createdAt } : {}),
-						...(e.status ? { status: e.status } : {}),
-						programStage: e.programStage,
-						occurredAt: e.occurredAt,
-						dataValues: e.dataValues,
-					})),
+					allEnrollmentEvents: toRuleEvents(allEnrollmentEventsRaw),
 				},
 			}}
 		>

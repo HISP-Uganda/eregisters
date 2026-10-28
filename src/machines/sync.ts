@@ -1,4 +1,3 @@
-import { assign, fromCallback, fromPromise, not, setup } from "xstate";
 import {
 	DataElement,
 	DEFAULT_DATA_PULL_PAGE_SIZE,
@@ -17,67 +16,67 @@ import {
 	TrackedEntityAttribute,
 	UIConfig,
 } from "@/schemas";
+import { assign, fromCallback, fromPromise, setup } from "xstate";
 
-import { createActorContext } from "@xstate/react";
-import { MessageInstance } from "antd/es/message/interface";
-import type { SyncState } from "@/schemas";
+import { syncsBlockedByUpdate } from "@/app-update/update-controller";
 import type { StorageBackend } from "@/db/backend";
-import { crossTabBus } from "@/db/cross-tab";
-import { subscribeConfigChanged } from "@/db/reactive-config";
 import {
 	getEnrollmentsCollection,
 	getEventsCollection,
 	getTrackedEntitiesCollection,
 } from "@/db/collections";
+import { crossTabBus } from "@/db/cross-tab";
+import { dexieLocalLookups } from "@/db/dexie/pull-page-lookups";
 import type {
 	CheckMetadataInfoResult,
 	QueryMetadataInfoResult,
 } from "@/db/metadata-operations";
 import type { MetadataStore } from "@/db/metadata-store";
 import { writePulledTrackedEntityPage } from "@/db/pull-page";
-import { dexieLocalLookups } from "@/db/dexie/pull-page-lookups";
+import { subscribeConfigChanged } from "@/db/reactive-config";
 import type { SqlDriver } from "@/db/sqlite/driver-types";
 import { sqlLocalLookups } from "@/db/sqlite/pull-page-lookups";
-import { type ConnectivityStatus } from "./network-reachability";
-import { queryWithTimeout, SYNC_TIMEOUTS_MS } from "./network-reachability";
-import {
-	checkMetadataSyncStatus,
-	replaceMetadataForResync,
-	getConfiguredPageSize,
-	patchSyncState,
-	pullMetadataResources,
-	pullStageHierarchyConfig,
-	pullUiConfig,
-	queryMetadata,
-	resetMetadataForRecovery,
-	saveMetadataToSqlite,
-} from "./sync-metadata-actors";
-import {
-	DataPullMode,
-	DataPushMode,
-	extractServerDate,
-	MetadataSyncMode,
-	resolveNextDataPull,
-	shouldContinueDataPull,
-	shouldRecordDataPush,
-	checkpointForScope,
-	pullScopeKey,
-	shouldUseLastDataPull,
-	withPullOverlap,
-} from "./sync-metadata-mode";
+import type { SyncState } from "@/schemas";
+import { createActorContext } from "@xstate/react";
+import { MessageInstance } from "antd/es/message/interface";
+import { queryWithTimeout, SYNC_TIMEOUTS_MS, type ConnectivityStatus } from "./network-reachability";
 import {
 	countFetched,
 	logPullData,
 	pullFailureOutcome,
 	type PullDataSummary,
 } from "./pull-log";
-import { processBatchSync as processBatchSyncImpl } from "./sync-tracker-actors";
-import { syncsBlockedByUpdate } from "@/app-update/update-controller";
 import {
 	holdLockIfAvailable,
 	SYNC_LOCK_NAMES,
 	type SyncKind,
 } from "./sync-locks";
+import {
+	checkMetadataSyncStatus,
+	getConfiguredPageSize,
+	patchSyncState,
+	pullMetadataResources,
+	pullStageHierarchyConfig,
+	pullUiConfig,
+	queryMetadata,
+	replaceMetadataForResync,
+	resetMetadataForRecovery,
+	saveMetadataToSqlite,
+} from "./sync-metadata-actors";
+import {
+	checkpointForScope,
+	DataPullMode,
+	DataPushMode,
+	extractServerDate,
+	MetadataSyncMode,
+	pullScopeKey,
+	resolveNextDataPull,
+	shouldContinueDataPull,
+	shouldRecordDataPush,
+	shouldUseLastDataPull,
+	withPullOverlap,
+} from "./sync-metadata-mode";
+import { processBatchSync as processBatchSyncImpl } from "./sync-tracker-actors";
 
 /** Shown in a tab whose sync was skipped because another tab runs it. */
 const SKIPPED_SYNC_MESSAGES: Record<SyncKind, string> = {

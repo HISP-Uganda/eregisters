@@ -3,18 +3,19 @@ import { assertRuleSaveAllowed } from "@/program-rules/save-actions";
 import type { ProgramRuleResult } from "@/schemas";
 import { useNavigate } from "@tanstack/react-router";
 import { Form } from "antd";
-import React, { useMemo } from "react";
+import React from "react";
 import { DataModal } from "@/components/data-modal";
 import { TrackedEntityRuleAwareForm } from "@/components/rule-aware-form";
 import { TrackerRegistration } from "@/components/tracker-registration";
 import { getEnrollmentsCollection, getTrackedEntitiesCollection } from "@/db/collections";
 import { useMetadata } from "@/hooks/useMetadata";
 import { useModalState } from "@/hooks/useModalState";
+import { useProgramAttributeIds } from "@/hooks/useProgramAttributeIds";
 import { useTrackedEntitySaveBlock } from "@/hooks/useTrackedEntitySaveBlock";
 import { TrackedEntityContext } from "@/machines";
 import { FlattenedEnrollment, FlattenedTrackedEntity } from "@/schemas";
 import { cancelDataModal } from "@/utils/record-cascades";
-import { createEmptyEnrollment, createEmptyTrackedEntity } from "@/utils/record-factories";
+import { createEmptyEnrollment, createEmptyTrackedEntity, recordTimestamp } from "@/utils/record-factories";
 
 /** Saves the registration form's values on the new client and its enrollment. */
 async function saveRegistration(
@@ -28,11 +29,13 @@ async function saveRegistration(
     await getTrackedEntitiesCollection().update(client.trackedEntity, (draft) => {
         draft.attributes = { ...client.attributes, ...values };
         draft.syncStatus = "pending";
+        draft.updatedAt = recordTimestamp();
     }).isPersisted.promise;
     await getEnrollmentsCollection().update(enrollment.enrollment, (draft) => {
         draft.attributes = { ...enrollment.attributes, ...values };
         if (complete) draft.status = "COMPLETED";
         draft.syncStatus = "pending";
+        draft.updatedAt = recordTimestamp();
     }).isPersisted.promise;
     await commitEnrollmentRuleActions(enrollment, values, ruleResult);
 }
@@ -72,10 +75,7 @@ export function RegisterClientModal({ registration }: { registration: ReturnType
         ...(client?.attributes ?? {}),
         ...(enrollment?.attributes ?? {}),
     });
-    const programAttributes = useMemo(
-        () => new Set(program.programTrackedEntityAttributes.map(({ trackedEntityAttribute }) => trackedEntityAttribute.id)),
-        [program],
-    );
+    const programAttributes = useProgramAttributeIds(program);
 
     return (
         <DataModal<FlattenedTrackedEntity>

@@ -72,8 +72,7 @@ export function sqliteCollectionOptions<
     let syncParams: Parameters<SyncConfig<TRow, TKey>["sync"]>[0] | null =
         null;
 
-    function diffOne(nextRow: TRow | undefined, key: TKey): void {
-        const prev = previousSnapshot.get(key);
+    function writeDiff(nextRow: TRow | undefined, prev: TRow | undefined, key: TKey): void {
         if (nextRow) {
             if (!prev) {
                 syncParams!.write({ type: "insert", value: nextRow });
@@ -87,9 +86,16 @@ export function sqliteCollectionOptions<
                     previousValue: prev,
                 });
             }
-            previousSnapshot.set(key, nextRow);
         } else if (prev) {
             syncParams!.write({ type: "delete", key });
+        }
+    }
+
+    function diffOne(nextRow: TRow | undefined, key: TKey): void {
+        writeDiff(nextRow, previousSnapshot.get(key), key);
+        if (nextRow) {
+            previousSnapshot.set(key, nextRow);
+        } else {
             previousSnapshot.delete(key);
         }
     }
@@ -129,23 +135,11 @@ export function sqliteCollectionOptions<
         for (const nextRow of rows) {
             const key = getKey(nextRow);
             nextSnapshot.set(key, nextRow);
-            const prev = previousSnapshot.get(key);
-            if (!prev) {
-                syncParams.write({ type: "insert", value: nextRow });
-            } else if (
-                row.rowVersion(prev) !== row.rowVersion(nextRow) ||
-                JSON.stringify(prev) !== JSON.stringify(nextRow)
-            ) {
-                syncParams.write({
-                    type: "update",
-                    value: nextRow,
-                    previousValue: prev,
-                });
-            }
+            writeDiff(nextRow, previousSnapshot.get(key), key);
         }
         for (const key of previousSnapshot.keys()) {
             if (!nextSnapshot.has(key)) {
-                syncParams.write({ type: "delete", key });
+                writeDiff(undefined, previousSnapshot.get(key), key);
             }
         }
         syncParams.commit();

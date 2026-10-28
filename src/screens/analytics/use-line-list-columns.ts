@@ -1,13 +1,13 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { applyComputedColumns, computedColumnKey } from "@/analytics/computed-columns";
 import type { ComputedColumnDefinition } from "@/analytics/computed-columns";
-import type { AnalyticsDataset, AnalyticsRow } from "@/analytics/types";
+import type { AnalyticsDataset } from "@/analytics/types";
 import { useComputedColumns } from "@/hooks/useComputedColumns";
 
 /**
  * The line list's columns — the dataset's plus this program's computed
  * columns — which of them are shown, and the rows left after the table's
- * own column filters (the pivot and both exports use those).
+ * own column filters are evaluated by the indexed result hook.
  */
 export function useLineListColumns(
     dataset: AnalyticsDataset,
@@ -29,19 +29,24 @@ export function useLineListColumns(
             restoredVisibleKeys ??
             columns.filter((column) => column.defaultVisible).map((column) => column.key),
     );
-    const visibleColumns = useMemo(
-        () => columns.filter((column) => visibleColumnKeys.includes(column.key)),
-        [columns, visibleColumnKeys],
+    const visibleColumns = useMemo(() => {
+        const visible = new Set(visibleColumnKeys);
+        const chosen = new Set(visibleColumnKeys.map(slotlessKey));
+        return columns.filter((column) =>
+            visible.has(column.key) || (column.chooserKey !== undefined && chosen.has(column.chooserKey)));
+    }, [columns, visibleColumnKeys]);
+    /**
+     * The keys tables show: `visibleColumnKeys` plus every slot of a chosen
+     * related-stage field, as the slots that exist follow the period filter.
+     */
+    const shownColumnKeys = useMemo(
+        () => visibleColumns.map((column) => column.key),
+        [visibleColumns],
     );
     const exportableVisibleColumns = useMemo(
         () => visibleColumns.filter((column) => !column.isComputed),
         [visibleColumns],
     );
-
-    const [filteredRows, setFilteredRows] = useState<AnalyticsRow[]>(rows);
-    useEffect(() => {
-        setFilteredRows(rows);
-    }, [rows]);
 
     /** Saves a computed column and shows it. */
     const saveComputedColumn = (definition: ComputedColumnDefinition) => {
@@ -60,8 +65,15 @@ export function useLineListColumns(
         visibleColumnKeys,
         setVisibleColumnKeys,
         visibleColumns,
+        shownColumnKeys,
         exportableVisibleColumns,
-        filteredRows,
-        setFilteredRows,
     };
+}
+
+/** `childEvent.<stage>.<slot>.<field>` → its chooser key, `childEvent.<stage>.<field>`. */
+function slotlessKey(key: string) {
+    const parts = key.split(".");
+    return parts[0] === "childEvent" && /^\d+$/.test(parts[2] ?? "")
+        ? [parts[0], parts[1], ...parts.slice(3)].join(".")
+        : key;
 }

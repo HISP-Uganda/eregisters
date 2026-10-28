@@ -1,6 +1,6 @@
 import { DownloadOutlined } from "@ant-design/icons";
 import { useNavigate } from "@tanstack/react-router";
-import { Badge, Button, Flex, Tabs } from "antd";
+import { Badge, Button, Flex, Tabs, message } from "antd";
 import React, { useMemo, useState } from "react";
 import type { SavedLineListView } from "@/analytics/saved-views";
 import { exportLineListWorkbook, writeWorkbookFile } from "@/analytics/xlsx-export";
@@ -21,6 +21,8 @@ import { AnalyticsRestoredState, encodeReturnSearch } from "./return-search";
 import { useAnalyticsDataset } from "./use-analytics-dataset";
 import { FALLBACK_AVAILABLE_HEIGHT, useAvailableHeight } from "./use-available-height";
 import { useLineListColumns } from "./use-line-list-columns";
+import { useIndexedLineListResult } from "./use-indexed-line-list-result";
+import type { AnalyticsRow } from "@/analytics/types";
 
 /** The service types data entry offers (the visit's `mrKZWf2WMIC` field). */
 const SERVICE_TYPES_OPTION_SET = "QwsvSPpnRul";
@@ -29,6 +31,7 @@ const EMPTY_PIVOT: PivotExportInfo = {
     result: { rowHeaders: [], columnHeaders: [], rowKeys: [], columnKeys: [], cells: {} },
     measures: [{ id: "count", label: "Count", aggregation: "count" }],
 };
+const NO_ROWS: AnalyticsRow[] = [];
 
 /**
  * Line lists and pivots over this facility's local records. `restored`:
@@ -59,23 +62,30 @@ export function AnalyticsScreen({ restored }: { restored: AnalyticsRestoredState
     const [tableState, setTableState] = useState<LineListTableState>(
         () => restored?.tableState ?? EMPTY_LINE_LIST_TABLE_STATE,
     );
-    const [pivotExportInfo, setPivotExportInfo] = useState<PivotExportInfo>(EMPTY_PIVOT);
+    const [pivotExportInfo, setPivotExportInfo] = useState<{ generation: number; info: PivotExportInfo }>({ generation: -1, info: EMPTY_PIVOT });
 
     const { status, dataset } = useAnalyticsDataset(filters);
     const list = useLineListColumns(dataset, filters.programId, restored?.visibleColumnKeys);
+    const result = useIndexedLineListResult(status, list.rows, list.columns, optionSets, list.shownColumnKeys, tableState);
+    const pivotRows = useMemo(
+        () => activeTab === "pivot" && result.ready ? result.getRows() : NO_ROWS,
+        [activeTab, result.ready, result.generation],
+    );
     const { views: savedViews, save: saveView, remove: removeSavedView } = useSavedViews(filters.programId);
     const serviceTypeOptions = useMemo(() => optionSets.get(SERVICE_TYPES_OPTION_SET) ?? [], [optionSets]);
 
-    const returnSearch = () =>
-        encodeReturnSearch({ filters, visibleColumnKeys: list.visibleColumnKeys, tab: activeTab, tableState });
     // Both open the client's page (an event also opens that event there),
     // as the sync-error fixing flow does.
-    const openRecord = (trackedEntity: string, search: { edit: "client" } | { event: string }) =>
+    const openRecord = (trackedEntity: string, search: { edit: "client" } | { event: string }) => {
+        let returnSearch: string;
+        try { returnSearch = encodeReturnSearch({ filters, visibleColumnKeys: list.visibleColumnKeys, tab: activeTab, tableState }); }
+        catch (error) { message.error(error instanceof Error ? error.message : "Could not save the return selection."); return; }
         navigate({
             to: "/tracked-entity/$trackedEntity",
             params: { trackedEntity },
-            search: { ...search, from: "analytics", returnSearch: returnSearch() },
+            search: { ...search, from: "analytics", returnSearch },
         });
+    };
     const loadSavedView = (view: SavedLineListView) => {
         setFilters(view.filters);
         list.setVisibleColumnKeys(view.visibleColumnKeys);
@@ -90,7 +100,7 @@ export function AnalyticsScreen({ restored }: { restored: AnalyticsRestoredState
             <Flex gap="middle" wrap justify="flex-end">
                 <ColumnChooser
                     columns={list.columns}
-                    visibleColumnKeys={list.visibleColumnKeys}
+                    visibleColumnKeys={list.shownColumnKeys}
                     onChange={list.setVisibleColumnKeys}
                 />
                 <ComputedColumnModal
@@ -105,6 +115,7 @@ export function AnalyticsScreen({ restored }: { restored: AnalyticsRestoredState
                     onSave={saveView}
                     onLoad={loadSavedView}
                     onDelete={removeSavedView}
+                    saveDisabled={!result.ready}
                     buildSnapshot={() => ({
                         programId: filters.programId,
                         filters,
@@ -114,10 +125,10 @@ export function AnalyticsScreen({ restored }: { restored: AnalyticsRestoredState
                 />
                 <Button
                     icon={<DownloadOutlined />}
-                    disabled={status !== "ready"}
+                    disabled={!result.ready}
                     onClick={() =>
                         writeWorkbookFile(
-                            exportLineListWorkbook({ columns: list.exportableVisibleColumns, rows: list.filteredRows }),
+                            exportLineListWorkbook({ columns: list.exportableVisibleColumns, rows: result.getRows() }),
                             "analytics-line-list.xlsx",
                         )
                     }
@@ -125,20 +136,26 @@ export function AnalyticsScreen({ restored }: { restored: AnalyticsRestoredState
                     Export
                 </Button>
             </Flex>
-            {status !== "ready" ? (
-                <DatasetPlaceholder status={status} />
+            {status !== "ready" || !result.hasResult ? (
+                <DatasetPlaceholder status={status === "ready" ? "loading" : status} />
             ) : (
+                <>
+                {result.pending && <span role="status">Filtering…</span>}
                 <LineListTable
                     columns={list.columns}
                     rows={list.rows}
-                    visibleColumnKeys={list.visibleColumnKeys}
+                    filteredRows={NO_ROWS}
+                    rowCount={result.count}
+                    rowAt={result.getRow}
+                    resultGeneration={result.generation}
+                    visibleColumnKeys={list.shownColumnKeys}
                     optionSets={optionSets}
                     tableState={tableState}
-                    onFilteredRowsChange={list.setFilteredRows}
                     onTableStateChange={setTableState}
                     onOpenTrackedEntity={(trackedEntity) => openRecord(trackedEntity, { edit: "client" })}
                     onOpenEvent={(trackedEntity, event) => openRecord(trackedEntity, { event })}
                 />
+                </>
             )}
         </Flex>
     );
@@ -173,7 +190,7 @@ export function AnalyticsScreen({ restored }: { restored: AnalyticsRestoredState
                         label: (
                             <Flex align="center" gap={6}>
                                 Line List
-                                <Badge count={list.filteredRows.length} overflowCount={99999} color="#1890ff" />
+                                <Badge count={result.count} overflowCount={99999} color="#1890ff" />
                             </Flex>
                         ),
                         children: lineList,
@@ -183,11 +200,12 @@ export function AnalyticsScreen({ restored }: { restored: AnalyticsRestoredState
                         label: "Pivot",
                         children: (
                             <PivotTab
-                                status={status}
+                                status={status === "ready" && !result.ready ? "loading" : status}
                                 columns={list.visibleColumns}
-                                rows={list.filteredRows}
-                                exportInfo={pivotExportInfo}
-                                onExportInfoChange={setPivotExportInfo}
+                                rows={pivotRows}
+                                exportInfo={pivotExportInfo.info}
+                                exportDisabled={!result.ready || pivotExportInfo.generation !== result.generation}
+                                onExportInfoChange={(info) => setPivotExportInfo({ generation: result.generation, info })}
                             />
                         ),
                     },

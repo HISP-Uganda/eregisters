@@ -25,6 +25,32 @@ export const AdminAppSettingsRoute = createRoute({
     component: AppSettings,
 });
 
+function BroadcastControl({
+    title, description, color, loading, timestamp, label, onClick,
+}: {
+    title: string;
+    description: string;
+    color: string;
+    loading: boolean;
+    timestamp?: string;
+    label: string;
+    onClick: () => void;
+}) {
+    return <Flex vertical gap={8}>
+        <Typography.Text strong>{title}</Typography.Text>
+        <Typography.Text type="secondary">{description}</Typography.Text>
+        <Flex gap={12} align="center">
+            <Button type="primary" loading={loading} onClick={onClick}
+                style={{ background: color, borderColor: color }}>
+                {label}
+            </Button>
+            {timestamp && <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                Last broadcast: {dayjs(timestamp).fromNow()}
+            </Typography.Text>}
+        </Flex>
+    </Flex>;
+}
+
 function AppSettings() {
     const engine = useDataEngine();
     const metadataStore = useMetadataStore();
@@ -140,55 +166,17 @@ function AppSettings() {
 
                 <Divider style={{ margin: 0 }} />
 
-                <Flex vertical gap={8}>
-                    <Typography.Text strong>Force App Reload</Typography.Text>
-                    <Typography.Text type="secondary">
-                        Makes every open copy of the app reload within minutes —
-                        after a short countdown, and once open forms are saved or
-                        closed. Use after deploying a new app version.
-                    </Typography.Text>
-                    <Flex gap={12} align="center">
-                        <Button
-                            type="primary"
-                            loading={broadcastingApp}
-                            onClick={() => broadcast("app")}
-                            style={{ background: "#7c3aed", borderColor: "#7c3aed" }}
-                        >
-                            Broadcast Reload Request
-                        </Button>
-                        {appTs && (
-                            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                                Last broadcast: {dayjs(appTs).fromNow()}
-                            </Typography.Text>
-                        )}
-                    </Flex>
-                </Flex>
+                <BroadcastControl title="Force App Reload"
+                    description="Makes every open copy of the app reload within minutes — after a short countdown, and once open forms are saved or closed. Use after deploying a new app version."
+                    color="#7c3aed" loading={broadcastingApp} timestamp={appTs}
+                    label="Broadcast Reload Request" onClick={() => broadcast("app")} />
 
                 <Divider style={{ margin: 0 }} />
 
-                <Flex vertical gap={8}>
-                    <Typography.Text strong>Force Metadata Refresh</Typography.Text>
-                    <Typography.Text type="secondary">
-                        Sends a banner asking all currently-online users to pull the
-                        latest metadata from DHIS2. Use after updating program rules
-                        or data elements.
-                    </Typography.Text>
-                    <Flex gap={12} align="center">
-                        <Button
-                            type="primary"
-                            loading={broadcastingMetadata}
-                            onClick={() => broadcast("metadata")}
-                            style={{ background: "#0ea5e9", borderColor: "#0ea5e9" }}
-                        >
-                            Broadcast Metadata Refresh
-                        </Button>
-                        {metadataTs && (
-                            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                                Last broadcast: {dayjs(metadataTs).fromNow()}
-                            </Typography.Text>
-                        )}
-                    </Flex>
-                </Flex>
+                <BroadcastControl title="Force Metadata Refresh"
+                    description="Sends a banner asking all currently-online users to pull the latest metadata from DHIS2. Use after updating program rules or data elements."
+                    color="#0ea5e9" loading={broadcastingMetadata} timestamp={metadataTs}
+                    label="Broadcast Metadata Refresh" onClick={() => broadcast("metadata")} />
             </Flex>
         </div>
     );

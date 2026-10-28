@@ -21,6 +21,22 @@ describe("SQLite schema", () => {
         await createSchema(driver);
     });
 
+    it("adds created_at_client to an events table from before it existed", async () => {
+        const { driver, close: c } = createNodeSqliteDriver();
+        close = c;
+        await createSchema(driver);
+        // Rewind to a version-1 database: same table, without the column.
+        await driver.execute("ALTER TABLE events DROP COLUMN created_at_client");
+        await driver.execute("PRAGMA user_version = 1");
+
+        await createSchema(driver);
+
+        const columns = await driver.execute<{ name: string }>("PRAGMA table_info(events)");
+        expect(columns.rows.map((column) => column.name)).toContain("created_at_client");
+        const version = await driver.execute<{ user_version: number }>("PRAGMA user_version");
+        expect(version.rows[0].user_version).toBe(2);
+    });
+
     it("enforces the composite primary key on option_sets (same option id across different option sets is allowed)", async () => {
         const { driver, close: c } = createNodeSqliteDriver();
         close = c;

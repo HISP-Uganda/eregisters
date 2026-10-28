@@ -2,7 +2,7 @@ import { captureEventStatus } from "@/program-rules/save-actions";
 import type { RuleEnvironment } from "@/program-rules/history";
 import { createActorContext } from "@xstate/react";
 import { FormInstance } from "antd";
-import { assertEvent, assign, fromPromise, setup } from "xstate";
+import { assign, fromPromise, setup } from "xstate";
 import { getEventsCollection } from "@/db/collections";
 import {
     FlattenedEnrollment,
@@ -15,7 +15,7 @@ import {
 import { createEmptyProgramRuleResult, programRuleResultsEqual } from "@/program-rules/rule-results";
 import { EventForRules, executeProgramRules } from "@/program-rules/execute-program-rules";
 
-import { applyRuleResultsToForm, FormEvent } from "./common";
+import { applyRuleResultsToForm, mergeChangedField, mergeFormData, FormEvent } from "./common";
 import { whileSaving } from "@/app-update/unsaved-work";
 export const eventFormMachine = setup({
     types: {
@@ -57,23 +57,10 @@ export const eventFormMachine = setup({
         updateForm: ({ context: { form, event } }) => {
             form.setFieldsValue(event.dataValues);
         },
-        updateFormData: assign({
-            formData: ({ context: { event, formData } }) => {
-                return {
-                    ...event.dataValues,
-                    ...formData,
-                };
-            },
-        }),
-        updateField: assign({
-            formData: ({ context, event }) => {
-                assertEvent(event, "FIELD_CHANGED");
-                return {
-                    ...context.formData,
-                    ...event.formData,
-                };
-            },
-        }),
+        updateFormData: assign(({ context }) => ({
+            formData: mergeFormData(context.event.dataValues, context.formData),
+        })),
+        updateField: assign({ formData: mergeChangedField }),
         applyRuleResults: assign(({ context }) =>
             applyRuleResultsToForm(context.ruleResult, context.form, context.formData),
         ),

@@ -160,7 +160,7 @@ export const storageBootMachine = setup({
             failedStep: params.step,
         })),
         logBoot: ({ context }, params: { outcome: BootSummary["outcome"] }) => {
-            console.info("storage.boot", bootSummary(context, params.outcome));
+            // console.info("storage.boot", bootSummary(context, params.outcome));
         },
         releaseCopyLock: assign(({ context }) => {
             context.releaseLock?.();
@@ -181,7 +181,7 @@ export const storageBootMachine = setup({
             };
         }),
         logStepFailure: (_, params: { step: string; error: unknown }) => {
-            console.error(`Store copy ${params.step} failed:`, params.error);
+            // console.error(`Store copy ${params.step} failed:`, params.error);
         },
     },
     guards: {

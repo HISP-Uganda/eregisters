@@ -1,7 +1,9 @@
 import type { FlattenedEvent } from "@/schemas";
-import type { SqlDriver } from "@/db/sqlite/driver-types";
 import type { RowAdapter } from "@/db/sqlite/row-adapter";
-import { loadUsersByUid, upsertUser, type SqlUser } from "./users";
+import type { SqlDriver } from "@/db/sqlite/driver-types";
+import { makeRelatedRowsLoader, relatedRowReads, sqlIn, toBool, toInt } from "./load-related-rows";
+import { type SqlUser } from "./users";
+import { writeRelatedRow } from "./write-related-row";
 
 type EventParentRow = {
     event: string;
@@ -15,6 +17,7 @@ type EventParentRow = {
     occurred_at: string;
     scheduled_at: string | null;
     rule_action_key: string | null;
+    created_at_client: string | null;
     follow_up: number;
     deleted: number;
     created_at: string;
@@ -44,16 +47,9 @@ type DataValueRow = {
     updated_by_uid: string | null;
 };
 
-function toBool(n: number): boolean {
-    return n === 1;
-}
-function toInt(b: boolean): number {
-    return b ? 1 : 0;
-}
-
 const PARENT_COLUMNS = `event, status, program, program_stage, enrollment,
                     tracked_entity, org_unit, parent_event, occurred_at, scheduled_at, rule_action_key,
-                    follow_up, deleted, created_at, updated_at,
+                    created_at_client, follow_up, deleted, created_at, updated_at,
                     attribute_option_combo, attribute_category_options,
                     completed_by, completed_at, created_by_uid,
                     updated_by_uid, notes, last_synced, sync_error,
@@ -93,6 +89,7 @@ function reassemble(
         occurredAt: parent.occurred_at,
         scheduledAt: parent.scheduled_at ?? undefined,
         ruleActionKey: parent.rule_action_key ?? undefined,
+        createdAtClient: parent.created_at_client ?? undefined,
         followUp: toBool(parent.follow_up),
         deleted: toBool(parent.deleted),
         createdAt: parent.created_at,
@@ -117,24 +114,22 @@ function reassemble(
     };
 }
 
+const loadRows = makeRelatedRowsLoader<EventParentRow, DataValueRow, FlattenedEvent>({
+    parentTable: "events",
+    parentColumns: PARENT_COLUMNS,
+    childTable: "event_data_values",
+    childColumns: DATA_VALUE_COLUMNS,
+    parentKey: (parent) => parent.event,
+    childKey: (child) => child.event,
+    reassemble,
+});
+
 /** See tracked-entities.ts's getTrackedEntityById for the rationale. */
 export async function getEventById(
     db: SqlDriver,
     event: string,
 ): Promise<FlattenedEvent | undefined> {
-    const [parent, dataValueRows, usersByUid] = await Promise.all([
-        db.execute<EventParentRow>(
-            `SELECT ${PARENT_COLUMNS} FROM events WHERE event = ?`,
-            [event],
-        ),
-        db.execute<DataValueRow>(
-            `SELECT ${DATA_VALUE_COLUMNS} FROM event_data_values WHERE event = ?`,
-            [event],
-        ),
-        loadUsersByUid(db),
-    ]);
-    if (!parent.rows[0]) return undefined;
-    return reassemble(parent.rows[0], dataValueRows.rows, usersByUid);
+    return (await loadRows(db, { clause: "event = ?", params: [event], scopeChildren: true }))[0];
 }
 
 async function loadMany(
@@ -142,29 +137,7 @@ async function loadMany(
     whereClause: string,
     params: ReadonlyArray<unknown>,
 ): Promise<FlattenedEvent[]> {
-    const [parents, dataValueRows, usersByUid] = await Promise.all([
-        db.execute<EventParentRow>(
-            `SELECT ${PARENT_COLUMNS} FROM events WHERE ${whereClause}`,
-            params,
-        ),
-        db.execute<DataValueRow>(
-            `SELECT ${DATA_VALUE_COLUMNS} FROM event_data_values`,
-        ),
-        loadUsersByUid(db),
-    ]);
-    const dataValuesByEvent = new Map<string, DataValueRow[]>();
-    for (const dv of dataValueRows.rows) {
-        const bucket = dataValuesByEvent.get(dv.event) ?? [];
-        bucket.push(dv);
-        dataValuesByEvent.set(dv.event, bucket);
-    }
-    return parents.rows.map((parent) =>
-        reassemble(
-            parent,
-            dataValuesByEvent.get(parent.event) ?? [],
-            usersByUid,
-        ),
-    );
+    return loadRows(db, { clause: whereClause, params });
 }
 
 /** Backs the recursive delete walk's "events under this enrollment" lookup. */
@@ -197,12 +170,7 @@ export function findEventsByTrackedEntityIn(
     trackedEntityIds: ReadonlyArray<string>,
 ): Promise<FlattenedEvent[]> {
     if (trackedEntityIds.length === 0) return Promise.resolve([]);
-    const placeholders = trackedEntityIds.map(() => "?").join(", ");
-    return loadMany(
-        db,
-        `tracked_entity IN (${placeholders})`,
-        trackedEntityIds,
-    );
+    return loadMany(db, sqlIn("tracked_entity", trackedEntityIds), trackedEntityIds);
 }
 
 /** Backs sync.ts's pending/failed/deleted scans (`processBatchSync`). */
@@ -210,185 +178,60 @@ export function findEventsBySyncStatusIn(
     db: SqlDriver,
     statuses: ReadonlyArray<string>,
 ): Promise<FlattenedEvent[]> {
-    const placeholders = statuses.map(() => "?").join(", ");
-    return loadMany(db, `sync_status IN (${placeholders})`, statuses);
+    return loadMany(db, sqlIn("sync_status", statuses), statuses);
 }
 
-/**
- * Backs `collection-adapter.ts`'s scoped reloadAndDiff — unlike `loadMany`
- * (whose data-value-table read is always unfiltered), this filters BOTH
- * tables by the given keys, so a single-row write reloads O(1) rows
- * instead of the whole collection.
- */
-async function loadByKeys(
-    db: SqlDriver,
-    keys: readonly string[],
-): Promise<FlattenedEvent[]> {
-    if (keys.length === 0) return [];
-    const placeholders = keys.map(() => "?").join(", ");
-    const [parents, dataValueRows, usersByUid] = await Promise.all([
-        db.execute<EventParentRow>(
-            `SELECT ${PARENT_COLUMNS} FROM events WHERE event IN (${placeholders})`,
-            keys,
-        ),
-        db.execute<DataValueRow>(
-            `SELECT ${DATA_VALUE_COLUMNS} FROM event_data_values WHERE event IN (${placeholders})`,
-            keys,
-        ),
-        loadUsersByUid(db),
-    ]);
-    const dataValuesByEvent = new Map<string, DataValueRow[]>();
-    for (const dv of dataValueRows.rows) {
-        const bucket = dataValuesByEvent.get(dv.event) ?? [];
-        bucket.push(dv);
-        dataValuesByEvent.set(dv.event, bucket);
-    }
-    return parents.rows.map((parent) =>
-        reassemble(
-            parent,
-            dataValuesByEvent.get(parent.event) ?? [],
-            usersByUid,
-        ),
-    );
+function parentValues(row: FlattenedEvent): unknown[] {
+    return [
+        row.status, row.program, row.programStage, row.enrollment,
+        row.trackedEntity, row.orgUnit, row.parentEvent ?? null,
+        row.occurredAt, row.scheduledAt ?? null, row.ruleActionKey ?? null,
+        row.createdAtClient ?? null, toInt(row.followUp), toInt(row.deleted), row.createdAt, row.updatedAt,
+        row.attributeOptionCombo ?? null, row.attributeCategoryOptions ?? null,
+        row.completedBy ?? null, row.completedAt ?? null,
+        row.createdBy?.uid ?? null, row.updatedBy?.uid ?? null,
+        row.notes ? JSON.stringify(row.notes) : null,
+        row.lastSynced, row.syncError ?? null, row.version, row.syncStatus,
+    ];
 }
 
 export const eventsRowAdapter: RowAdapter<FlattenedEvent, string> = {
-    rowVersion: (row) => row.updatedAt,
+    ...relatedRowReads(loadRows, "event"),
 
-    loadByKeys,
-
-    loadAll: async (db) => {
-        const [parents, dataValueRows, usersByUid] = await Promise.all([
-            db.execute<EventParentRow>(`SELECT ${PARENT_COLUMNS} FROM events`),
-            db.execute<DataValueRow>(
-                `SELECT ${DATA_VALUE_COLUMNS} FROM event_data_values`,
-            ),
-            loadUsersByUid(db),
-        ]);
-
-        const dataValuesByEvent = new Map<string, DataValueRow[]>();
-        for (const dv of dataValueRows.rows) {
-            const bucket = dataValuesByEvent.get(dv.event) ?? [];
-            bucket.push(dv);
-            dataValuesByEvent.set(dv.event, bucket);
-        }
-
-        return parents.rows.map((parent) =>
-            reassemble(
-                parent,
-                dataValuesByEvent.get(parent.event) ?? [],
-                usersByUid,
-            ),
-        );
-    },
-
-    insertRow: async (db, row, options) => {
-        await db.transaction(async (tx) => {
-            await upsertUser(tx, row.createdBy);
-            await upsertUser(tx, row.updatedBy);
-            await tx.execute(
-                `INSERT INTO events (
+    insertRow: (db, row, options) =>
+        writeRelatedRow(db, row,
+            `INSERT INTO events (
                     event, status, program, program_stage, enrollment,
                     tracked_entity, org_unit, parent_event, occurred_at, scheduled_at, rule_action_key,
-                    follow_up, deleted, created_at, updated_at,
+                    created_at_client, follow_up, deleted, created_at, updated_at,
                     attribute_option_combo, attribute_category_options,
                     completed_by, completed_at, created_by_uid,
                     updated_by_uid, notes, last_synced, sync_error, version,
                     sync_status
-                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                [
-                    row.event,
-                    row.status,
-                    row.program,
-                    row.programStage,
-                    row.enrollment,
-                    row.trackedEntity,
-                    row.orgUnit,
-                    row.parentEvent ?? null,
-                    row.occurredAt,
-                    row.scheduledAt ?? null,
-                    row.ruleActionKey ?? null,
-                    toInt(row.followUp),
-                    toInt(row.deleted),
-                    row.createdAt,
-                    row.updatedAt,
-                    row.attributeOptionCombo ?? null,
-                    row.attributeCategoryOptions ?? null,
-                    row.completedBy ?? null,
-                    row.completedAt ?? null,
-                    row.createdBy?.uid ?? null,
-                    row.updatedBy?.uid ?? null,
-                    row.notes ? JSON.stringify(row.notes) : null,
-                    row.lastSynced,
-                    row.syncError ?? null,
-                    row.version,
-                    row.syncStatus,
-                ],
-            );
-            await insertDataValues(
-                tx,
-                row.event,
-                row.dataValues,
-                options?.source ?? "local",
-            );
-        });
-    },
+                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [row.event, ...parentValues(row)],
+            (tx) => insertDataValues(tx, row.event, row.dataValues, options?.source ?? "local"),
+        ),
 
-    updateRow: async (db, row, options) => {
-        await db.transaction(async (tx) => {
-            await upsertUser(tx, row.createdBy);
-            await upsertUser(tx, row.updatedBy);
-            await tx.execute(
-                `UPDATE events SET
+    updateRow: (db, row, options) =>
+        writeRelatedRow(db, row,
+            `UPDATE events SET
                     status = ?, program = ?, program_stage = ?, enrollment = ?,
                     tracked_entity = ?, org_unit = ?, parent_event = ?,
-                    occurred_at = ?, scheduled_at = ?, rule_action_key = ?, follow_up = ?, deleted = ?,
+                    occurred_at = ?, scheduled_at = ?, rule_action_key = ?, created_at_client = ?,
+                    follow_up = ?, deleted = ?,
                     created_at = ?, updated_at = ?, attribute_option_combo = ?,
                     attribute_category_options = ?, completed_by = ?,
                     completed_at = ?, created_by_uid = ?, updated_by_uid = ?,
                     notes = ?, last_synced = ?, sync_error = ?, version = ?,
                     sync_status = ?
                 WHERE event = ?`,
-                [
-                    row.status,
-                    row.program,
-                    row.programStage,
-                    row.enrollment,
-                    row.trackedEntity,
-                    row.orgUnit,
-                    row.parentEvent ?? null,
-                    row.occurredAt,
-                    row.scheduledAt ?? null,
-                    row.ruleActionKey ?? null,
-                    toInt(row.followUp),
-                    toInt(row.deleted),
-                    row.createdAt,
-                    row.updatedAt,
-                    row.attributeOptionCombo ?? null,
-                    row.attributeCategoryOptions ?? null,
-                    row.completedBy ?? null,
-                    row.completedAt ?? null,
-                    row.createdBy?.uid ?? null,
-                    row.updatedBy?.uid ?? null,
-                    row.notes ? JSON.stringify(row.notes) : null,
-                    row.lastSynced,
-                    row.syncError ?? null,
-                    row.version,
-                    row.syncStatus,
-                    row.event,
-                ],
-            );
-            await tx.execute("DELETE FROM event_data_values WHERE event = ?", [
-                row.event,
-            ]);
-            await insertDataValues(
-                tx,
-                row.event,
-                row.dataValues,
-                options?.source ?? "local",
-            );
-        });
-    },
+            [...parentValues(row), row.event],
+            async (tx) => {
+                await tx.execute("DELETE FROM event_data_values WHERE event = ?", [row.event]);
+                await insertDataValues(tx, row.event, row.dataValues, options?.source ?? "local");
+            },
+        ),
 
     deleteRow: async (db, key) => {
         await db.transaction(async (tx) => {

@@ -63,6 +63,19 @@ describe("mergeBulkEvents", () => {
             de2: "server",
         });
     });
+
+    it("backfills the device creation time from the server onto a local event stored without one", async () => {
+        const serverEvent = {
+            event: "event000001",
+            dataValues: {},
+            createdAtClient: "2026-08-26T09:15:00.000Z",
+        } as unknown as FlattenedEvent;
+        const localEvent = { event: "event000001", dataValues: {} } as unknown as FlattenedEvent;
+
+        const [merged] = await mergeBulkEvents([serverEvent], async () => localEvent);
+
+        expect(merged.createdAtClient).toBe("2026-08-26T09:15:00.000Z");
+    });
 });
 
 describe("mergeBulkTrackedEntities", () => {

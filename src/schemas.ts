@@ -319,6 +319,8 @@ const EventSchema = z.object({
     deleted: z.boolean(),
     createdAt: z.string(),
     updatedAt: z.string(),
+    /** The device's own creation time, kept by DHIS2 apart from its `createdAt`. */
+    createdAtClient: z.string().optional(),
     attributeOptionCombo: UID.optional(),
     attributeCategoryOptions: UID.optional(),
     completedBy: z.string().optional(),
@@ -394,35 +396,55 @@ const EventResponseSchema = z.object({
     events: z.array(EventSchema),
 });
 
-export const FlattenedTrackedEntitySchema = TrackedEntitySchema.omit({
-    attributes: true,
-    enrollments: true,
-}).extend({
-    attributes: z.record(z.string(), z.any()),
+const FlattenedSyncFields = {
     syncStatus: SyncStatusSchema,
     lastSynced: z.string(),
     syncError: z.string().nullable().optional(),
     version: z.number(),
+};
+
+const FlattenedAttributes = z.record(z.string(), z.any());
+
+export const FlattenedTrackedEntitySchema = TrackedEntitySchema.omit({
+    attributes: true,
+    enrollments: true,
+}).extend({
+    attributes: FlattenedAttributes,
+    ...FlattenedSyncFields,
 });
 
 export const FlattenedEventSchema = EventSchema.omit({
     dataValues: true,
 }).extend({
     dataValues: z.record(z.string(), z.any()),
-    syncStatus: SyncStatusSchema,
-    lastSynced: z.string(),
-    syncError: z.string().nullable().optional(),
-    version: z.number(),
+    ...FlattenedSyncFields,
 });
 export const FlattenedEnrollmentSchema = EnrollmentsSchema.omit({
     attributes: true,
     events: true,
 }).extend({
-    attributes: z.record(z.string(), z.any()),
-    syncStatus: SyncStatusSchema,
-    lastSynced: z.string(),
-    syncError: z.string().nullable().optional(),
-    version: z.number(),
+    attributes: FlattenedAttributes,
+    ...FlattenedSyncFields,
+});
+
+const TrackerReportStatsSchema = z.object({
+    created: z.number(),
+    updated: z.number(),
+    deleted: z.number(),
+    ignored: z.number(),
+    total: z.number(),
+});
+
+const TrackerObjectReportSchema = z.object({
+    trackerType: z.string(),
+    uid: z.string(),
+    errorReports: z.array(z.unknown()),
+});
+
+const TrackerTypeReportSchema = z.object({
+    trackerType: z.string(),
+    stats: TrackerReportStatsSchema,
+    objectReports: z.array(TrackerObjectReportSchema),
 });
 
 const Dhis2ReportSchema = z.object({
@@ -439,77 +461,17 @@ const Dhis2ReportSchema = z.object({
         ),
         warningReports: z.array(z.unknown()),
     }),
-    stats: z.object({
-        created: z.number(),
-        updated: z.number(),
-        deleted: z.number(),
-        ignored: z.number(),
-        total: z.number(),
-    }),
+    stats: TrackerReportStatsSchema,
     bundleReport: z.object({
         typeReportMap: z.object({
             RELATIONSHIP: z.object({
                 trackerType: z.string(),
-                stats: z.object({
-                    created: z.number(),
-                    updated: z.number(),
-                    deleted: z.number(),
-                    ignored: z.number(),
-                    total: z.number(),
-                }),
+                stats: TrackerReportStatsSchema,
                 objectReports: z.array(z.unknown()),
             }),
-            TRACKED_ENTITY: z.object({
-                trackerType: z.string(),
-                stats: z.object({
-                    created: z.number(),
-                    updated: z.number(),
-                    deleted: z.number(),
-                    ignored: z.number(),
-                    total: z.number(),
-                }),
-                objectReports: z.array(
-                    z.object({
-                        trackerType: z.string(),
-                        uid: z.string(),
-                        errorReports: z.array(z.unknown()),
-                    }),
-                ),
-            }),
-            EVENT: z.object({
-                trackerType: z.string(),
-                stats: z.object({
-                    created: z.number(),
-                    updated: z.number(),
-                    deleted: z.number(),
-                    ignored: z.number(),
-                    total: z.number(),
-                }),
-                objectReports: z.array(
-                    z.object({
-                        trackerType: z.string(),
-                        uid: z.string(),
-                        errorReports: z.array(z.unknown()),
-                    }),
-                ),
-            }),
-            ENROLLMENT: z.object({
-                trackerType: z.string(),
-                stats: z.object({
-                    created: z.number(),
-                    updated: z.number(),
-                    deleted: z.number(),
-                    ignored: z.number(),
-                    total: z.number(),
-                }),
-                objectReports: z.array(
-                    z.object({
-                        trackerType: z.string(),
-                        uid: z.string(),
-                        errorReports: z.array(z.unknown()),
-                    }),
-                ),
-            }),
+            TRACKED_ENTITY: TrackerTypeReportSchema,
+            EVENT: TrackerTypeReportSchema,
+            ENROLLMENT: TrackerTypeReportSchema,
         }),
     }),
 });

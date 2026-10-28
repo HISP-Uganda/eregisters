@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { useMetadata } from "@/hooks/useMetadata";
+import { useTrackedEntityFieldMetadata } from "@/hooks/useTrackedEntityFieldMetadata";
 import { MAIN_STAGE } from "./client";
 
 /** The metadata the visit and client forms need: fields, labels, mandatory ids. */
@@ -30,20 +31,9 @@ export function useFormMetadata() {
         }
         return m;
     }, [dataElements]);
-    const teaMandatoryIds = useMemo(
-        () =>
-            (program?.programTrackedEntityAttributes ?? [])
-                .filter((ptea) => ptea.mandatory)
-                .map((ptea) => ptea.trackedEntityAttribute.id),
-        [program],
+    const { mandatoryIds: teaMandatoryIds, labels: teaLabels } = useTrackedEntityFieldMetadata(
+        program, trackedEntityAttributes,
     );
-    const teaLabels = useMemo(() => {
-        const m = new Map<string, string>();
-        for (const tea of trackedEntityAttributes.values()) {
-            m.set(tea.id, tea.displayFormName || tea.name);
-        }
-        return m;
-    }, [trackedEntityAttributes]);
 
     return {
         mainStageDataElements,

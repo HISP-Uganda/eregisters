@@ -31,6 +31,18 @@ export function captureEventStatus(status: string, values: Record<string, unknow
     return status === "SCHEDULE" && values.occurredAt ? "ACTIVE" : status;
 }
 
+/** Apply event date and completion fields after its form values have been updated. */
+export function updateEventCompletion(
+    draft: Pick<FlattenedEvent, "status" | "dataValues" | "occurredAt" | "completedAt">,
+    complete: boolean,
+): void {
+    draft.status = captureEventStatus(draft.status, draft.dataValues, complete);
+    if (draft.dataValues.occurredAt) draft.occurredAt = draft.dataValues.occurredAt;
+    if (complete) {
+        draft.completedAt = new Date().toISOString();
+    }
+}
+
 /** A scheduled form inherits the containing visit's explicit date when capture begins. */
 export function eventForCapture<T extends { status: string; occurredAt: string; dataValues: Record<string, any> }>(event: T, visitDate?: string): T {
     if (event.status !== "SCHEDULE" || !visitDate) return event;

@@ -23,11 +23,13 @@ export function SavedViewsModal({
     onLoad,
     onDelete,
     buildSnapshot,
+    saveDisabled = false,
 }: {
     views: SavedLineListView[];
     onSave: (view: SavedLineListView) => void;
     onLoad: (view: SavedLineListView) => void;
     onDelete: (id: string) => void;
+    saveDisabled?: boolean;
     /** Captures the caller's current filters/columns/table state — called
      * only at the moment the user confirms a save, so it always reflects
      * whatever's on screen right then, not whatever it was when the modal
@@ -48,6 +50,7 @@ export function SavedViewsModal({
         setError(null);
     };
     const confirmSave = () => {
+        if (saveDisabled) return;
         const name = (savingAs ?? "").trim();
         if (!name) {
             setError("Give this view a name.");
@@ -71,6 +74,7 @@ export function SavedViewsModal({
     // "update a saved view with the current selections and filters"
     // without creating a duplicate entry.
     const update = (view: SavedLineListView) => {
+        if (saveDisabled) return;
         onSave({
             ...view,
             ...buildSnapshot(),
@@ -114,7 +118,7 @@ export function SavedViewsModal({
                             />
                             <Flex justify="flex-end" gap={8}>
                                 <Button onClick={cancelSave}>Cancel</Button>
-                                <Button type="primary" onClick={confirmSave}>
+                                <Button type="primary" disabled={saveDisabled} onClick={confirmSave}>
                                     Save
                                 </Button>
                             </Flex>
@@ -162,6 +166,7 @@ export function SavedViewsModal({
                                                     type="text"
                                                     icon={<SyncOutlined />}
                                                     title="Update this view with the current selections and filters"
+                                                    disabled={saveDisabled}
                                                     onClick={() =>
                                                         update(view)
                                                     }
@@ -182,6 +187,7 @@ export function SavedViewsModal({
                             <Button
                                 type="dashed"
                                 icon={<PlusOutlined />}
+                                disabled={saveDisabled}
                                 onClick={startSave}
                             >
                                 Save current view
