@@ -6,6 +6,7 @@ import { SectionTable } from "./hmis-form/section-table";
 import { TEAL } from "./hmis-form/theme";
 import { useHmisDraft } from "./hmis-form/use-hmis-draft";
 import { toDataValues } from "./hmis-form/values";
+import { useCanVerifyReports } from "@/hooks/useCanVerifyReports";
 import { VerifyActions } from "./hmis-form/verify-actions";
 
 export type { HmisFormValues } from "@/form-configs/types";
@@ -50,6 +51,7 @@ function InnerHmisForm({
 }: HmisFormProps) {
     const { message } = App.useApp();
     const [saving, setSaving] = useState(false);
+    const canVerify = useCanVerifyReports();
     const { values, setValue } = useHmisDraft({ initialValues, dataSet, period, orgUnit, attributeOptionCombo });
 
     // Verifying submits every filled-in value. A verified report stays
@@ -113,6 +115,7 @@ function InnerHmisForm({
                     verifiedBy={verifiedBy}
                     verifiedAt={verifiedAt}
                     saving={saving}
+                    canVerify={canVerify}
                     onVerify={handleVerify}
                     onRevoke={onRevoke}
                 />

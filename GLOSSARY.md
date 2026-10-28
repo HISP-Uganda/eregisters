@@ -24,3 +24,9 @@ The facility's clients with a visit whose Visit Date is today. Counts clients, n
 
 **Registered Today**:
 The facility's clients registered today.
+
+**Report verification**:
+Confirming an HMIS report for a period once the period has ended, which submits its values and marks it complete in DHIS2. It can be re-submitted or revoked.
+
+**Verifier role**:
+A DHIS2 user role an administrator allows to verify reports. With none chosen, every user may verify; users with full authority always may.

@@ -720,6 +720,8 @@ export type UIConfig = {
         metadata: { timestamp: string } | null;
     };
     dataPullPageSize?: number;
+    /** DHIS2 user role ids allowed to verify HMIS reports; empty or unset: everyone. */
+    verifierRoles?: string[];
 };
 
 export const DEFAULT_DATA_PULL_PAGE_SIZE = 50;

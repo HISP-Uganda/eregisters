@@ -8,7 +8,8 @@ import { formatVerifiedAt } from "./values";
 /**
  * The report's header actions: verify (or re-submit a verified report —
  * which stays editable), only once its period has fully ended; who verified
- * it and when; and "Revoke verification".
+ * it and when; and "Revoke verification". Users who may not verify (the
+ * admin's verifier roles) see no buttons, only whether it is verified.
  */
 export function VerifyActions({
     period,
@@ -17,6 +18,7 @@ export function VerifyActions({
     verifiedBy,
     verifiedAt,
     saving,
+    canVerify,
     onVerify,
     onRevoke,
 }: {
@@ -26,6 +28,7 @@ export function VerifyActions({
     verifiedBy?: string;
     verifiedAt?: string | number;
     saving: boolean;
+    canVerify: boolean;
     onVerify: () => void;
     onRevoke?: () => void | Promise<void>;
 }) {
@@ -57,7 +60,12 @@ export function VerifyActions({
                     {verifiedAt ? formatVerifiedAt(verifiedAt) : ""}
                 </span>
             )}
-            <Button
+            {!canVerify && isVerified && (
+                <span style={{ color: "#fff", fontWeight: 600 }}>
+                    <CheckCircleOutlined /> Verified
+                </span>
+            )}
+            {canVerify && <Button
                 type="default"
                 icon={isVerified ? <CheckCircleOutlined /> : undefined}
                 onClick={onVerify}
@@ -71,8 +79,8 @@ export function VerifyActions({
                 }
             >
                 {label}
-            </Button>
-            {isVerified && onRevoke && !readOnly && (
+            </Button>}
+            {canVerify && isVerified && onRevoke && !readOnly && (
                 <Popconfirm
                     title="Revoke verification?"
                     description="This will mark the report as unverified for everyone. Continue?"

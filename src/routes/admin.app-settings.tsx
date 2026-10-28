@@ -1,4 +1,4 @@
-import { useDataEngine } from "@dhis2/app-runtime";
+import { useDataEngine, useDataQuery } from "@dhis2/app-runtime";
 import { saveToDataStore } from "@/db/app-data-store";
 import { createRoute } from "@tanstack/react-router";
 import {
@@ -7,6 +7,7 @@ import {
     Flex,
     InputNumber,
     message,
+    Select,
     Typography,
 } from "antd";
 import dayjs from "dayjs";
@@ -50,6 +51,77 @@ function BroadcastControl({
         </Flex>
     </Flex>;
 }
+
+const USER_ROLES_QUERY = {
+    userRoles: { resource: "userRoles", params: { fields: "id,displayName", paging: false, order: "displayName:asc" } },
+};
+
+/** Which DHIS2 user roles may verify HMIS reports; none chosen: everyone. */
+function ReportVerifiers({
+    saved,
+    onSave,
+}: {
+    saved: string[];
+    onSave: (roles: string[]) => Promise<void>;
+}) {
+    const { data, loading, error } = useDataQuery<{
+        userRoles: { userRoles: Array<{ id: string; displayName: string }> };
+    }>(USER_ROLES_QUERY);
+    const [roles, setRoles] = useState<string[]>(saved);
+    const [saving, setSaving] = useState(false);
+    useEffect(() => setRoles(saved), [saved]);
+
+    const known = data?.userRoles.userRoles ?? [];
+    // Keep roles already saved but no longer returned (deleted, or offline) visible by id.
+    const options = [
+        ...known.map((role) => ({ value: role.id, label: role.displayName })),
+        ...saved.filter((id) => !known.some((role) => role.id === id)).map((id) => ({ value: id, label: id })),
+    ];
+
+    async function save() {
+        setSaving(true);
+        try {
+            await onSave(roles);
+            message.success("Report verifiers saved");
+        } catch {
+            message.error("Failed to save report verifiers");
+        } finally {
+            setSaving(false);
+        }
+    }
+
+    return (
+        <Flex vertical gap={8}>
+            <Typography.Text strong>Report Verifiers</Typography.Text>
+            <Typography.Text type="secondary">
+                User roles that may verify HMIS reports, re-submit them and revoke a verification. Others
+                can still enter report values but don't see the verify buttons. Leave empty to let everyone
+                verify. Users with full authority (ALL) can always verify.
+            </Typography.Text>
+            {error && (
+                <Typography.Text type="danger">Couldn't load user roles from DHIS2: {error.message}</Typography.Text>
+            )}
+            <Flex gap={12} align="center">
+                <Select
+                    mode="multiple"
+                    allowClear
+                    loading={loading}
+                    placeholder="Everyone can verify"
+                    options={options}
+                    value={roles}
+                    onChange={setRoles}
+                    optionFilterProp="label"
+                    style={{ flex: 1, minWidth: 0 }}
+                />
+                <Button type="primary" loading={saving} onClick={save}>
+                    Save
+                </Button>
+            </Flex>
+        </Flex>
+    );
+}
+
+const NO_ROLES: string[] = [];
 
 function AppSettings() {
     const engine = useDataEngine();
@@ -163,6 +235,13 @@ function AppSettings() {
                         </Button>
                     </Flex>
                 </Flex>
+
+                <Divider style={{ margin: 0 }} />
+
+                <ReportVerifiers
+                    saved={uiConfig.verifierRoles ?? NO_ROLES}
+                    onSave={(verifierRoles) => saveConfig({ verifierRoles })}
+                />
 
                 <Divider style={{ margin: 0 }} />
 
