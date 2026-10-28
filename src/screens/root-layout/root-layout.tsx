@@ -4,6 +4,7 @@ import { Outlet } from "@tanstack/react-router";
 import { useSelector } from "@xstate/react";
 import { Alert, Button, Drawer, Flex, Grid, Layout, Tooltip, Typography } from "antd";
 import React, { useState } from "react";
+import { markStartupOnce } from "@/utils/startup-timing";
 import { StorageFallbackNotice } from "@/components/storage-boot-screen";
 import { getStoreKey } from "@/db/store-names";
 import { useMetadata } from "@/hooks/useMetadata";
@@ -66,6 +67,11 @@ function MetadataReloadBanner({ onSync, onDismiss }: { onSync: () => void; onDis
 
 /** The app shell: header with navigation and sync controls, notices, and the page. */
 export function RootLayout() {
+    // The first usable screen: after the commit that replaces the spinner,
+    // on the next frame.
+    React.useEffect(() => {
+        requestAnimationFrame(() => markStartupOnce("first-screen"));
+    }, []);
     const syncActor = SyncContext.useActorRef();
     const { orgUnitName, program } = useMetadata();
     const stageNames = useStageNames(program);

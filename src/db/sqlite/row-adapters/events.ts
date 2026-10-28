@@ -35,18 +35,6 @@ type EventParentRow = {
     sync_status: string;
 };
 
-type DataValueRow = {
-    event: string;
-    data_element: string;
-    value: string | null;
-    stored_by: string | null;
-    provided_elsewhere: number | null;
-    created_at: string | null;
-    updated_at: string | null;
-    created_by_uid: string | null;
-    updated_by_uid: string | null;
-};
-
 const PARENT_COLUMNS = `event, status, program, program_stage, enrollment,
                     tracked_entity, org_unit, parent_event, occurred_at, scheduled_at, rule_action_key,
                     created_at_client, follow_up, deleted, created_at, updated_at,
@@ -54,9 +42,6 @@ const PARENT_COLUMNS = `event, status, program, program_stage, enrollment,
                     completed_by, completed_at, created_by_uid,
                     updated_by_uid, notes, last_synced, sync_error,
                     version, sync_status`;
-const DATA_VALUE_COLUMNS = `event, data_element, value, stored_by,
-                    provided_elsewhere, created_at, updated_at,
-                    created_by_uid, updated_by_uid`;
 
 // FlattenedEventSchema's `dataValues` is `z.record(z.string(), z.any())` —
 // today's flatten silently drops each dataValue's own audit fields (ticket
@@ -70,13 +55,9 @@ const DATA_VALUE_COLUMNS = `event, data_element, value, stored_by,
 // it yet.
 function reassemble(
     parent: EventParentRow,
-    dataValues: DataValueRow[],
+    dataValuesRecord: Record<string, unknown>,
     usersByUid: Map<string, SqlUser>,
 ): FlattenedEvent {
-    const dataValuesRecord: Record<string, unknown> = {};
-    for (const dv of dataValues) {
-        dataValuesRecord[dv.data_element] = dv.value;
-    }
     return {
         event: parent.event,
         status: parent.status,
@@ -114,13 +95,14 @@ function reassemble(
     };
 }
 
-const loadRows = makeRelatedRowsLoader<EventParentRow, DataValueRow, FlattenedEvent>({
+const loadRows = makeRelatedRowsLoader<EventParentRow, FlattenedEvent>({
     parentTable: "events",
     parentColumns: PARENT_COLUMNS,
     childTable: "event_data_values",
-    childColumns: DATA_VALUE_COLUMNS,
+    childKeyColumn: "event",
+    childNameColumn: "data_element",
+    childValueColumn: "value",
     parentKey: (parent) => parent.event,
-    childKey: (child) => child.event,
     reassemble,
 });
 

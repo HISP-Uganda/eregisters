@@ -1,5 +1,6 @@
 import type { SqlDriver, SqlExecuteResult } from "./driver-types";
 import { createSchema } from "./schema";
+import { timeStartup } from "@/utils/startup-timing";
 import type {
     WaSqliteRequest,
     WaSqliteRequestBody,
@@ -251,7 +252,7 @@ export async function createWaSqliteDriver(
             // bootstrap, so this driver must call it itself. CREATE TABLE
             // IF NOT EXISTS throughout schema.ts makes this idempotent —
             // safe on every call, not just first-ever open.
-            await createSchema(driver);
+            await timeStartup("create-schema", () => createSchema(driver));
             return driver;
         } catch (error) {
             lastError = error;

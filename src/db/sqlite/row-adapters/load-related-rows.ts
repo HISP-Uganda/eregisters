@@ -8,19 +8,28 @@ type Where = {
     scopeChildren?: boolean;
 };
 
-type RelatedRows<Parent, Child, Result> = {
+type RelatedRows<Parent, Result> = {
     parentTable: string;
     parentColumns: string;
     childTable: string;
-    childColumns: string;
+    /** The child column naming its parent (same name as the parent's key column). */
+    childKeyColumn: string;
+    /** The child columns holding each value's name and value. */
+    childNameColumn: string;
+    childValueColumn: string;
     parentKey: (parent: Parent) => string;
-    childKey: (child: Child) => string;
-    reassemble: (parent: Parent, children: Child[], usersByUid: Map<string, SqlUser>) => Result;
+    reassemble: (parent: Parent, values: Record<string, unknown>, usersByUid: Map<string, SqlUser>) => Result;
 };
 
-/** Loads parent rows and their child rows, preserving scoped child reads by key. */
-export function makeRelatedRowsLoader<Parent, Child, Result>(
-    config: RelatedRows<Parent, Child, Result>,
+/**
+ * Loads parent rows and their child name/value pairs. SQLite packs each
+ * parent's children into one JSON object, so a full load returns one row
+ * per record instead of one per value — far less to build in the worker,
+ * transfer to the page and rebuild there (the startup freeze, wayfinder
+ * map "Reduce the remaining cached metadata startup wait").
+ */
+export function makeRelatedRowsLoader<Parent, Result>(
+    config: RelatedRows<Parent, Result>,
 ) {
     return async (db: SqlDriver, where?: Where): Promise<Result[]> => {
         const parentWhere = where ? ` WHERE ${where.clause}` : "";
@@ -30,22 +39,21 @@ export function makeRelatedRowsLoader<Parent, Child, Result>(
                 `SELECT ${config.parentColumns} FROM ${config.parentTable}${parentWhere}`,
                 where?.params,
             ),
-            db.execute<Child>(
-                `SELECT ${config.childColumns} FROM ${config.childTable}${childWhere}`,
+            db.execute<{ parent_key: string; packed: string }>(
+                `SELECT ${config.childKeyColumn} AS parent_key,
+                        json_group_object(${config.childNameColumn}, ${config.childValueColumn}) AS packed
+                 FROM ${config.childTable}${childWhere}
+                 GROUP BY ${config.childKeyColumn}`,
                 where?.scopeChildren ? where.params : undefined,
             ),
             loadUsersByUid(db),
         ]);
-        const childrenByParent = new Map<string, Child[]>();
-        for (const child of children.rows) {
-            const key = config.childKey(child);
-            const bucket = childrenByParent.get(key) ?? [];
-            bucket.push(child);
-            childrenByParent.set(key, bucket);
-        }
-        return parents.rows.map((parent) =>
-            config.reassemble(parent, childrenByParent.get(config.parentKey(parent)) ?? [], usersByUid),
-        );
+        const packedByParent = new Map<string, string>();
+        for (const child of children.rows) packedByParent.set(child.parent_key, child.packed);
+        return parents.rows.map((parent) => {
+            const packed = packedByParent.get(config.parentKey(parent));
+            return config.reassemble(parent, packed ? JSON.parse(packed) : {}, usersByUid);
+        });
     };
 }
 

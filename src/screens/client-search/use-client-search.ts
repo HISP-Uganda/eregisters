@@ -1,4 +1,4 @@
-import { and, eq, ilike, not, useLiveSuspenseQuery } from "@tanstack/react-db";
+import { and, eq, ilike, not, useLiveQuery } from "@tanstack/react-db";
 import { useMemo } from "react";
 import { getTrackedEntitiesCollection } from "@/db/collections";
 import { useMetadata } from "@/hooks/useMetadata";
@@ -13,17 +13,17 @@ export function filledTerms(search: ClientSearchTerms): Record<string, string> {
 
 /**
  * This facility's registered clients (not drafts, not deleted) whose
- * attributes contain every search term, ignoring case. No terms: none.
+ * attributes contain every search term, ignoring case. No terms: none,
+ * without querying. Non-suspending: `loading` while clients are still
+ * loading into memory, so the page isn't held for them.
  */
 export function useClientSearch(search: ClientSearchTerms) {
     const { orgUnit } = useMetadata();
     const trackedEntities = getTrackedEntitiesCollection();
 
-    const { data: clients = [] } = useLiveSuspenseQuery(
+    const { data: clients = [], isLoading: loading } = useLiveQuery(
         (q) => {
-            if (!search || Object.keys(search).length === 0) {
-                return q.from({ trackedEntity: trackedEntities }).where(() => eq(1, 0));
-            }
+            if (!search || Object.keys(search).length === 0) return undefined;
             let query = q.from({ trackedEntity: trackedEntities });
             for (const [attribute, term] of Object.entries(search)) {
                 query = query.where(({ trackedEntity }) => ilike(trackedEntity.attributes[attribute], `%${term}%`));
@@ -40,5 +40,5 @@ export function useClientSearch(search: ClientSearchTerms) {
     );
 
     const terms = useMemo(() => filledTerms(search), [search]);
-    return { clients, terms };
+    return { clients, terms, loading };
 }

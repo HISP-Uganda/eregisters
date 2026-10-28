@@ -79,6 +79,63 @@ describe("sqliteCollectionOptions", () => {
         expect(plain(rows)).toEqual([{ id: "a", label: "hello", version: 1 }]);
     });
 
+    it("applies a large initial load in chunks, yielding to the page between them", async () => {
+        const { driver, close: c } = await setUp();
+        close = c;
+        const values = Array.from({ length: 2500 }, (_, i) => [`r${i}`, `row ${i}`, 1]);
+        await driver.execute(
+            `INSERT INTO simple_rows (id, label, version) VALUES ${values.map(() => "(?, ?, ?)").join(", ")}`,
+            values.flat(),
+        );
+
+        const collection = createCollection(
+            sqliteCollectionOptions<SimpleRow, string>({
+                id: "test-chunked",
+                db: driver,
+                getKey: (row) => row.id,
+                row: simpleRowAdapter(),
+            }),
+        );
+        // A timer queued now runs between chunks: the load hasn't finished,
+        // and the collection must not claim to be ready with part of it.
+        let midLoad = { size: -1, ready: true };
+        const ready = collection.preload();
+        await new Promise<void>((resolve) => setTimeout(() => {
+            midLoad = { size: collection.size, ready: collection.isReady() };
+            resolve();
+        }, 0));
+
+        await ready;
+        expect(collection.size).toBe(2500);
+        expect(midLoad.size).toBeLessThan(2500);
+        expect(midLoad.ready).toBe(false);
+    });
+
+    it("keeps a row written while a chunked initial load is still applying", async () => {
+        const { driver, close: c } = await setUp();
+        close = c;
+        const values = Array.from({ length: 2500 }, (_, i) => [`r${i}`, `row ${i}`, 1]);
+        await driver.execute(
+            `INSERT INTO simple_rows (id, label, version) VALUES ${values.map(() => "(?, ?, ?)").join(", ")}`,
+            values.flat(),
+        );
+        const collection = createCollection(
+            sqliteCollectionOptions<SimpleRow, string>({
+                id: "test-chunked-write",
+                db: driver,
+                getKey: (row) => row.id,
+                row: simpleRowAdapter(),
+            }),
+        );
+        const ready = collection.preload();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        await collection.utils.insertLocally({ id: "new", label: "written mid-load", version: 1 });
+
+        await ready;
+        expect(collection.size).toBe(2501);
+        expect(collection.get("new")?.label).toBe("written mid-load");
+    });
+
     it("insert/update/delete round-trip through the collection API", async () => {
         const { driver, close: c } = await setUp();
         close = c;

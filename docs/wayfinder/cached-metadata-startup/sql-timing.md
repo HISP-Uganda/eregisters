@@ -35,6 +35,46 @@ and worker time can include transfer, initial open, worker scheduling, or
 main-thread scheduling; it is not a pure transfer measurement. If all
 these timings are small, inspect hydration and rendering next.
 
+## Startup steps
+
+The same switch also records each startup step as
+`eregisters:startup:<step>` (durations, row counts and sizes only). After
+“Loading Metadata” disappears, this prints the timeline and copies it to
+the clipboard, ready to paste back:
+
+```js
+const steps = performance.getEntries()
+  .filter(e => e.name.startsWith('eregisters:startup:'))
+  .sort((a, b) => a.startTime - b.startTime)
+  .map(e => ({ step: e.name.split(':').pop(), kind: e.entryType,
+    atMs: Math.round(e.startTime), durationMs: Math.round(e.duration),
+    detail: e.detail ? JSON.stringify(e.detail) : '' }));
+const sql = Object.values(performance.getEntriesByType('measure')
+  .filter(e => e.name.startsWith('eregisters:sqlite:'))
+  .reduce((byOp, e) => { const op = e.name.split(':').pop();
+    byOp[op] ??= { op, calls: 0, totalMs: 0, workerMs: 0 };
+    byOp[op].calls++; byOp[op].totalMs += Math.round(e.duration);
+    byOp[op].workerMs += Math.round(e.detail?.workerMs ?? 0); return byOp; }, {}));
+console.table(steps); console.table(sql);
+copy(JSON.stringify({ steps, sql, cores: navigator.hardwareConcurrency,
+  memoryGb: navigator.deviceMemory }, null, 1));
+```
+
+`atMs` is milliseconds since the page started loading. Steps, in order:
+
+| Step | What it covers |
+|---|---|
+| `open-database` | Worker start, OPFS open and schema setup (includes `create-schema`) |
+| `create-schema` | Schema statements and migration checks |
+| `storage-boot` | The whole storage boot, including any store copy |
+| `user-loaded` (mark) | The `me` request answered |
+| `check-metadata` | The cached-metadata validity check |
+| `decode-metadata` | Main-thread JSON decoding of a batched read; rows and kilobytes per table (appears for the check's program read and for hydration) |
+| `read-metadata` | Hydration's batched read, SQL plus decoding |
+| `assemble-metadata` | Building maps and groups, filtering and sorting organisation units (read vs kept) |
+| `metadata-ready` (mark) | The root route's loader finishing |
+| `first-screen` (mark) | The frame after the first page replaces the spinner |
+
 Timing is disabled by default. Captures are held only in the page's User
 Timing buffer, bounded per operation. To disable:
 

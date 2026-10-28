@@ -18,12 +18,14 @@ function memoryStorage() {
     };
 }
 
-function storeWithSignal(initial: string | undefined) {
+/** `initial` undefined: a stored UI config with no app signal; `stored: false`: no UI config at all yet. */
+function storeWithSignal(initial: string | undefined, { stored = true } = {}) {
     let signal = initial;
+    let hasRow = stored;
     const store = {
         getRow: vi.fn(async () =>
-            signal
-                ? { id: "main", config: { reloadSignal: { app: { timestamp: signal }, metadata: null } } }
+            hasRow
+                ? { id: "main", config: { reloadSignal: { app: signal ? { timestamp: signal } : null, metadata: null } } }
                 : undefined,
         ),
     } as unknown as MetadataStore;
@@ -31,6 +33,7 @@ function storeWithSignal(initial: string | undefined) {
         store,
         setSignal: (next: string) => {
             signal = next;
+            hasRow = true;
         },
     };
 }
@@ -104,6 +107,28 @@ describe("the admin's reload broadcast", { timeout: 20_000 }, () => {
         await vi.advanceTimersByTimeAsync(10_000);
         expect(reload).toHaveBeenCalledTimes(1);
         expect(storage.data.get("eregisters.lastSeenAppSignal")).toBe("2026-09-28T08:00:00.000Z");
+    });
+
+    it("doesn't prompt a first-time device to reload for the signal its first metadata download brings", async () => {
+        const { controller, notifyConfigChanged } = await load();
+        const { store, setSignal } = storeWithSignal(undefined, { stored: false });
+        controller.startBroadcastWatch(store, {} as never);
+        await flush();
+
+        // The first download stores the admin's last broadcast, however old.
+        setSignal("2026-09-28T09:00:00.000Z");
+        notifyConfigChanged("ui_config", "main");
+        await flush();
+        await vi.advanceTimersByTimeAsync(60_000);
+        expect(reload).not.toHaveBeenCalled();
+        expect(storage.data.get("eregisters.lastSeenAppSignal")).toBe("2026-09-28T09:00:00.000Z");
+
+        // A broadcast after that is a real one.
+        setSignal("2026-09-28T10:00:00.000Z");
+        notifyConfigChanged("ui_config", "main");
+        await flush();
+        await vi.advanceTimersByTimeAsync(35_000);
+        expect(reload).toHaveBeenCalledTimes(1);
     });
 
     it("holds the reload while this tab has unsaved work, until it's released", async () => {

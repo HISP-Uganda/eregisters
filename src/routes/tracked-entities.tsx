@@ -1,5 +1,5 @@
 import { CalendarOutlined, UserOutlined } from "@ant-design/icons";
-import { and, eq, not, useLiveSuspenseQuery } from "@tanstack/react-db";
+import { and, eq, not, useLiveQuery } from "@tanstack/react-db";
 import { createRoute, Outlet } from "@tanstack/react-router";
 import {
     Button,
@@ -40,7 +40,8 @@ function TrackedEntities() {
 
     const [form] = Form.useForm();
 
-    const { data: total } = useLiveSuspenseQuery(
+    // Non-suspending, so the page shows while clients are still loading.
+    const { data: total = [], isLoading: loadingTotal } = useLiveQuery(
         (q) =>
             q
                 .from({ trackedEntities: trackedEntitiesCollection })
@@ -84,6 +85,7 @@ function TrackedEntities() {
             <Card variant="borderless" style={{ flex: 1 }}>
                 <Statistic
                     title="Total Clients"
+                    loading={loadingTotal}
                     value={total.length}
                     prefix={<UserOutlined />}
                     styles={{
@@ -94,6 +96,7 @@ function TrackedEntities() {
             <Card variant="borderless" style={{ flex: 1 }}>
                 <Statistic
                     title="Registered Today"
+                    loading={loadingTotal}
                     value={
                         total.filter(
                             (te) =>

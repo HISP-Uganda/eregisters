@@ -7,6 +7,7 @@ import {
     safeCallPersistence,
     type SafeCallPersistenceOptions,
 } from "./safe-call-persistence";
+import { measureStartup } from "@/utils/startup-timing";
 
 /**
  * Direct TanStack DB collection adapter over a SqlDriver, replacing
@@ -50,6 +51,13 @@ export interface SqliteCollectionOptions<
      * `onUpdate`, so they never stamp.
      */
     stampEdit?: () => Partial<TRow>;
+}
+
+/** Rows per commit when applying a full reload; small enough to keep each task short. */
+const APPLY_CHUNK_ROWS = 1000;
+
+function yieldToPage(): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
 export function sqliteCollectionOptions<
@@ -123,20 +131,44 @@ export function sqliteCollectionOptions<
         syncParams.commit();
     }
 
-    async function reloadAndDiff(affectedKeys?: readonly TKey[]): Promise<void> {
+    // Reloads run one at a time, in order: a full reload applies in chunks
+    // across several tasks (below), and a scoped reload interleaved between
+    // them would diff against a half-updated snapshot.
+    let reloadQueue: Promise<void> = Promise.resolve();
+    function reloadAndDiff(affectedKeys?: readonly TKey[]): Promise<void> {
+        const run = reloadQueue.then(() => reloadAndDiffNow(affectedKeys));
+        reloadQueue = run.catch(() => undefined);
+        return run;
+    }
+
+    async function reloadAndDiffNow(affectedKeys?: readonly TKey[]): Promise<void> {
         if (!syncParams) return;
         if (affectedKeys && row.loadByKeys) {
             await reloadAndDiffScoped(affectedKeys);
             return;
         }
+        const loadStart = performance.now();
         const rows = await row.loadAll(db);
+        measureStartup(`load-${id}`, loadStart, { rows: rows.length });
+        const applyStart = performance.now();
         const nextSnapshot = new Map<TKey, TRow>();
-        syncParams.begin();
-        for (const nextRow of rows) {
-            const key = getKey(nextRow);
-            nextSnapshot.set(key, nextRow);
-            writeDiff(nextRow, previousSnapshot.get(key), key);
+        // Applying every row in one commit (and every live query's update)
+        // blocked the page for seconds on a full device; commit in chunks
+        // and let the page handle input between them.
+        for (let start = 0; start < rows.length; start += APPLY_CHUNK_ROWS) {
+            if (start > 0) {
+                await yieldToPage();
+                if (!syncParams) return;
+            }
+            syncParams.begin();
+            for (const nextRow of rows.slice(start, start + APPLY_CHUNK_ROWS)) {
+                const key = getKey(nextRow);
+                nextSnapshot.set(key, nextRow);
+                writeDiff(nextRow, previousSnapshot.get(key), key);
+            }
+            syncParams.commit();
         }
+        syncParams.begin();
         for (const key of previousSnapshot.keys()) {
             if (!nextSnapshot.has(key)) {
                 writeDiff(undefined, previousSnapshot.get(key), key);
@@ -144,6 +176,7 @@ export function sqliteCollectionOptions<
         }
         syncParams.commit();
         previousSnapshot = nextSnapshot;
+        measureStartup(`apply-${id}`, applyStart, { rows: rows.length });
     }
 
     // "Locally" (ported from tanstack-dexie-db-collection's naming) means

@@ -26,27 +26,16 @@ type EnrollmentParentRow = {
     sync_status: string;
 };
 
-type AttributeRow = {
-    enrollment: string;
-    attribute: string;
-    value: string | null;
-};
-
 const PARENT_COLUMNS = `enrollment, tracked_entity, program, org_unit, status,
                     enrolled_at, occurred_at, created_at, updated_at,
                     created_by_uid, updated_by_uid, follow_up, deleted,
                     notes, last_synced, sync_error, version, sync_status`;
-const ATTRIBUTE_COLUMNS = `enrollment, attribute, value`;
 
 function reassemble(
     parent: EnrollmentParentRow,
-    attributes: AttributeRow[],
+    attributesRecord: Record<string, unknown>,
     usersByUid: Map<string, SqlUser>,
 ): FlattenedEnrollment {
-    const attributesRecord: Record<string, unknown> = {};
-    for (const attr of attributes) {
-        attributesRecord[attr.attribute] = attr.value;
-    }
     return {
         enrollment: parent.enrollment,
         trackedEntity: parent.tracked_entity,
@@ -74,13 +63,14 @@ function reassemble(
     };
 }
 
-const loadRows = makeRelatedRowsLoader<EnrollmentParentRow, AttributeRow, FlattenedEnrollment>({
+const loadRows = makeRelatedRowsLoader<EnrollmentParentRow, FlattenedEnrollment>({
     parentTable: "enrollments",
     parentColumns: PARENT_COLUMNS,
     childTable: "enrollment_attributes",
-    childColumns: ATTRIBUTE_COLUMNS,
+    childKeyColumn: "enrollment",
+    childNameColumn: "attribute",
+    childValueColumn: "value",
     parentKey: (parent) => parent.enrollment,
-    childKey: (child) => child.enrollment,
     reassemble,
 });
 

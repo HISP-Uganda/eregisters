@@ -3,6 +3,7 @@ import { notifyConfigChanged } from "@/db/reactive-config";
 import { getConfigRow, putConfigRow } from "./config-rows";
 import type { SqlDriver } from "./driver-types";
 import { getAllRows } from "./metadata-info";
+import { measureStartup, startupTimingEnabled } from "@/utils/startup-timing";
 
 type OrganisationUnitSqlRow = { id: string; name: string; path: string; data: string };
 
@@ -191,11 +192,18 @@ export function sqliteMetadataStore(db: SqlDriver): MetadataStore {
                     return `SELECT ${index} AS table_index, data, ${columns} FROM ${source}`;
                 }).join(" UNION ALL "),
             );
+            const decodeStart = performance.now();
             const groups: object[][] = tables.map(() => []);
             for (const row of result.rows) {
                 groups[row.table_index].push(tables[row.table_index] === "organisation_units"
                     ? toOrganisationUnit(row)
                     : JSON.parse(row.data));
+            }
+            if (startupTimingEnabled()) {
+                const bytes = tables.map(() => 0);
+                for (const row of result.rows) bytes[row.table_index] += row.data?.length ?? 0;
+                measureStartup("decode-metadata", decodeStart, Object.fromEntries(tables.map((table, index) =>
+                    [table, { rows: groups[index].length, kilobytes: Math.round(bytes[index] / 1024) }])));
             }
             return groups;
         },

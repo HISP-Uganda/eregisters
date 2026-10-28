@@ -17,6 +17,7 @@ import type {
     Resource,
     TrackedEntityAttribute,
 } from "@/schemas";
+import { measureStartup, timeStartup } from "@/utils/startup-timing";
 
 /**
  * Backend-agnostic equivalents of `src/db/sqlite/metadata-info.ts`/
@@ -222,7 +223,7 @@ export async function queryMetadataGeneric(
         dataSets,
         categoryOptionCombos,
         organisationUnitsAll,
-    ] = await readMetadataTables<[
+    ] = await timeStartup("read-metadata", () => readMetadataTables<[
         DataElement, TrackedEntityAttribute, ProgramRule, ProgramRuleVariable,
         FlattenedOptionGroup, FlattenedOptionSet, Program, DataSet,
         CategoryOptionCombo, OrgUnitRow,
@@ -230,13 +231,14 @@ export async function queryMetadataGeneric(
         "data_elements", "tracked_entity_attribute_definitions", "program_rules",
         "program_rule_variables", "option_groups", "option_sets", "programs",
         "data_sets", "category_option_combos", "organisation_units",
-    ], { programs: 1 });
+    ], { programs: 1 }), (tables) => ({ rows: tables.reduce((sum, rows) => sum + rows.length, 0) }));
+    const assembleStart = performance.now();
 
     const organisationUnits = organisationUnitsAll
         .filter((row) => row.path.startsWith(userOrgUnitPath))
         .sort((a, b) => a.path.localeCompare(b.path));
 
-    return {
+    const assembled = {
         dataElements: new Map(dataElements.map((de) => [de.id, de])),
         trackedEntityAttributes: new Map(
             trackedEntityAttributes.map((ta) => [ta.id, ta]),
@@ -250,6 +252,11 @@ export async function queryMetadataGeneric(
         organisationUnits,
         categoryOptionCombos,
     };
+    measureStartup("assemble-metadata", assembleStart, {
+        organisationUnitsRead: organisationUnitsAll.length,
+        organisationUnitsKept: organisationUnits.length,
+    });
+    return assembled;
 }
 
 /** Generic equivalent of `src/db/sqlite/save-metadata.ts`'s `saveMetadata`. */

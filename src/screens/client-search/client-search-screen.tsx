@@ -1,4 +1,4 @@
-import { Button, Card, Flex, Table, Typography } from "antd";
+import { Button, Card, Flex, Spin, Table, Typography } from "antd";
 import React from "react";
 import { useMetadata } from "@/hooks/useMetadata";
 import { clientColumns } from "./client-columns";
@@ -15,8 +15,19 @@ export function ClientSearchScreen({
     onOpenClient: (trackedEntity: string) => void;
 }) {
     const metadata = useMetadata();
-    const { clients, terms } = useClientSearch(search);
+    const { clients, terms, loading } = useClientSearch(search);
     const registration = useClientRegistration();
+
+    if (loading) {
+        return (
+            <Card variant="borderless" style={{ height: "calc(100vh - 144px)" }}>
+                <Flex vertical align="center" justify="center" gap="small" style={{ height: "100%" }}>
+                    <Spin />
+                    <Typography.Text type="secondary">Loading clients…</Typography.Text>
+                </Flex>
+            </Card>
+        );
+    }
 
     if (clients.length === 0) {
         return Object.values(terms).some(Boolean) ? (

@@ -23,6 +23,7 @@ import { getStorageBootActor } from "./machines/storage-boot-actor";
 import { SyncContext } from "./machines/sync";
 import { router } from "./router";
 import { MeData, MeUser } from "./schemas";
+import { markStartupOnce } from "@/utils/startup-timing";
 
 const ME_QUERY = {
     me: {
@@ -166,6 +167,7 @@ const MyApp: FC = () => {
     // Storage belongs to the user's facility (org unit): open it now if it
     // wasn't opened before `me`, or reload into it if another facility's
     // store was opened — see facility-store.ts.
+    markStartupOnce("user-loaded");
     setLocalAuthor({
         uid: data.me.id,
         username: data.me.username,

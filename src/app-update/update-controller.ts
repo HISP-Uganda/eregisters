@@ -221,16 +221,22 @@ export function startAppUpdateWatch(): void {
  * the data engine, so it starts once storage is ready). The signal current
  * when the page loads counts as already acted on — a page load runs the
  * latest code — so only a NEW signal (compared as a string, never against
- * this device's clock) forces a reload. Returns the unsubscribe.
+ * this device's clock) forces a reload. A first-time device (no UI config
+ * stored when the page loaded) takes the first signal its initial
+ * metadata download brings as current too: it has just loaded the latest
+ * code, so an old broadcast must not prompt it to reload. Returns the
+ * unsubscribe.
  */
 export function startBroadcastWatch(store: MetadataStore, engine: Engine): () => void {
-    const readSignal = async () =>
-        (await store.getRow<{ id: string; config: UIConfig }>("ui_config", "main"))
-            ?.config?.reloadSignal?.app?.timestamp;
+    const readConfig = () => store.getRow<{ id: string; config: UIConfig }>("ui_config", "main");
+    const readSignal = async () => (await readConfig())?.config?.reloadSignal?.app?.timestamp;
 
     let ready = false;
-    void readSignal().then((signal) => {
+    let firstDownload = false;
+    void readConfig().then((row) => {
+        const signal = row?.config?.reloadSignal?.app?.timestamp;
         if (signal) writeLocal(SEEN_SIGNAL_KEY, signal);
+        firstDownload = row === undefined;
         ready = true;
     });
 
@@ -238,6 +244,11 @@ export function startBroadcastWatch(store: MetadataStore, engine: Engine): () =>
     const unsubscribe = subscribeConfigChanged("ui_config", "main", () => {
         if (!ready) return;
         void readSignal().then((signal) => {
+            if (firstDownload) {
+                firstDownload = false;
+                if (signal) writeLocal(SEEN_SIGNAL_KEY, signal);
+                return;
+            }
             if (signal && signal !== readLocal(SEEN_SIGNAL_KEY)) {
                 notice("broadcast", signal);
             }

@@ -4,6 +4,7 @@ import React from "react";
 import { waitFor } from "xstate";
 import { Spinner } from "@/components/spinner";
 import { SyncContext } from "@/machines/sync";
+import { markStartupOnce } from "@/utils/startup-timing";
 import { RootLayout } from "@/screens/root-layout/root-layout";
 
 type DataEngine = ReturnType<typeof import("@dhis2/app-runtime").useDataEngine>;
@@ -20,5 +21,6 @@ export const RootRoute = createRootRouteWithContext<{
     // Pages can assume metadata is loaded.
     loader: async ({ context: { syncActor } }) => {
         await waitFor(syncActor, (snapshot) => snapshot.matches({ metadataSync: "waiting" }));
+        markStartupOnce("metadata-ready");
     },
 });

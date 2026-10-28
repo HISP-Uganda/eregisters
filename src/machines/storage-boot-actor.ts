@@ -15,6 +15,7 @@ import {
 } from "@/db/store-copy-failures";
 import { storageBootMachine, type StorageBootDeps } from "./storage-boot";
 import { storeName } from "@/db/store-names";
+import { timeStartup } from "@/utils/startup-timing";
 
 /** Base name; `storeName` adds the facility suffix — see store-names.ts. */
 const SQLITE_DB_NAME = "eregisters-metadata";
@@ -48,7 +49,7 @@ const realStorageBootDeps: StorageBootDeps = {
     async resolveBackend() {
         let liveDriver: SqlDriver | undefined;
         const backend = await resolveBackend(async () => {
-            liveDriver = await createWaSqliteDriver(storeName(SQLITE_DB_NAME));
+            liveDriver = await timeStartup("open-database", () => createWaSqliteDriver(storeName(SQLITE_DB_NAME)));
         });
         return {
             backend,

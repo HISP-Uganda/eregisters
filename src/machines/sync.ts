@@ -77,6 +77,7 @@ import {
 	withPullOverlap,
 } from "./sync-metadata-mode";
 import { processBatchSync as processBatchSyncImpl } from "./sync-tracker-actors";
+import { timeStartup } from "@/utils/startup-timing";
 
 /** Shown in a tab whose sync was skipped because another tab runs it. */
 const SKIPPED_SYNC_MESSAGES: Record<SyncKind, string> = {
@@ -318,7 +319,8 @@ export const syncMachine = setup({
 			CheckMetadataInfoResult,
 			{ metadataStore: MetadataStore }
 		>(async ({ input: { metadataStore } }) => {
-			return checkMetadataSyncStatus(metadataStore);
+			return timeStartup("check-metadata", () => checkMetadataSyncStatus(metadataStore),
+				(result) => ({ needsSyncing: result.needsSyncing, hasEmptyTables: result.hasEmptyTables, wasDatabaseDeleted: result.wasDatabaseDeleted }));
 		}),
 		queryIndexDB: fromPromise<
 			QueryMetadataInfoResult,

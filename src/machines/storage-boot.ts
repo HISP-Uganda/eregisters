@@ -10,6 +10,7 @@ import type {
     VerifyReport,
     WrittenKeys,
 } from "@/db/store-copy";
+import { measureStartup } from "@/utils/startup-timing";
 
 /**
  * Boots local storage: resolves the live store, runs any store copy from
@@ -160,7 +161,9 @@ export const storageBootMachine = setup({
             failedStep: params.step,
         })),
         logBoot: ({ context }, params: { outcome: BootSummary["outcome"] }) => {
-            // console.info("storage.boot", bootSummary(context, params.outcome));
+            console.info("storage.boot", bootSummary(context, params.outcome));
+            measureStartup("storage-boot", performance.now() - (Date.now() - context.startedAt),
+                { outcome: params.outcome, backend: context.backend });
         },
         releaseCopyLock: assign(({ context }) => {
             context.releaseLock?.();

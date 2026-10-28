@@ -1,4 +1,4 @@
-import { eq, or, useLiveSuspenseQuery } from "@tanstack/react-db";
+import { eq, or, useLiveQuery } from "@tanstack/react-db";
 import { useEffect, useMemo, useState } from "react";
 import {
     getEnrollmentsCollection,
@@ -55,39 +55,59 @@ export function useSyncStatus() {
     };
 }
 
-/** Records waiting to be pushed (new, changed or deleted) and those whose push failed. */
+/**
+ * Records waiting to be pushed (new, changed or deleted) and those whose
+ * push failed. Non-suspending: the shell renders while the record
+ * collections are still loading (empty until they are), instead of
+ * holding the first screen until every record is in memory. Enrollments
+ * and events — not needed by the first screen — start loading only once
+ * clients have, so the client list isn't competing with them.
+ */
 export function useRecordsToSync() {
     const trackedEntities = getTrackedEntitiesCollection();
     const enrollments = getEnrollmentsCollection();
     const events = getEventsCollection();
+    const [clientsReady, setClientsReady] = useState(() => trackedEntities.isReady());
+    useEffect(() => {
+        if (clientsReady) return;
+        return trackedEntities.onFirstReady(() => setClientsReady(true));
+    }, [trackedEntities, clientsReady]);
 
-    const { data: pendingTrackedEntities } = useLiveSuspenseQuery((q) =>
+    const { data: pendingTrackedEntities = [] } = useLiveQuery((q) =>
         q
             .from({ trackedEntities })
             .where(({ trackedEntities }) =>
                 or(eq(trackedEntities.syncStatus, "pending"), eq(trackedEntities.syncStatus, "deleted")),
             ),
     );
-    const { data: pendingEnrollments } = useLiveSuspenseQuery((q) =>
-        q
-            .from({ enrollments })
-            .where(({ enrollments }) =>
-                or(eq(enrollments.syncStatus, "pending"), eq(enrollments.syncStatus, "deleted")),
-            ),
+    const { data: pendingEnrollments = [] } = useLiveQuery((q) =>
+        clientsReady
+            ? q
+                .from({ enrollments })
+                .where(({ enrollments }) =>
+                    or(eq(enrollments.syncStatus, "pending"), eq(enrollments.syncStatus, "deleted")),
+                )
+            : undefined,
+        [clientsReady],
     );
-    const { data: pendingEvents } = useLiveSuspenseQuery((q) =>
-        q
-            .from({ events })
-            .where(({ events }) => or(eq(events.syncStatus, "pending"), eq(events.syncStatus, "deleted"))),
+    const { data: pendingEvents = [] } = useLiveQuery((q) =>
+        clientsReady
+            ? q
+                .from({ events })
+                .where(({ events }) => or(eq(events.syncStatus, "pending"), eq(events.syncStatus, "deleted")))
+            : undefined,
+        [clientsReady],
     );
-    const { data: failedTrackedEntities } = useLiveSuspenseQuery((q) =>
+    const { data: failedTrackedEntities = [] } = useLiveQuery((q) =>
         q.from({ trackedEntities }).where(({ trackedEntities }) => eq(trackedEntities.syncStatus, "failed")),
     );
-    const { data: failedEnrollments } = useLiveSuspenseQuery((q) =>
-        q.from({ enrollments }).where(({ enrollments }) => eq(enrollments.syncStatus, "failed")),
+    const { data: failedEnrollments = [] } = useLiveQuery((q) =>
+        clientsReady ? q.from({ enrollments }).where(({ enrollments }) => eq(enrollments.syncStatus, "failed")) : undefined,
+        [clientsReady],
     );
-    const { data: failedEvents } = useLiveSuspenseQuery((q) =>
-        q.from({ events }).where(({ events }) => eq(events.syncStatus, "failed")),
+    const { data: failedEvents = [] } = useLiveQuery((q) =>
+        clientsReady ? q.from({ events }).where(({ events }) => eq(events.syncStatus, "failed")) : undefined,
+        [clientsReady],
     );
 
     return {

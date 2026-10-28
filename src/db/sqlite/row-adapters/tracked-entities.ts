@@ -23,32 +23,16 @@ type TrackedEntityParentRow = {
     sync_status: string;
 };
 
-type AttributeRow = {
-    tracked_entity: string;
-    attribute: string;
-    value: string | null;
-    display_name: string | null;
-    value_type: string | null;
-    created_at: string | null;
-    updated_at: string | null;
-};
-
 const PARENT_COLUMNS = `tracked_entity, tracked_entity_type, org_unit, created_at,
                     updated_at, created_by_uid, updated_by_uid, inactive,
                     deleted, potential_duplicate, parent_entity,
                     last_synced, sync_error, version, sync_status`;
-const ATTRIBUTE_COLUMNS = `tracked_entity, attribute, value, display_name,
-                    value_type, created_at, updated_at`;
 
 function reassemble(
     parent: TrackedEntityParentRow,
-    attributes: AttributeRow[],
+    attributesRecord: Record<string, unknown>,
     usersByUid: Map<string, SqlUser>,
 ): FlattenedTrackedEntity {
-    const attributesRecord: Record<string, unknown> = {};
-    for (const attr of attributes) {
-        attributesRecord[attr.attribute] = attr.value;
-    }
     return {
         trackedEntity: parent.tracked_entity,
         trackedEntityType: parent.tracked_entity_type,
@@ -73,13 +57,14 @@ function reassemble(
     };
 }
 
-const loadRows = makeRelatedRowsLoader<TrackedEntityParentRow, AttributeRow, FlattenedTrackedEntity>({
+const loadRows = makeRelatedRowsLoader<TrackedEntityParentRow, FlattenedTrackedEntity>({
     parentTable: "tracked_entities",
     parentColumns: PARENT_COLUMNS,
     childTable: "tracked_entity_attributes",
-    childColumns: ATTRIBUTE_COLUMNS,
+    childKeyColumn: "tracked_entity",
+    childNameColumn: "attribute",
+    childValueColumn: "value",
     parentKey: (parent) => parent.tracked_entity,
-    childKey: (child) => child.tracked_entity,
     reassemble,
 });
 
