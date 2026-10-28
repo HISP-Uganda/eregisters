@@ -124,6 +124,8 @@ export async function buildLineListIndex(
         cache.set(column.key, { displays, lower, empty, dates, tokens, numeric });
     }
     if (options.isCurrent?.() === false) throw new CancelledIndexBuild();
+    // Built on a column's first sort, then reused for this dataset.
+    const sortRanks = new Map<string, Float64Array>();
     return {
         evaluate(selection) {
             const active = columns.flatMap((column) => {
@@ -221,14 +223,106 @@ export async function buildLineListIndex(
                 if (matches) found.push(i);
             }
             const sortColumn = columns.find((column) => column.key === selection.sortedColumnKey &&
-                column.isComputed && selection.visibleColumnKeys.includes(column.key));
+                selection.visibleColumnKeys.includes(column.key));
             if (sortColumn && selection.sortedOrder) {
-                const numeric = cache.get(sortColumn.key)!.numeric!;
+                let rank = sortRanks.get(sortColumn.key);
+                if (!rank) {
+                    rank = buildSortRank(sortColumn, rows, cache.get(sortColumn.key)!, optionSets);
+                    sortRanks.set(sortColumn.key, rank);
+                }
                 const direction = selection.sortedOrder === "ascend" ? 1 : -1;
-                found.sort((a, b) => numeric[a] === numeric[b] ? a - b :
-                    (numeric[a] < numeric[b] ? -direction : direction));
+                // Empty cells (NaN) go last either way; ties keep row order.
+                found.sort((a, b) => {
+                    const left = rank![a];
+                    const right = rank![b];
+                    const leftEmpty = left !== left;
+                    const rightEmpty = right !== right;
+                    if (leftEmpty || rightEmpty) {
+                        return leftEmpty === rightEmpty ? a - b : (leftEmpty ? 1 : -1);
+                    }
+                    return left === right ? a - b : (left < right ? -direction : direction);
+                });
             }
             return { indices: Uint32Array.from(found), count: found.length };
         },
     };
+}
+
+/**
+ * A plain-comparable stand-in for natural, case- and accent-insensitive
+ * order: lowercased, accents dropped, digit runs zero-padded ("ward 2" <
+ * "ward 10"). Far faster than Intl.Collator over ~100k distinct values.
+ */
+function naturalKey(text: string): string {
+    let key = NON_ASCII.test(text)
+        ? text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
+        : text.toLowerCase();
+    if (HAS_DIGIT.test(key)) key = key.replace(/\d+/g, (digits) => digits.padStart(16, "0"));
+    return key;
+}
+const NON_ASCII = /[^\x00-\x7f]/;
+const HAS_DIGIT = /\d/;
+
+/**
+ * Each row's ascending sort position in `column`, NaN for an empty cell.
+ * Numbers sort by value, dates and date-times by time, option-set values
+ * by the option set's own order, everything else by text ("Ward 2" before
+ * "Ward 10"). Computed columns sort by their range's numeric value.
+ */
+function buildSortRank(
+    column: AnalyticsColumn,
+    rows: AnalyticsRow[],
+    values: ColumnCache,
+    optionSets: OptionSets,
+): Float64Array {
+    const rank = new Float64Array(rows.length);
+    if (values.numeric) {
+        for (let i = 0; i < rows.length; i++) {
+            const value = values.numeric[i];
+            rank[i] = values.empty[i] || !Number.isFinite(value) ? Number.NaN : value;
+        }
+        return rank;
+    }
+    if (column.valueKind === "date" || column.valueKind === "datetime") {
+        for (let i = 0; i < rows.length; i++) {
+            const raw = rows[i].values[column.key]?.raw;
+            rank[i] = values.empty[i] || typeof raw !== "string" ? Number.NaN : Date.parse(raw);
+        }
+        return rank;
+    }
+    // Rank the distinct displays once, then give each row its display's place.
+    const optionOrder = new Map<string, number>();
+    for (const option of (column.optionSetId && optionSets.get(column.optionSetId)) || []) {
+        optionOrder.set(option.code, option.sortOrder);
+        optionOrder.set(option.id, option.sortOrder);
+    }
+    const idByDisplay = new Map<string, number>();
+    const distinct: Array<{ display: string; order: number; key: string }> = [];
+    const rowIds = new Int32Array(rows.length).fill(-1);
+    for (let i = 0; i < rows.length; i++) {
+        if (values.empty[i]) continue;
+        const display = values.displays[i];
+        let id = idByDisplay.get(display);
+        if (id === undefined) {
+            id = distinct.length;
+            idByDisplay.set(display, id);
+            const first = values.tokens?.[i]?.[0];
+            const order = first === undefined ? Infinity : optionOrder.get(first) ?? Infinity;
+            distinct.push({ display, order, key: naturalKey(display) });
+        }
+        rowIds[i] = id;
+    }
+    const byOrder = Array.from(distinct.keys()).sort((a, b) => {
+        const left = distinct[a];
+        const right = distinct[b];
+        return (left.order - right.order) ||
+            (left.key < right.key ? -1 : left.key > right.key ? 1 :
+                left.display < right.display ? -1 : left.display > right.display ? 1 : 0);
+    });
+    const positionOfId = new Float64Array(distinct.length);
+    byOrder.forEach((id, position) => { positionOfId[id] = position; });
+    for (let i = 0; i < rows.length; i++) {
+        rank[i] = rowIds[i] < 0 ? Number.NaN : positionOfId[rowIds[i]];
+    }
+    return rank;
 }

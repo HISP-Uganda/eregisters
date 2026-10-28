@@ -153,26 +153,67 @@ describe("buildLineListIndex", () => {
         const base = { filteredInfo: {}, visibleColumnKeys: ["ageGroup"], sortedColumnKey: "ageGroup" };
         const ascending = index.evaluate({ ...base, sortedOrder: "ascend" });
         const descending = index.evaluate({ ...base, sortedOrder: "descend" });
-        expect(Array.from(ascending.indices, (position) => rows[position].id)).toEqual(["missing", "one-a", "one-b", "two"]);
+        expect(Array.from(ascending.indices, (position) => rows[position].id)).toEqual(["one-a", "one-b", "two", "missing"]);
         expect(Array.from(descending.indices, (position) => rows[position].id)).toEqual(["two", "one-a", "one-b", "missing"]);
         const hiddenSort = index.evaluate({ ...base, visibleColumnKeys: [], sortedOrder: "ascend" });
         expect(Array.from(hiddenSort.indices, (position) => rows[position].id)).toEqual(["two", "one-a", "missing", "one-b"]);
     });
 
-    it("keeps the current computed sorter behavior for non-finite raw values", async () => {
+    it("sorts a non-finite computed value with the empty cells, last", async () => {
         const columns = [{ ...column("score", "number"), isComputed: true }];
         const rows = [
             row("two", { score: { raw: 2, display: "Two" } }),
             row("nan", { score: { raw: Number.NaN, display: "NaN" } }),
             row("one", { score: { raw: 1, display: "One" } }),
         ];
-        const expected = [...rows].sort((a, b) => {
-            const left = typeof a.values.score.raw === "number" ? a.values.score.raw : -Infinity;
-            const right = typeof b.values.score.raw === "number" ? b.values.score.raw : -Infinity;
-            return left - right;
-        }).map((record) => record.id);
         const index = await buildLineListIndex(rows, columns, new Map(), { yieldToMain: async () => {} });
         const result = index.evaluate({ filteredInfo: {}, visibleColumnKeys: ["score"], sortedColumnKey: "score", sortedOrder: "ascend" });
-        expect(Array.from(result.indices, (position) => rows[position].id)).toEqual(expected);
+        expect(Array.from(result.indices, (position) => rows[position].id)).toEqual(["one", "two", "nan"]);
+    });
+
+    it("sorts text naturally, ignoring case, with empty cells last both ways", async () => {
+        const columns = [column("ward")];
+        const rows = [
+            row("w10", { ward: { raw: "Ward 10", display: "Ward 10" } }),
+            row("none", { ward: { raw: "", display: "" } }),
+            row("w2", { ward: { raw: "ward 2", display: "ward 2" } }),
+            row("a", { ward: { raw: "Annex", display: "Annex" } }),
+        ];
+        const index = await buildLineListIndex(rows, columns, new Map(), { yieldToMain: async () => {} });
+        const sorted = (sortedOrder: "ascend" | "descend") => Array.from(index.evaluate({
+            filteredInfo: {}, visibleColumnKeys: ["ward"], sortedColumnKey: "ward", sortedOrder,
+        }).indices, (position) => rows[position].id);
+        expect(sorted("ascend")).toEqual(["a", "w2", "w10", "none"]);
+        expect(sorted("descend")).toEqual(["w10", "w2", "a", "none"]);
+    });
+
+    it("sorts numbers by value and date-times by time", async () => {
+        const columns = [column("weight", "number"), column("seen", "datetime")];
+        const rows = [
+            row("heavy", { weight: { raw: "100", display: "100" }, seen: { raw: "2026-08-26T10:30:00.000Z", display: "26 Aug 10:30" } }),
+            row("light", { weight: { raw: "9", display: "9" }, seen: { raw: "2026-08-26T09:15:00.000Z", display: "26 Aug 09:15" } }),
+            row("blank", { weight: { raw: "", display: "" }, seen: { raw: "2026-08-25T23:00:00.000Z", display: "25 Aug 23:00" } }),
+        ];
+        const index = await buildLineListIndex(rows, columns, new Map(), { yieldToMain: async () => {} });
+        const sorted = (key: string) => Array.from(index.evaluate({
+            filteredInfo: {}, visibleColumnKeys: [key], sortedColumnKey: key, sortedOrder: "ascend",
+        }).indices, (position) => rows[position].id);
+        expect(sorted("weight")).toEqual(["light", "heavy", "blank"]);
+        expect(sorted("seen")).toEqual(["blank", "light", "heavy"]);
+    });
+
+    it("sorts option-set values in the option set's order, not alphabetically", async () => {
+        const columns = [{ ...column("severity"), optionSetId: "sev" }];
+        const option = (code: string, sortOrder: number) =>
+            ({ id: `${code}-id`, code, name: code, optionSet: "sev", sortOrder });
+        const optionSets = new Map([["sev", [option("Mild", 1), option("Moderate", 2), option("Severe", 3)]]]);
+        const rows = [
+            row("severe", { severity: { raw: "Severe", display: "Severe" } }),
+            row("mild", { severity: { raw: "Mild", display: "Mild" } }),
+            row("moderate", { severity: { raw: "Moderate", display: "Moderate" } }),
+        ];
+        const index = await buildLineListIndex(rows, columns, optionSets, { yieldToMain: async () => {} });
+        const result = index.evaluate({ filteredInfo: {}, visibleColumnKeys: ["severity"], sortedColumnKey: "severity", sortedOrder: "ascend" });
+        expect(Array.from(result.indices, (position) => rows[position].id)).toEqual(["mild", "moderate", "severe"]);
     });
 });

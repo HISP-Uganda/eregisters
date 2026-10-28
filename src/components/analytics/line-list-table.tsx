@@ -191,6 +191,13 @@ export function LineListTable({
                     outline: ${token.lineWidthFocus}px solid ${token.colorPrimaryBorder};
                     outline-offset: 1px;
                 }
+                /* Sort arrows before the column name; the filter trigger,
+                   outside this box, stays after it. */
+                .line-list-table .ant-table-column-sorters {
+                    flex-direction: row-reverse;
+                    justify-content: flex-end;
+                    gap: 4px;
+                }
                 /* Below the app's mobile breakpoint (<992px), give the
                    filter/sort trigger icons a bigger touch target — antd's
                    default is comfortable for a mouse pointer but cramped
@@ -306,21 +313,9 @@ export function toTableColumns(
             dataIndex: ["values", column.key, "display"],
             key: column.key,
             width: estimateColumnWidth(column.label, column.key, rows),
-            // Computed columns keep their matched range's numeric value as
-            // `raw`, so sorting orders by range rather than alphabetically by
-            // the displayed label (e.g. "5-17" before "18+").
-            ...(column.isComputed
-                ? {
-                      sorter: (a: AnalyticsRow, b: AnalyticsRow) => {
-                          const left = a.values[column.key]?.raw;
-                          const right = b.values[column.key]?.raw;
-                          return (
-                              (typeof left === "number" ? left : -Infinity) -
-                              (typeof right === "number" ? right : -Infinity)
-                          );
-                      },
-                  }
-                : {}),
+            // Every column sorts; the shared line-list index does the
+            // ordering (see buildSortRank), so antd only tracks the choice.
+            sorter: true,
             ...filter,
         };
     });
