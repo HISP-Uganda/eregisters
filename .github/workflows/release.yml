@@ -1,0 +1,75 @@
+# Tests and builds every push to main. When package.json has a version with no
+# tag yet, also tags it and publishes the DHIS2 app zip as a GitHub Release.
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+# Two quick pushes must not race to create the same release.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      # Uses the version in package.json's packageManager field.
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Test
+        run: pnpm test:vitest
+
+      - name: Build
+        run: pnpm build
+
+      # Without these patches PWA users get a white screen after an update.
+      - name: Check the service worker patches reached the zip
+        run: |
+          set -euo pipefail
+          for sentinel in __patch_claim_clients__ __patch_app_shell_timeout__ __patch_independent_nav__; do
+            unzip -p build/bundle/*.zip service-worker.js | grep -q "$sentinel" \
+              || { echo "::error::$sentinel is missing from the zip"; exit 1; }
+          done
+
+      - name: Detect a new version
+        id: version
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./package.json').version")"
+          tag="v$version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          if git ls-remote --exit-code --tags origin "refs/tags/$tag" > /dev/null; then
+            echo "new=false" >> "$GITHUB_OUTPUT"
+            echo "$tag is already tagged; nothing to release."
+          else
+            echo "new=true" >> "$GITHUB_OUTPUT"
+            echo "$tag is new; releasing it."
+          fi
+
+      - name: Publish the release
+        if: steps.version.outputs.new == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          gh release create "$TAG" "build/bundle/eregisters-$VERSION.zip" \
+            --target "$GITHUB_SHA" \
+            --title "$TAG" \
+            --generate-notes
