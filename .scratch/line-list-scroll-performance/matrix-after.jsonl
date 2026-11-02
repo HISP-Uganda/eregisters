@@ -1,0 +1,8 @@
+{"scenario":"wheel","rows":500,"throttle":1,"frames":209,"fps":59.2,"p50":"16.7","p95":"16.8","max":"66.6","over16":1,"over50":1,"staleFrames":0,"longTasks":1,"longTaskMs":75,"scrollEvents":150,"commits":0}
+{"scenario":"drag","rows":500,"throttle":1,"frames":137,"fps":60,"p50":"16.7","p95":"16.8","max":"16.8","over16":0,"over50":0,"staleFrames":0,"longTasks":0,"longTaskMs":0,"scrollEvents":120,"commits":0}
+{"scenario":"wheel","rows":500,"throttle":4,"frames":234,"fps":36.2,"p50":"16.7","p95":"83.4","max":"100.1","over16":45,"over50":38,"staleFrames":0,"longTasks":1,"longTaskMs":108,"scrollEvents":150,"commits":0}
+{"scenario":"drag","rows":500,"throttle":4,"frames":134,"fps":46.7,"p50":"16.7","p95":"66.7","max":"83.4","over16":14,"over50":8,"staleFrames":0,"longTasks":10,"longTaskMs":705,"scrollEvents":120,"commits":0}
+{"scenario":"wheel","rows":200000,"throttle":1,"frames":208,"fps":59.4,"p50":"16.7","p95":"16.7","max":"50.0","over16":1,"over50":0,"staleFrames":0,"longTasks":1,"longTaskMs":63,"scrollEvents":150,"commits":0}
+{"scenario":"drag","rows":200000,"throttle":1,"frames":137,"fps":60,"p50":"16.7","p95":"16.7","max":"16.8","over16":0,"over50":0,"staleFrames":0,"longTasks":0,"longTaskMs":0,"scrollEvents":120,"commits":0}
+{"scenario":"wheel","rows":200000,"throttle":4,"frames":240,"fps":29.7,"p50":"16.7","p95":"100.0","max":"216.6","over16":61,"over50":49,"staleFrames":0,"longTasks":12,"longTaskMs":976,"scrollEvents":150,"commits":0}
+{"scenario":"drag","rows":200000,"throttle":4,"frames":132,"fps":45.8,"p50":"16.7","p95":"66.7","max":"116.7","over16":13,"over50":10,"staleFrames":0,"longTasks":11,"longTaskMs":768,"scrollEvents":120,"commits":0}

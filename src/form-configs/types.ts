@@ -25,6 +25,7 @@ export interface HmisCellConfig {
     inputName?: string;
     fieldType?: string;
     indicatorId?: string;
+	indicator?:boolean;
     disabled?: boolean;
     total?: boolean;
     colSpan?: number;

@@ -10,82 +10,11 @@
  * - indicator and total cells where present
  */
 
-export type Hmis105CellKind = "label" | "field";
-export type Hmis105RowType = "section" | "subhead" | "data" | "label";
-export type Hmis105FieldType =
-    | "dataValue"
-    | "indicator"
-    | "total"
-    | "input"
-    | string;
+import type { HmisFormConfig } from './types';
 
-export interface Hmis105CellConfig {
-    key: string;
-    kind: Hmis105CellKind;
-    text?: string;
-    title?: string;
-    dataElement?: string;
-    categoryOptionCombo?: string;
-    inputId?: string;
-    inputName?: string;
-    fieldType?: Hmis105FieldType;
-    indicatorId?: string;
-    disabled?: boolean;
-    total?: boolean;
-    colSpan?: number;
-    rowSpan?: number;
-    style?: {
-        align?: string;
-        background?: string;
-        width?: string;
-        verticalAlign?: string;
-        whiteSpace?: string;
-        transform?: string;
-    };
-}
-
-export interface Hmis105RowConfig {
-    key: string;
-    type: Hmis105RowType;
-    cells: Hmis105CellConfig[];
-}
-
-export interface Hmis105ColumnConfig {
-    key: string;
-    index: number;
-    width?: number;
-}
-
-export interface Hmis105SectionConfig {
-    key: string;
-    title: string;
-    columnCount: number;
-    columns: Hmis105ColumnConfig[];
-    rows: Hmis105RowConfig[];
-}
-
-export interface Hmis105TabConfig {
-    key: string;
-    label: string;
-    sections: Hmis105SectionConfig[];
-}
-
-export type Hmis108EditableScope =
-    | { mode: "all" }
-    | { mode: "none" }
-    | { mode: "allowlist"; allow: RegExp[] };
-
-export interface Hmis105FormConfig {
-    id: string;
-    title: string;
-    tabs: Hmis105TabConfig[];
-    editableScope?: Hmis108EditableScope;
-}
-
-export const HMIS_108_CONFIG: Hmis105FormConfig = {
+export const HMIS_108_CONFIG: HmisFormConfig = {
     id: "hmis-108-inpatient-monthly-report",
     title: "HMIS 108 - INPATIENT MONTHLY REPORT",
-    // editableScope: { mode: "none" },
     editableScope: {
         mode: "allowlist",
         allow: [/108-CI01/],
