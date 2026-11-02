@@ -7,6 +7,7 @@ import {
     isCellEditable,
     placeCells,
     toDataValues,
+    verifyButtonState,
 } from "@/components/hmis-form/values";
 
 const row = (...cells: Array<{ colSpan?: number; rowSpan?: number }>) =>
@@ -56,5 +57,38 @@ describe("placeCells", () => {
         const first = placeCells(row({ rowSpan: 2 }, {}), new Map());
         expect(first.next.size).toBe(0);
         expect(placeCells(row({}), first.next).startColumns).toEqual([0]);
+    });
+});
+
+describe("verifyButtonState", () => {
+    const ended = "202001";
+    const open = "209901";
+    const base = { period: ended, readOnly: false, isVerified: false, canVerify: true };
+
+    it("lets a verifier verify a report whose period has ended", () => {
+        expect(verifyButtonState(base)).toEqual({ label: "Mark Report as Verified", disabled: false });
+    });
+
+    it("lets a verifier re-submit a verified report", () => {
+        expect(verifyButtonState({ ...base, isVerified: true })).toEqual({
+            label: "Verified — Re-submit to Update",
+            disabled: false,
+        });
+    });
+
+    it("makes a verifier wait for the period to end", () => {
+        const state = verifyButtonState({ ...base, period: open });
+        expect(state).toMatchObject({ label: "Waiting for period to end", disabled: true });
+        expect(state.title).toContain("not yet fully ended");
+    });
+
+    it.each([
+        ["an ended period", { period: ended }],
+        ["an open period", { period: open }],
+        ["a verified report", { isVerified: true }],
+    ])("disables the button and names the role for a non-verifier on %s", (_, overrides) => {
+        const state = verifyButtonState({ ...base, ...overrides, canVerify: false });
+        expect(state).toMatchObject({ label: "Verifier role required", disabled: true });
+        expect(state.title).toContain("Ask an administrator");
     });
 });

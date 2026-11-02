@@ -95,7 +95,7 @@ function ReportVerifiers({
             <Typography.Text strong>Report Verifiers</Typography.Text>
             <Typography.Text type="secondary">
                 User roles that may verify HMIS reports, re-submit them and revoke a verification. Others
-                can still enter report values but don't see the verify buttons. Leave empty to let everyone
+                can still open reports and enter values, but their verify button is disabled. Leave empty to let everyone
                 verify. Users with full authority (ALL) can always verify.
             </Typography.Text>
             {error && (

@@ -4,6 +4,7 @@ import type {
     HmisFormValues,
     HmisRowConfig,
 } from "@/form-configs/types";
+import { isPeriodFullyPast } from "@/utils/periods";
 
 const SEPARATOR = "_";
 
@@ -16,6 +17,42 @@ export function dataValueKey(dataElement: string, categoryOptionCombo: string, a
 export function cleanNumericValue(raw: unknown) {
     if (raw === null || raw === undefined) return "";
     return String(raw).replace(/[^\d]/g, "");
+}
+
+/**
+ * The verify button for a report: it can be used only by a verifier, on a
+ * writable report whose period has fully ended. Lacking the role is explained
+ * first, since waiting for the period wouldn't help.
+ */
+export function verifyButtonState({
+    period,
+    readOnly,
+    isVerified,
+    canVerify,
+}: {
+    period?: string;
+    readOnly: boolean;
+    isVerified: boolean;
+    canVerify: boolean;
+}): { label: string; disabled: boolean; title?: string } {
+    const periodBlocked = !period || !isPeriodFullyPast(period);
+    const disabled = readOnly || periodBlocked || !canVerify;
+    if (!canVerify) {
+        return {
+            label: "Verifier role required",
+            disabled,
+            title: "Your role can't verify reports. Ask an administrator.",
+        };
+    }
+    if (isVerified) return { label: "Verified — Re-submit to Update", disabled };
+    if (!period || !periodBlocked) return { label: "Mark Report as Verified", disabled };
+    return {
+        label: "Waiting for period to end",
+        disabled,
+        title: readOnly
+            ? undefined
+            : "This period has not yet fully ended — verification will be enabled once the period is in the past.",
+    };
 }
 
 /** A verification time as YYYY-MM-DD (as given, if it isn't a date). */

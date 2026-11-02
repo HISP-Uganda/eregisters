@@ -1,15 +1,14 @@
 import { CheckCircleOutlined } from "@ant-design/icons";
 import { Button, Popconfirm } from "antd";
 import React from "react";
-import { isPeriodFullyPast } from "@/utils/periods";
 import { TEAL } from "./theme";
-import { formatVerifiedAt } from "./values";
+import { formatVerifiedAt, verifyButtonState } from "./values";
 
 /**
  * The report's header actions: verify (or re-submit a verified report —
  * which stays editable), only once its period has fully ended; who verified
  * it and when; and "Revoke verification". Users who may not verify (the
- * admin's verifier roles) see no buttons, only whether it is verified.
+ * admin's verifier roles) get a disabled button saying why, and no revoke.
  */
 export function VerifyActions({
     period,
@@ -32,13 +31,7 @@ export function VerifyActions({
     onVerify: () => void;
     onRevoke?: () => void | Promise<void>;
 }) {
-    const periodBlocked = !period || !isPeriodFullyPast(period);
-    const disabled = readOnly || periodBlocked;
-    const label = isVerified
-        ? "Verified — Re-submit to Update"
-        : periodBlocked && period
-          ? "Waiting for period to end"
-          : "Mark Report as Verified";
+    const { label, disabled, title } = verifyButtonState({ period, readOnly, isVerified, canVerify });
     // A disabled button stays readable on the teal header.
     const style: React.CSSProperties = disabled
         ? {
@@ -65,21 +58,17 @@ export function VerifyActions({
                     <CheckCircleOutlined /> Verified
                 </span>
             )}
-            {canVerify && <Button
+            <Button
                 type="default"
-                icon={isVerified ? <CheckCircleOutlined /> : undefined}
+                icon={canVerify && isVerified ? <CheckCircleOutlined /> : undefined}
                 onClick={onVerify}
                 disabled={disabled}
                 loading={saving}
                 style={style}
-                title={
-                    periodBlocked && period && !readOnly
-                        ? "This period has not yet fully ended — verification will be enabled once the period is in the past."
-                        : undefined
-                }
+                title={title}
             >
                 {label}
-            </Button>}
+            </Button>
             {canVerify && isVerified && onRevoke && !readOnly && (
                 <Popconfirm
                     title="Revoke verification?"

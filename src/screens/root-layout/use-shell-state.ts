@@ -5,7 +5,6 @@ import {
     getEventsCollection,
     getTrackedEntitiesCollection,
 } from "@/db/collections";
-import { useCanVerifyReports } from "@/hooks/useCanVerifyReports";
 import { useCollectionReady } from "@/hooks/useCollectionReady";
 import { useUIConfig } from "@/hooks/useUIConfig";
 import { SyncContext } from "@/machines/sync";
@@ -41,7 +40,6 @@ export function useSyncStatus() {
     const lastMetadataPull = SyncContext.useSelector((a) => a.context.lastMetadataPull);
     const storageBackend = SyncContext.useSelector((snapshot) => snapshot.context.backend);
     const isAdmin = SyncContext.useSelector((a) => a.context.userInfo?.authorities?.includes("ALL"));
-    const canVerifyReports = useCanVerifyReports();
     const hasProgram = SyncContext.useSelector(
         (a) => a.context.userInfo.organisationUnits.flatMap((a) => a.programs).length > 0,
     );
@@ -54,7 +52,6 @@ export function useSyncStatus() {
         lastMetadataPull,
         storageBackend,
         isAdmin,
-        canVerifyReports,
         hasProgram,
     };
 }

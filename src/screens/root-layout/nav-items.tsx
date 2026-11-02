@@ -132,9 +132,13 @@ export function NavItems({
                 onOpenAll={onOpenFailures}
                 stageNameMap={stageNames}
             />
-            {status.canVerifyReports && (
-                <LinkButton to="/reports" icon={<CloudUploadOutlined />} label="Verify Reports" caption="View reports" />
-            )}
+            <LinkButton
+                to="/reports"
+                icon={<CloudUploadOutlined />}
+                label="Verify Reports"
+                caption="View reports"
+                onNavigate={onNavigate}
+            />
             <LinkButton
                 to="/analytics"
                 icon={<BarChartOutlined />}
