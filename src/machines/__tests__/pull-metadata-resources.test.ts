@@ -134,7 +134,7 @@ describe("the metadata pull", () => {
             "id,programRuleActionType,programRule[id],dataElement[id],trackedEntityAttribute[id],programStage[id],programStageSection[id],option[id],optionGroup[id],data,content,location,templateUid",
         );
         expect(variables.programRuleVariables.params.fields).toBe(
-            "id,name,programRuleVariableSourceType,dataElement[id],trackedEntityAttribute[id],programStage[id]",
+            "id,name,programRuleVariableSourceType,valueType,dataElement[id],trackedEntityAttribute[id],programStage[id]",
         );
     });
 

@@ -1,5 +1,5 @@
 import dayjs from "dayjs";
-import { resolveVariableHistory } from "./history";
+import { resolveVariableHistory, typedValue } from "./history";
 import { ProgramRuleVariable } from "@/schemas";
 
 export type EventForRules = {
@@ -33,13 +33,13 @@ function currentValue(
 		variable.dataElement &&
 		dataValues?.hasOwnProperty(variable.dataElement.id)
 	) {
-		return dataValues[variable.dataElement.id];
+		return typedValue(variable, dataValues[variable.dataElement.id]);
 	}
 	if (
 		variable.trackedEntityAttribute &&
 		attributeValues?.hasOwnProperty(variable.trackedEntityAttribute.id)
 	) {
-		return attributeValues[variable.trackedEntityAttribute.id];
+		return typedValue(variable, attributeValues[variable.trackedEntityAttribute.id]);
 	}
 	return null;
 }

@@ -5,6 +5,31 @@ export type HistoryValue = { value: unknown; occurredAt?: string; event?: string
 export type VariableHistory = Record<string, HistoryValue[]>;
 const isSet = (value: unknown) => value !== undefined && value !== null && value !== "";
 
+const NUMERIC_VALUE_TYPES = new Set([
+	"NUMBER", "INTEGER", "INTEGER_POSITIVE", "INTEGER_NEGATIVE",
+	"INTEGER_ZERO_OR_POSITIVE", "PERCENTAGE", "UNIT_INTERVAL",
+]);
+
+const BOOLEAN_VALUE_TYPES = new Set(["BOOLEAN", "TRUE_ONLY"]);
+
+/**
+ * A variable's value as rules should see it: DHIS2 stores numbers and
+ * booleans as text, so a numeric variable's value becomes a number and a
+ * BOOLEAN/TRUE_ONLY one a boolean, or comparisons like `#{parity} > #{gravida}`
+ * and `#{flag} == true` would compare strings. Empty values stay empty (not
+ * DHIS2's default of 0/false) so conditions like `#{x} == ''` keep working.
+ */
+export function typedValue(variable: Pick<ProgramRuleVariable, "valueType">, value: unknown): unknown {
+	if (!isSet(value) || typeof value === "number" || typeof value === "boolean") return value;
+	const text = String(value).trim();
+	if (BOOLEAN_VALUE_TYPES.has(variable.valueType ?? "")) {
+		return text === "true" ? true : text === "false" ? false : value;
+	}
+	if (!NUMERIC_VALUE_TYPES.has(variable.valueType ?? "")) return value;
+	const number = Number(text);
+	return text !== "" && Number.isFinite(number) ? number : value;
+}
+
 /** Keep source occurrences, not just the scalar selected for #{variable}. */
 export function resolveVariableHistory(variables: ProgramRuleVariable[], context: RuleContext): VariableHistory {
 	const result: VariableHistory = {};
@@ -25,7 +50,7 @@ export function resolveVariableHistory(variables: ProgramRuleVariable[], context
 		const source = variable.programRuleVariableSourceType;
 		if (!variable.dataElement) {
 			const value = variable.trackedEntityAttribute && context.attributeValues?.[variable.trackedEntityAttribute.id];
-			result[variable.name] = isSet(value) ? [{ value }] : [];
+			result[variable.name] = isSet(value) ? [{ value: typedValue(variable, value) }] : [];
 			continue;
 		}
 		const id = variable.dataElement.id;
@@ -38,7 +63,7 @@ export function resolveVariableHistory(variables: ProgramRuleVariable[], context
 			}
 			return event.event === context.currentEventId && event.dataValues === context.dataValues;
 		}).filter((event) => isSet(event.dataValues[id])).map((event) => ({
-			value: event.dataValues[id], event: event.event, occurredAt: event.occurredAt,
+			value: typedValue(variable, event.dataValues[id]), event: event.event, occurredAt: event.occurredAt,
 		}));
 	}
 	return result;

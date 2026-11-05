@@ -120,7 +120,7 @@ exports[`the metadata pull > adds a lastUpdated filter to the incremental resour
   {
     "programRuleVariables": {
       "params": {
-        "fields": "id,name,programRuleVariableSourceType,dataElement[id],trackedEntityAttribute[id],programStage[id]",
+        "fields": "id,name,programRuleVariableSourceType,valueType,dataElement[id],trackedEntityAttribute[id],programStage[id]",
         "filter": [
           "program.id:eq:ueBhWkWll5v",
           "lastUpdated:gt:2026-09-01T00:00:00.000",
@@ -263,7 +263,7 @@ exports[`the metadata pull > requests every resource in full 1`] = `
   {
     "programRuleVariables": {
       "params": {
-        "fields": "id,name,programRuleVariableSourceType,dataElement[id],trackedEntityAttribute[id],programStage[id]",
+        "fields": "id,name,programRuleVariableSourceType,valueType,dataElement[id],trackedEntityAttribute[id],programStage[id]",
         "filter": [
           "program.id:eq:ueBhWkWll5v",
         ],

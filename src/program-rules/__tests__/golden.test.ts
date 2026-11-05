@@ -20,7 +20,6 @@ type Field = {
 };
 
 const rules = fixture.rules as unknown as ProgramRule[];
-const variables = fixture.variables as unknown as ProgramRuleVariable[];
 const stages = fixture.form.programStages.map((stage) => ({
     id: stage.id,
     fields: stage.programStageDataElements.map((d) => d.dataElement as Field),
@@ -28,6 +27,13 @@ const stages = fixture.form.programStages.map((stage) => ({
 const attributes = fixture.form.programTrackedEntityAttributes.map(
     (a) => a.trackedEntityAttribute as Field,
 );
+/** Each variable gets its source's value type, as `queryMetadataGeneric` does on load. */
+const valueTypes = new Map([...stages.flatMap((stage) => stage.fields), ...attributes]
+    .map((field) => [field.id, field.valueType]));
+const variables = (fixture.variables as unknown as ProgramRuleVariable[]).map((variable) => ({
+    ...variable,
+    valueType: valueTypes.get(variable.dataElement?.id ?? variable.trackedEntityAttribute?.id ?? ""),
+}));
 
 /** Quoted literals the rule conditions compare against, so free-text fields hit them. */
 const literals = [

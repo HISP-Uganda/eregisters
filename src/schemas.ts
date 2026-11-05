@@ -275,6 +275,8 @@ const ProgramRuleVariableSchema = z.object({
     /** The stage a `DATAELEMENT_NEWEST_EVENT_PROGRAM_STAGE` variable reads. */
     programStage: z.object({ id: UID }).optional(),
     programRuleVariableSourceType: z.string(),
+    /** From DHIS2 for calculated values; otherwise filled in from the data element or attribute when metadata loads. */
+    valueType: z.string().optional(),
 });
 
 const OrgUnitSchema = z.object({

@@ -208,7 +208,7 @@ export const METADATA_RESOURCES: Partial<Record<Resource, ResourceDefinition>> =
                 resource: "programRuleVariables.json",
                 params: {
                     filter: programFilters(since),
-                    fields: "id,name,programRuleVariableSourceType,dataElement[id],trackedEntityAttribute[id],programStage[id]",
+                    fields: "id,name,programRuleVariableSourceType,valueType,dataElement[id],trackedEntityAttribute[id],programStage[id]",
                     paging: false,
                 },
             },

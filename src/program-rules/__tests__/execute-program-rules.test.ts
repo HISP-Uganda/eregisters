@@ -223,6 +223,87 @@ describe("quirks kept", () => {
     });
 });
 
+describe("numeric value types", () => {
+    /** Variables n and m read numeric data elements; t reads a text one. */
+    const typed = (condition: string, dataValues: Record<string, any>, expression = "1", more: Partial<Parameters<typeof executeProgramRules>[0]> = {}) =>
+        executeProgramRules({
+            programRules: [rule(condition, [assign("out", expression)])],
+            programRuleVariables: [
+                variable("n", { de: "deN", valueType: "INTEGER_ZERO_OR_POSITIVE" }),
+                variable("m", { de: "deM", valueType: "NUMBER" }),
+                variable("t", { de: "deT", valueType: "TEXT" }),
+                variable("a", { attr: "atA", valueType: "INTEGER" }),
+            ],
+            program: PROGRAM,
+            programStage: "stage",
+            dataValues,
+            ...more,
+        }).assignments.out;
+
+    it("compares two numeric variables as numbers, not strings", () => {
+        expect(typed("#{n} > #{m}", { deN: "10", deM: "9" })).toBe(1);
+        expect(typed("#{n} < #{m}", { deN: "10", deM: "9" })).toBeUndefined();
+    });
+
+    it("equality against a number literal", () => {
+        expect(typed("#{n} == 1", { deN: "1" })).toBe(1);
+        expect(typed("#{n} != 1", { deN: "1" })).toBeUndefined();
+    });
+
+    it("adds numeric variables arithmetically", () => {
+        expect(typed("true", { deN: "2", deM: "3.5" }, "#{n} + #{m}")).toBe(5.5);
+    });
+
+    it("converts attribute variables too", () => {
+        expect(typed("#{a} >= 18", {}, "1", { attributeValues: { atA: "20" } })).toBe(1);
+        expect(typed("#{a} == 20", {}, "1", { attributeValues: { atA: "20" } })).toBe(1);
+    });
+
+    it("leaves an empty numeric variable empty", () => {
+        expect(typed("#{n} == ''", { deN: "" })).toBe(1);
+        expect(typed("#{n} == ''", {})).toBe(1);
+        expect(typed("!d2:hasValue(#{n}) || #{n} > 200", {})).toBe(1);
+    });
+
+    it("keeps text variables as text", () => {
+        expect(typed("#{t} == '1'", { deT: "1" })).toBe(1);
+        expect(typed("#{t} == 1", { deT: "1" })).toBeUndefined();
+    });
+
+    it("keeps an unparseable numeric value as entered", () => {
+        expect(typed("#{n} == 'abc'", { deN: "abc" })).toBe(1);
+    });
+
+    it("turns BOOLEAN and TRUE_ONLY values into booleans", () => {
+        const flags = (condition: string, dataValues: Record<string, any>) => typed(condition, dataValues, "1", {
+            programRuleVariables: [
+                variable("b", { de: "deB", valueType: "BOOLEAN" }),
+                variable("y", { de: "deY", valueType: "TRUE_ONLY" }),
+            ],
+        });
+        expect(flags("#{b} == true", { deB: "true" })).toBe(1);
+        expect(flags("#{b} == false", { deB: "false" })).toBe(1);
+        expect(flags("#{b}", { deB: "false" })).toBeUndefined();
+        expect(flags("#{y} == true", { deY: "true" })).toBe(1);
+        expect(flags("#{b} == true", { deB: true })).toBe(1);
+        expect(flags("#{b} == ''", {})).toBe(1);
+        expect(flags("d2:hasValue(#{b})", { deB: "false" })).toBe(1);
+    });
+
+    it("converts history values, so countIfValue matches a number", () => {
+        expect(typed("true", { occurredAt: "2026-03-01", deN: "2" }, "d2:countIfValue(#{p}, 2)", {
+            programRuleVariables: [variable("p", {
+                de: "deN", valueType: "INTEGER", programRuleVariableSourceType: "DATAELEMENT_NEWEST_EVENT_PROGRAM",
+            })],
+            allEnrollmentEvents: [
+                { event: "e1", programStage: "stage", occurredAt: "2026-01-01", dataValues: { deN: "2" } },
+                { event: "cur", programStage: "stage", occurredAt: "2026-03-01", dataValues: {} },
+            ],
+            currentEventId: "cur",
+        })).toBe(2);
+    });
+});
+
 describe("variables", () => {
     const events = [
         { event: "e1", programStage: "stage", occurredAt: "2026-01-01", dataValues: { deA: "first" } },

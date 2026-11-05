@@ -238,13 +238,20 @@ export async function queryMetadataGeneric(
         .filter((row) => row.path.startsWith(userOrgUnitPath))
         .sort((a, b) => a.path.localeCompare(b.path));
 
+    const dataElementsById = new Map(dataElements.map((de) => [de.id, de]));
+    const attributesById = new Map(trackedEntityAttributes.map((ta) => [ta.id, ta]));
     const assembled = {
-        dataElements: new Map(dataElements.map((de) => [de.id, de])),
-        trackedEntityAttributes: new Map(
-            trackedEntityAttributes.map((ta) => [ta.id, ta]),
-        ),
+        dataElements: dataElementsById,
+        trackedEntityAttributes: attributesById,
         programRules,
-        programRuleVariables,
+        // Rules compare numeric variables as numbers, so each variable needs
+        // its source's value type. Cached variables predate that field.
+        programRuleVariables: programRuleVariables.map((variable) => ({
+            ...variable,
+            valueType: (variable.dataElement && dataElementsById.get(variable.dataElement.id)?.valueType) ??
+                (variable.trackedEntityAttribute && attributesById.get(variable.trackedEntityAttribute.id)?.valueType) ??
+                variable.valueType,
+        })),
         optionGroups: groupByKey(optionGroups, "optionGroup"),
         optionSets: groupByKey(optionSets, "optionSet"),
         program: programs[0],
