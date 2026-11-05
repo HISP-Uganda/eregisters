@@ -73,10 +73,11 @@ function TrackedEntities() {
     const isMobile = !screens.lg;
     const isPhone = !screens.sm;
 
-    const cards: Array<{ list: ClientList; icon: React.ReactNode; color: string }> = [
-        { list: "all", icon: <UserOutlined />, color: CLIENT_LIST_COLORS.all },
-        { list: "registeredToday", icon: <CalendarOutlined />, color: CLIENT_LIST_COLORS.registeredToday },
-        { list: "visitsToday", icon: <MedicineBoxOutlined />, color: CLIENT_LIST_COLORS.visitsToday },
+    // Total Clients only shows a count; the other cards open their list.
+    const cards: Array<{ list: ClientList; icon: React.ReactNode; color: string; clickable: boolean }> = [
+        { list: "all", icon: <UserOutlined />, color: CLIENT_LIST_COLORS.all, clickable: false },
+        { list: "registeredToday", icon: <CalendarOutlined />, color: CLIENT_LIST_COLORS.registeredToday, clickable: true },
+        { list: "visitsToday", icon: <MedicineBoxOutlined />, color: CLIENT_LIST_COLORS.visitsToday, clickable: true },
     ];
     const statsSection = (
         <Flex gap={8} style={{ marginBottom: 8 }}>
@@ -84,16 +85,16 @@ function TrackedEntities() {
                 <Card
                     key={card.list}
                     variant="borderless"
-                    hoverable
+                    hoverable={card.clickable}
                     size={isMobile ? "small" : undefined}
-                    onClick={() => toggleList(card.list)}
+                    onClick={card.clickable ? () => toggleList(card.list) : undefined}
                     style={{
                         flex: 1,
                         minWidth: 0,
-                        cursor: "pointer",
+                        cursor: card.clickable ? "pointer" : "default",
                         outline: list === card.list ? `2px solid ${card.color}` : undefined,
                     }}
-                    aria-pressed={list === card.list}
+                    aria-pressed={card.clickable ? list === card.list : undefined}
                 >
                     <Statistic
                         title={CLIENT_LIST_TITLES[card.list]}
